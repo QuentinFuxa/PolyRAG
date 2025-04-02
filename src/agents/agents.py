@@ -8,9 +8,10 @@ from agents.command_agent import command_agent
 from agents.interrupt_agent import interrupt_agent
 from agents.langgraph_supervisor_agent import langgraph_supervisor_agent
 from agents.research_assistant import research_assistant
+from agents.pg_rag_assistant import pg_rag_assistant
 from schema import AgentInfo
 
-DEFAULT_AGENT = "research-assistant"
+DEFAULT_AGENT = "pg_rag_assistant"
 
 
 @dataclass
@@ -23,6 +24,9 @@ agents: dict[str, Agent] = {
     "chatbot": Agent(description="A simple chatbot.", graph=chatbot),
     "research-assistant": Agent(
         description="A research assistant with web search and calculator.", graph=research_assistant
+    ),
+    "pg_rag_assistant": Agent(
+        description="An assistant that has access to a postgres database, plotly and pdf visualisation tools.", graph=pg_rag_assistant
     ),
     "command-agent": Agent(description="A command agent.", graph=command_agent),
     "bg-task-agent": Agent(description="A background task agent.", graph=bg_task_agent),
