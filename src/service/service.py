@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core._api import LangChainBetaWarning
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, HumanMessage, ToolMessage
@@ -17,6 +17,7 @@ from langgraph.types import Command, Interrupt
 from langsmith import Client as LangsmithClient
 
 from agents import DEFAULT_AGENT, get_agent, get_all_agent_info
+from agents._graph_store import GraphStore
 from core import settings
 from memory import initialize_database
 from schema import (
@@ -84,6 +85,23 @@ async def info() -> ServiceMetadata:
         default_agent=DEFAULT_AGENT,
         default_model=settings.DEFAULT_MODEL,
     )
+
+
+
+@router.get("/graph/{graph_id}")
+async def get_graph(graph_id: str):
+    """
+    Get a graph by its ID.
+    """
+    graph_store = GraphStore()
+    fig_json = graph_store.get_graph(graph_id)
+    if fig_json is None:
+        raise HTTPException(status_code=404, detail="Graph not found")
+    return Response(
+        content=fig_json,
+        media_type="application/json"
+    )
+
 
 
 async def _handle_input(
