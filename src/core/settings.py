@@ -24,6 +24,7 @@ from schema.models import (
     GroqModelName,
     OllamaModelName,
     OpenAICompatibleName,
+    AlbertModelName,
     OpenAIModelName,
     Provider,
 )
@@ -59,6 +60,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: SecretStr | None = None
     GOOGLE_API_KEY: SecretStr | None = None
     GROQ_API_KEY: SecretStr | None = None
+    ALBERT_API_KEY: SecretStr | None = "Autoritedesuretenucleaireetderadioprotection-f48bc054da3d00f62b0a7e85c31a788c0ec5f6b67d4aee3e0e371d0d5e9e81a1a96dbb56b4266cf76564c058302d689900e783c176c4f9ca98994a1d3c609226"
     USE_AWS_BEDROCK: bool = False
     OLLAMA_MODEL: str | None = None
     OLLAMA_BASE_URL: str | None = None
@@ -72,6 +74,7 @@ class Settings(BaseSettings):
     COMPATIBLE_MODEL: str | None = None
     COMPATIBLE_API_KEY: SecretStr | None = None
     COMPATIBLE_BASE_URL: str | None = None
+    ALBERT_BASE_URL: str | None = "https://albert.api.etalab.gouv.fr/v1"
 
     OPENWEATHERMAP_API_KEY: SecretStr | None = None
 
@@ -122,11 +125,13 @@ class Settings(BaseSettings):
             Provider.OLLAMA: self.OLLAMA_MODEL,
             Provider.FAKE: self.USE_FAKE_MODEL,
             Provider.AZURE_OPENAI: self.AZURE_OPENAI_API_KEY,
+            Provider.ALBERT: self.ALBERT_API_KEY,
+
         }
         active_keys = [k for k, v in api_keys.items() if v]
+        print(active_keys)
         if not active_keys:
             raise ValueError("At least one LLM API key must be provided.")
-
         for provider in active_keys:
             match provider:
                 case Provider.OPENAI:
@@ -165,6 +170,10 @@ class Settings(BaseSettings):
                     if self.DEFAULT_MODEL is None:
                         self.DEFAULT_MODEL = FakeModelName.FAKE
                     self.AVAILABLE_MODELS.update(set(FakeModelName))
+                case Provider.ALBERT:
+                    if self.DEFAULT_MODEL is None:
+                        self.DEFAULT_MODEL = AlbertModelName.LLAMA_3_70B
+                    self.AVAILABLE_MODELS.update(set(AlbertModelName))
                 case Provider.AZURE_OPENAI:
                     if self.DEFAULT_MODEL is None:
                         self.DEFAULT_MODEL = AzureOpenAIModelName.AZURE_GPT_4O_MINI

@@ -22,6 +22,7 @@ from schema.models import (
     OllamaModelName,
     OpenAICompatibleName,
     OpenAIModelName,
+    AlbertModelName
 )
 
 _MODEL_TABLE = {
@@ -45,6 +46,7 @@ _MODEL_TABLE = {
     AWSModelName.BEDROCK_SONNET: "anthropic.claude-3-5-sonnet-20240620-v1:0",
     OllamaModelName.OLLAMA_GENERIC: "ollama",
     FakeModelName.FAKE: "fake",
+    AlbertModelName.LLAMA_3_70B: "neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8",
 }
 
 ModelT: TypeAlias = (
@@ -120,5 +122,13 @@ def get_model(model_name: AllModelEnum, /) -> ModelT:
         else:
             chat_ollama = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0.5)
         return chat_ollama
+    if model_name in AlbertModelName:
+        return ChatOpenAI(
+            base_url=settings.ALBERT_BASE_URL,
+            model=api_model_name,
+            temperature=0.5,
+            streaming=True,
+            openai_api_key=settings.ALBERT_API_KEY,
+        )
     if model_name in FakeModelName:
         return FakeToolModel(responses=["This is a test response from the fake model."])
