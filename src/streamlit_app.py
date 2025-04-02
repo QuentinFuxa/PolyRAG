@@ -11,6 +11,9 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
+import json
+from streamlit_pdf_viewer import pdf_viewer
+import uuid
 
 # A Streamlit app for interacting with the langgraph agent via a simple chat interface.
 # The app has three main functions which are all run async:
@@ -22,10 +25,32 @@ from schema.task_data import TaskData, TaskDataStatus
 
 # The app heavily uses AgentClient to interact with the agent's FastAPI endpoints.
 
-
 APP_TITLE = "Agent Service Toolkit"
 APP_ICON = "🧰"
 
+# Initialize session state for PDF viewing
+if "pdf_to_view" not in st.session_state:
+    st.session_state.pdf_to_view = None
+
+# Function to set which PDF should be displayed
+def view_pdf(pdf_path):
+    st.session_state.pdf_to_view = pdf_path
+    st.rerun()
+
+# Create a dialog function for PDF viewing
+@st.dialog("Document", width="large")
+def pdf_dialog():
+    try:
+        pdf_viewer('/Users/quentin/Documents/asnr/pdf_letters/' + st.session_state.pdf_to_view + '.pdf', render_text=True, pages_vertical_spacing=0)
+        st.session_state.pdf_to_view = None
+        if st.button("Close"):
+            st.rerun()
+    except Exception as e:
+        st.error(f"Error displaying PDF: {e}")
+        st.write(f"Path attempted: {st.session_state.pdf_to_view}")
+        if st.button("Close Error"):
+            st.session_state.pdf_to_view = None
+            st.rerun()
 
 async def main() -> None:
     st.set_page_config(
@@ -33,6 +58,9 @@ async def main() -> None:
         page_icon=APP_ICON,
         menu_items={},
     )
+    
+    if st.session_state.pdf_to_view:
+        pdf_dialog()
 
     # Hide the streamlit upper-right chrome
     st.html(
@@ -148,6 +176,8 @@ async def main() -> None:
                 WELCOME = "Hello! I'm an interrupt agent. Tell me your birthday and I will predict your personality!"
             case "research-assistant":
                 WELCOME = "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!"
+            case "pg_rag_assistant":
+                WELCOME = "Hello! I'm an AI-powered research assistant with a Postgres database access, a plotly and PDF visualisation tools. Ask me anything!"
             case _:
                 WELCOME = "Hello! I'm an AI agent. Ask me anything!"
         with st.chat_message("ai"):
@@ -161,7 +191,8 @@ async def main() -> None:
     await draw_messages(amessage_iter())
 
     # Generate new message if the user provided new input
-    if user_input := st.chat_input():
+    
+    if user_input := st.chat_input('Votre message'):
         messages.append(ChatMessage(type="human", content=user_input))
         st.chat_message("human").write(user_input)
         try:
@@ -171,7 +202,7 @@ async def main() -> None:
                     model=model,
                     thread_id=st.session_state.thread_id,
                 )
-                await draw_messages(stream, is_new=True)
+                await draw_messages(stream, is_new=True, agent_client=agent_client)
             else:
                 response = await agent_client.ainvoke(
                     message=user_input,
@@ -194,6 +225,7 @@ async def main() -> None:
 async def draw_messages(
     messages_agen: AsyncGenerator[ChatMessage | str, None],
     is_new: bool = False,
+    agent_client: AgentClient = None,
 ) -> None:
     """
     Draws a set of chat messages - either replaying existing messages
@@ -212,6 +244,10 @@ async def draw_messages(
         messages_aiter: An async iterator over messages to draw.
         is_new: Whether the messages are new or not.
     """
+
+    if "pdf_documents" not in st.session_state:
+        st.session_state.pdf_documents = {}
+
 
     # Keep track of the last message container
     last_message_type = None
@@ -276,18 +312,19 @@ async def draw_messages(
                         # status container by ID to ensure results are mapped to the
                         # correct status container.
                         call_results = {}
+                        tool_names = {}  
                         for tool_call in msg.tool_calls:
                             status = st.status(
                                 f"""Tool Call: {tool_call["name"]}""",
                                 state="running" if is_new else "complete",
                             )
                             call_results[tool_call["id"]] = status
+                            tool_names[tool_call["id"]] = tool_call["name"]
                             status.write("Input:")
                             status.write(tool_call["args"])
-
-                        # Expect one ToolMessage for each tool call.
-                        for _ in range(len(call_results)):
+                        for idx in range(len(call_results)):
                             tool_result: ChatMessage = await anext(messages_agen)
+                            tool_name = tool_names.get(tool_result.tool_call_id)
 
                             if tool_result.type != "tool":
                                 st.error(f"Unexpected ChatMessage type: {tool_result.type}")
@@ -298,11 +335,43 @@ async def draw_messages(
                             # status container with the result
                             if is_new:
                                 st.session_state.messages.append(tool_result)
+                            
                             if tool_result.tool_call_id:
                                 status = call_results[tool_result.tool_call_id]
+                            
+                            # Handle different tool types
+                            if tool_name == "create_graph":
+                                try:
+                                    # Get graph_id from the tool result
+                                    graph_id = tool_result.content
+                                    status.write(f"Retrieving graph with ID: {graph_id}")
+                                    
+                                    # Call the retrieve_graph function to get the graph data
+                                    graph_data = agent_client.retrieve_graph(graph_id)
+                                    
+                                    # Parse the graph data (assuming it's JSON)
+                                    if graph_data:
+                                        try:
+                                            # Try to parse as JSON for plotly
+                                            plot_data = json.loads(graph_data)
+                                            status.write("Graph retrieved successfully")
+                                            st.plotly_chart(plot_data)
+                                        except json.JSONDecodeError:
+                                            # If not JSON, display as text
+                                            status.write("Retrieved non-JSON graph data")
+                                            st.code(graph_data)
+                                    else:
+                                        status.write("No graph data returned")
+                                except Exception as e:
+                                    status.error(f"Error retrieving graph: {e}")
+                            # else:
+                            #     st.write(tool_result.content)
+                            
+                            # Update the status
                             status.write("Output:")
                             status.write(tool_result.content)
                             status.update(state="complete")
+                            
 
             case "custom":
                 # CustomData example used by the bg-task-agent
