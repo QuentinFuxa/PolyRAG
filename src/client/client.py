@@ -321,6 +321,23 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error: {e}")
 
+    def retrieve_graph(self, graph_id: str) -> str | None:
+        """
+        Retrieve a graph by its ID.
+        """
+        try:
+            response = httpx.get(
+                f"{self.base_url}/graph/{graph_id}",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error: {e}")
+        return response.text
+
+
+
     def get_history(
         self,
         thread_id: str,
