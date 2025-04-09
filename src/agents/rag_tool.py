@@ -19,7 +19,7 @@ class SearchStrategyEnum(str, Enum):
 
 def query_rag_func(
     query: List[str], # Words to search for in the documents. Example: ["ion", "circuit", "feu"]
-    source_names: List[str], # Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461"]
+    source_names: List[str], # Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461", "INSNP-LYO-2016-0614"]
     get_children: bool = True, # Whether to retrieve child text blocks
     get_parents: bool = False, # Whether to retrieve parent text blocks
     search_strategy: SearchStrategyEnum = SearchStrategyEnum.TEXT
@@ -29,7 +29,7 @@ def query_rag_func(
     
     Args:
         query: Words to search for in the documents. Example: ["ion", "circuit", "feu"]
-        source_names: Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461"]
+        source_names: Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461", "INSNP-LYO-2016-0614"]
         get_children: Whether to retrieve child text blocks
         get_parents: Whether to retrieve parent text blocks
         
@@ -142,7 +142,7 @@ query_rag: BaseTool = tool(query_rag_func)
 query_rag.name = "Query_RAG"
 query_rag.description = """
 Use this tool to search for information in documents.
-Input is a question string and optionally a search strategy.
+Input is a question string.
 The tool returns text blocks related to the query.
 """
 

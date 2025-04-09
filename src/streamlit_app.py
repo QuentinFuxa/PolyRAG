@@ -400,8 +400,6 @@ async def draw_messages(
                                 except Exception as e:
                                     status.error(f"Error processing PDF: {e}")
                                     st.write(f"Raw output: {tool_result.content}")                                  
-                            else:
-                                st.write(tool_result.content)
                             
                             # Update the status
                             status.write("Output:")
