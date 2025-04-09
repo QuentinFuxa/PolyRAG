@@ -250,6 +250,7 @@ class AgentClient:
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
         stream_tokens: bool = True,
+        file_ids: list[str] | None = None,
     ) -> AsyncGenerator[ChatMessage | str, None]:
         """
         Stream the agent's response asynchronously.
@@ -265,7 +266,8 @@ class AgentClient:
             agent_config (dict[str, Any], optional): Additional configuration to pass through to the agent
             stream_tokens (bool, optional): Stream tokens as they are generated
                 Default: True
-
+            file_ids (list[str], optional): List of file IDs to attach to the message
+                Default: None
         Returns:
             AsyncGenerator[ChatMessage | str, None]: The response from the agent
         """
@@ -361,3 +363,49 @@ class AgentClient:
             raise AgentClientError(f"Error: {e}")
 
         return ChatHistory.model_validate(response.json())
+
+    def upload_file(
+        self,
+        file_name: str,
+        file_content: bytes,
+        file_type: str,
+        thread_id: str = None
+    ) -> str:
+        """
+        Upload a file to the agent service.
+        
+        Args:
+            file_name (str): The name of the file
+            file_content (bytes): The binary content of the file
+            file_type (str): The MIME type of the file
+            thread_id (str, optional): Thread ID to associate the file with
+            
+        Returns:
+            str: The ID of the uploaded file in the backend
+        """
+        if not self.agent:
+            raise AgentClientError("No agent selected. Use update_agent() to select an agent.")
+        
+        url = f"{self.base_url}/{self.agent}/upload"
+        if thread_id:
+            url += f"?thread_id={thread_id}"
+        
+        files = {"file": (file_name, file_content, file_type)}
+        
+        try:
+            response = httpx.post(
+                url,
+                files=files,
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error uploading file: {e}")
+        
+        # Récupérer l'ID du fichier depuis la réponse
+        response_data = response.json()
+        if "file_id" not in response_data:
+            raise AgentClientError("Server did not return a file_id")
+        
+        return response_data["file_id"]
