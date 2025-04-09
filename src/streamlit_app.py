@@ -183,7 +183,7 @@ async def main() -> None:
 
         "[View the source code](https://github.com/JoshuaC215/agent-service-toolkit)"
         st.caption(
-            "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
+            "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: .  "
         )
 
     # Draw existing messages
@@ -211,15 +211,53 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
-    if user_input := st.chat_input('Votre message', accept_file="multiple"):
-        messages.append(ChatMessage(type="human", content=user_input.text))
-        st.chat_message("human").write(user_input.text)
+    if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]):
+        messages.append(ChatMessage(type="human", content=user_input.text, attached_files=[f.name for f in user_input.files]))
+        additional_markdown = ""
+        if user_input.files: 
+            if additional_markdown == "":
+                additional_markdown = """  
+                """                   
+            for file in user_input.files:
+                additional_markdown += f""":violet-badge[:material/description: {file.name}] """
+
+        st.chat_message("human").write(user_input.text + additional_markdown)
+        
+        if user_input.files:
+            print(len(user_input.files), "files uploaded")
+            upload_status = st.status("File being uploaded...", state="running")
+            
+            uploaded_file_ids = []
+            
+            for file in user_input.files:
+                file_content = file.getvalue()
+                file_name = file.name
+                file_type = file.type
+                
+                try:
+                    print(f"Sends {file_name} to server...")
+                    file_id = agent_client.upload_file(
+                        file_name=file_name,
+                        file_content=file_content,
+                        file_type=file_type,
+                        thread_id=st.session_state.thread_id
+                    )
+                    
+                    uploaded_file_ids.append(file_id)
+                    print(f"File {file_name} uploaded successfully!")
+                    upload_status.update(f"File {file_name} uploaded successfully!")
+                except Exception as e:
+                    print(f"Error uploading {file_name}: {e}")
+                    upload_status.error(f"Error uploading {file_name}: {e}")
+            
+            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
         try:
             if use_streaming:
                 stream = agent_client.astream(
                     message=user_input.text,
                     model=model,
                     thread_id=st.session_state.thread_id,
+                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
                 )
                 await draw_messages(stream, is_new=True, agent_client=agent_client)
             else:
@@ -227,6 +265,7 @@ async def main() -> None:
                     message=user_input.text,
                     model=model,
                     thread_id=st.session_state.thread_id,
+                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
@@ -234,7 +273,6 @@ async def main() -> None:
         except AgentClientError as e:
             st.error(f"Error generating response: {e}")
             st.stop()
-
     # If messages have been generated, show feedback widget
     if len(messages) > 0 and st.session_state.last_message:
         with st.session_state.last_message:
@@ -301,7 +339,15 @@ async def draw_messages(
             # A message from the user, the easiest case
             case "human":
                 last_message_type = "human"
-                st.chat_message("human").write(msg.content)
+                additional_markdown = ""
+                if hasattr(msg, 'attached_files') and msg.attached_files: 
+                    if additional_markdown == "":
+                        additional_markdown = """  
+                        """                   
+                    for file in msg.attached_files:
+                        additional_markdown += f""":violet-badge[:material/description: {file}] """
+
+                st.chat_message("human").write(msg.content + additional_markdown)
 
             # A message from the agent is the most complex case, since we need to
             # handle streaming tokens and tool calls.
