@@ -439,14 +439,18 @@ class RAGSystem:
         
     def _text_search(self, query, source_names, limit=5):
         """Search using PostgreSQL full-text search"""
-        # Convert query to tsquery format (words connected by &)
-        if isinstance(query, list):
-            ts_query = " | ".join(query)
-        else:
-            # Split the query string into words and connect with &
-            ts_query = " | ".join(query.split())
         
-        # Base query without source filter - updated for block_idx
+        # For each element in the list, replace spaces with & and surround with parentheses
+        formatted_elements = []
+        for element in query:
+            if ' ' in element:
+                # Replace spaces with & operator
+                formatted_element = ' & '.join(element.split())
+                formatted_elements.append(f"({formatted_element})")
+            else:
+                formatted_elements.append(element)
+        ts_query = " | ".join(formatted_elements)
+        
         search_query = """
         SELECT 
             name, 
