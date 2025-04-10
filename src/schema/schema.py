@@ -116,6 +116,10 @@ class ChatMessage(BaseModel):
         description="Custom message data.",
         default={},
     )
+    attached_files: list[str] = Field(
+        description="List of attached files.",
+        default=[],
+    )
 
     def pretty_repr(self) -> str:
         """Get a pretty representation of the message."""

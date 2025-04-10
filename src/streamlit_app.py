@@ -13,7 +13,9 @@ from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 import json
 from streamlit_pdf_viewer import pdf_viewer
-import uuid
+from rag_system import RAGSystem
+
+rag_system = RAGSystem()
 
 # A Streamlit app for interacting with the langgraph agent via a simple chat interface.
 # The app has three main functions which are all run async:
@@ -30,26 +32,45 @@ APP_ICON = "🧪"
 
 # Initialize session state for PDF viewing
 if "pdf_to_view" not in st.session_state:
-    st.session_state.pdf_to_view = None
+    st.session_state.pdf_to_view = None 
+if "annotations" not in st.session_state:
+    st.session_state.annotations = None
 
 # Function to set which PDF should be displayed
-def view_pdf(pdf_path):
-    st.session_state.pdf_to_view = pdf_path
-    st.rerun()
+def view_pdf(pdf_to_view, annotations=None):
+    st.session_state.pdf_to_view = pdf_to_view
+    st.session_state.annotations = annotations
+    if not st.session_state.get("in_pdf_dialog", False):
+        st.session_state.in_pdf_dialog = True
+        st.rerun()
+
 
 # Create a dialog function for PDF viewing
 @st.dialog("Document", width="large")
 def pdf_dialog():
     try:
-        pdf_viewer('/Users/quentin/Documents/asnr/pdf_letters/' + st.session_state.pdf_to_view + '.pdf', render_text=True, pages_vertical_spacing=0)
-        st.session_state.pdf_to_view = None
+        st.session_state.in_pdf_dialog = True
+        print('Annotations:', st.session_state.annotations)
+        pdf_viewer(
+            '/Users/quentin/Documents/asnr/pdf_letters/' + st.session_state.pdf_to_view + '.pdf', 
+            render_text=True,
+            pages_vertical_spacing=0,
+            annotations=st.session_state.annotations,
+            annotation_outline_size=3,
+            scroll_to_annotation=True,
+        )
         if st.button("Close"):
+            st.session_state.pdf_to_view = None
+            st.session_state.in_pdf_dialog = False
             st.rerun()
+        st.session_state.pdf_to_view = None
+        st.session_state.in_pdf_dialog = False
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
         st.write(f"Path attempted: {st.session_state.pdf_to_view}")
         if st.button("Close Error"):
             st.session_state.pdf_to_view = None
+            st.session_state.in_pdf_dialog = False
             st.rerun()
 
 async def main() -> None:
@@ -128,7 +149,7 @@ async def main() -> None:
 
 
         st.caption(
-            "Beta - Le chatbot peut être sujet à des hallucinations et des erreurs"
+            "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
         )
 
     # Draw existing messages
@@ -156,24 +177,61 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
-    # Generate new message if the user provided new input
-    
-    if user_input := st.chat_input('Votre message'):
-        messages.append(ChatMessage(type="human", content=user_input))
-        st.chat_message("human").write(user_input)
+    if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]):
+        messages.append(ChatMessage(type="human", content=user_input.text, attached_files=[f.name for f in user_input.files]))
+        additional_markdown = ""
+        if user_input.files: 
+            if additional_markdown == "":
+                additional_markdown = """  
+                """                   
+            for file in user_input.files:
+                additional_markdown += f""":violet-badge[:material/description: {file.name}] """
+
+        st.chat_message("human").write(user_input.text + additional_markdown)
+        
+        if user_input.files:
+            print(len(user_input.files), "files uploaded")
+            upload_status = st.status("File being uploaded...", state="running")
+            
+            uploaded_file_ids = []
+            
+            for file in user_input.files:
+                file_content = file.getvalue()
+                file_name = file.name
+                file_type = file.type
+                
+                try:
+                    print(f"Sends {file_name} to server...")
+                    file_id = agent_client.upload_file(
+                        file_name=file_name,
+                        file_content=file_content,
+                        file_type=file_type,
+                        thread_id=st.session_state.thread_id
+                    )
+                    
+                    uploaded_file_ids.append(file_id)
+                    print(f"File {file_name} uploaded successfully!")
+                    upload_status.update(f"File {file_name} uploaded successfully!")
+                except Exception as e:
+                    print(f"Error uploading {file_name}: {e}")
+                    upload_status.error(f"Error uploading {file_name}: {e}")
+            
+            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
         try:
             if use_streaming:
                 stream = agent_client.astream(
-                    message=user_input,
+                    message=user_input.text,
                     model=model,
                     thread_id=st.session_state.thread_id,
+                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
                 )
                 await draw_messages(stream, is_new=True, agent_client=agent_client)
             else:
                 response = await agent_client.ainvoke(
-                    message=user_input,
+                    message=user_input.text,
                     model=model,
                     thread_id=st.session_state.thread_id,
+                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
@@ -181,7 +239,6 @@ async def main() -> None:
         except AgentClientError as e:
             st.error(f"Error generating response: {e}")
             st.stop()
-
     # If messages have been generated, show feedback widget
     if len(messages) > 0 and st.session_state.last_message:
         with st.session_state.last_message:
@@ -248,7 +305,15 @@ async def draw_messages(
             # A message from the user, the easiest case
             case "human":
                 last_message_type = "human"
-                st.chat_message("human").write(msg.content)
+                additional_markdown = ""
+                if hasattr(msg, 'attached_files') and msg.attached_files: 
+                    if additional_markdown == "":
+                        additional_markdown = """  
+                        """                   
+                    for file in msg.attached_files:
+                        additional_markdown += f""":violet-badge[:material/description: {file}] """
+
+                st.chat_message("human").write(msg.content + additional_markdown)
 
             # A message from the agent is the most complex case, since we need to
             # handle streaming tokens and tool calls.
@@ -330,8 +395,23 @@ async def draw_messages(
                                         status.write("No graph data returned")
                                 except Exception as e:
                                     status.error(f"Error retrieving graph: {e}")
-                            # else:
-                            #     st.write(tool_result.content)
+                            elif tool_name == "PDF_Viewer":
+                                try:
+                                    tool_output = json.loads(tool_result.content)
+                                    pdf_name = tool_output['pdf_file']
+                                    block_indices = tool_output['block_indices']
+                                    annotations = rag_system.get_annotations_by_indices(
+                                        pdf_file=pdf_name,
+                                        block_indices=block_indices,
+                                    )                                    
+                                    st.session_state.pdf_documents[pdf_name] = annotations                                    
+                                    if st.button(f"View PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
+                                        view_pdf(pdf_name, annotations)
+                                        
+                                    status.update(state="complete", label=f"PDF ready: {pdf_name}")
+                                except Exception as e:
+                                    status.error(f"Error processing PDF: {e}")
+                                    st.write(f"Raw output: {tool_result.content}")                                  
                             
                             # Update the status
                             status.write("Output:")
