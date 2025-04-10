@@ -348,6 +348,114 @@ def history(input: ChatHistoryInput) -> ChatHistory:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
+####### MOVE THIS PART ########
+
+import os
+from pathlib import Path
+from fastapi import File, UploadFile, Form
+from typing import Optional
+import uuid
+
+UPLOAD_DIR = Path("./uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+thread_files = {}
+
+#################################
+
+@router.post("/{agent_id}/upload")
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    thread_id: Optional[str] = None,
+    agent_id: str = DEFAULT_AGENT
+) -> dict:
+    """
+    Upload a file to the agent service.
+    
+    Args:
+        file: The uploaded file
+        thread_id: Optional thread ID to associate the file with
+        agent_id: The agent to use (defaults to the default agent)
+        
+    Returns:
+        dict: Contains the file_id of the uploaded file
+    """
+    try:
+        file_id = str(uuid.uuid4())
+        
+        thread_dir = UPLOAD_DIR
+        if thread_id:
+            thread_dir = UPLOAD_DIR / thread_id
+            os.makedirs(thread_dir, exist_ok=True)
+            
+            if thread_id not in thread_files:
+                thread_files[thread_id] = []
+            thread_files[thread_id].append(file_id)
+        
+        filename = f"{file_id}_{file.filename}"
+        file_path = thread_dir / filename
+        
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+        
+        file_metadata = {
+            "file_id": file_id,
+            "original_name": file.filename,
+            "content_type": file.content_type,
+            "size": len(contents),
+            "path": str(file_path),
+            "thread_id": thread_id
+        }
+
+        logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}")
+        
+        return {"file_id": file_id, "filename": file.filename}
+        
+    except Exception as e:
+        logger.error(f"Error during file upload: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error during file upload: {str(e)}"
+        )
+
+@router.get("/files/{file_id}")
+async def get_file_info(file_id: str):
+    """
+    Get information about an uploaded file.
+    """
+
+    for root, _, files in os.walk(UPLOAD_DIR):
+        for file in files:
+            if file.startswith(f"{file_id}_"):
+                file_path = os.path.join(root, file)
+                return {
+                    "file_id": file_id,
+                    "filename": file.replace(f"{file_id}_", "", 1),
+                    "path": file_path
+                }
+    
+    raise HTTPException(status_code=404, detail="File not found")
+
+@router.get("/{agent_id}/thread/{thread_id}/files")
+@router.get("/thread/{thread_id}/files")
+async def get_thread_files(thread_id: str, agent_id: str = DEFAULT_AGENT):
+    """
+    Get all files associated with a thread.
+    """
+    if thread_id not in thread_files or not thread_files[thread_id]:
+        return {"files": []}
+    
+    files = []
+    for file_id in thread_files[thread_id]:
+        try:
+            file_info = await get_file_info(file_id)
+            files.append(file_info)
+        except HTTPException:
+            continue
+    
+    return {"files": files}
 
 @app.get("/health")
 async def health_check():
