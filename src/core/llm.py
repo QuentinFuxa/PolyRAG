@@ -47,6 +47,7 @@ _MODEL_TABLE = {
     OllamaModelName.OLLAMA_GENERIC: "ollama",
     FakeModelName.FAKE: "fake",
     AlbertModelName.LLAMA_3_70B: "neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8",
+    AlbertModelName.MISTRAL_SMALL_24B: "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
 }
 
 ModelT: TypeAlias = (

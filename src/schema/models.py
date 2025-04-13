@@ -82,6 +82,7 @@ class AlbertModelName(StrEnum):
     """https://huggingface.co/models?search=albert"""
 
     LLAMA_3_70B = "llama-3-70b"
+    MISTRAL_SMALL_24B = "mistral-small-24b"
 
 
 class FakeModelName(StrEnum):
