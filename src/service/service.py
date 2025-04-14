@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langchain_core._api import LangChainBetaWarning
-from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, HumanMessage, ToolMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, Interrupt
@@ -35,6 +35,10 @@ from service.utils import (
     langchain_to_chat_message,
     remove_tool_calls,
 )
+from db_manager import DatabaseManager
+from get_config import load_config
+db_manager = DatabaseManager()
+
 
 warnings.filterwarnings("ignore", category=LangChainBetaWarning)
 logger = logging.getLogger(__name__)
@@ -101,7 +105,6 @@ async def get_graph(graph_id: str):
         content=fig_json,
         media_type="application/json"
     )
-
 
 
 async def _handle_input(
@@ -382,80 +385,89 @@ async def upload_file(
         dict: Contains the file_id of the uploaded file
     """
     try:
-        file_id = str(uuid.uuid4())
-        
-        thread_dir = UPLOAD_DIR
-        if thread_id:
-            thread_dir = UPLOAD_DIR / thread_id
-            os.makedirs(thread_dir, exist_ok=True)
-            
-            if thread_id not in thread_files:
-                thread_files[thread_id] = []
-            thread_files[thread_id].append(file_id)
-        
-        filename = f"{file_id}_{file.filename}"
-        file_path = thread_dir / filename
+        file_id = uuid.uuid4()
+        thread_uuid = UUID(thread_id) if thread_id else None
         
         contents = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(contents)
         
-        file_metadata = {
-            "file_id": file_id,
+        text_content = None
+        try:
+            if file.content_type.startswith('text/'):
+                text_content = contents.decode('utf-8', errors='ignore')
+            elif file.content_type.startswith('application/pdf'):
+                config = load_config()
+                pdf_parser = config.get("pdf-parser", {})
+                
+                if 'nlm-ingestor' in pdf_parser:
+                    import tempfile
+                    from llmsherpa.readers import LayoutPDFReader
+                    
+                    # temp file for the pdf
+                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
+                        temp_pdf.write(contents)
+                        temp_pdf_path = temp_pdf.name
+
+                    api_url = pdf_parser['nlm-ingestor']['api']
+                    pdf_reader = LayoutPDFReader(api_url)
+                    doc = pdf_reader.read_pdf(temp_pdf_path)
+                    text_content = doc.to_text()
+            else:
+                print(f"Unsupported file type: {file.content_type}")
+        except Exception as e:
+            logger.warning(f"Impossible d'extraire le texte du fichier: {e}")
+                
+        metadata = {
             "original_name": file.filename,
             "content_type": file.content_type,
-            "size": len(contents),
-            "path": str(file_path),
-            "thread_id": thread_id
+            "size": len(contents)
         }
-
+        
+        db_manager.save_file(
+            file_id=file_id,
+            thread_id=thread_uuid,
+            filename=file.filename,
+            content_type=file.content_type,
+            content=contents,
+            text_content=text_content,
+            metadata=metadata
+        )
+        
+        if thread_id and text_content:
+            agent: CompiledStateGraph = get_agent(agent_id)            
+            config = RunnableConfig(
+                configurable={"thread_id": thread_id}
+            )
+            
+            try:
+                state = await agent.aget_state(config=config)                
+                file_message = SystemMessage(
+                    content=f"Contenu du fichier {file.filename}:\n\n{text_content}"
+                )
+                
+                # Add system message to the messages history
+                new_messages = list(state.values.get("messages", []))
+                new_messages.append(file_message)
+                
+                # Update the state
+                await agent.aupdate_state(
+                    values={"messages": new_messages},
+                    config=config
+                )
+                
+                logger.info(f"The file {file.filename} has succesfuly been added to the messages history of the thread {thread_id}")
+            except Exception as e:
+                logger.error(f"Error while ading the file content to the file history: {e}")
+        
         logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}")
         
-        return {"file_id": file_id, "filename": file.filename}
+        return {"file_id": str(file_id), "filename": file.filename}
         
     except Exception as e:
-        logger.error(f"Error during file upload: {e}")
+        logger.error(f"Error while uploading the file: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error during file upload: {str(e)}"
+            detail=f"Error while uploading the file: {str(e)}"
         )
-
-@router.get("/files/{file_id}")
-async def get_file_info(file_id: str):
-    """
-    Get information about an uploaded file.
-    """
-
-    for root, _, files in os.walk(UPLOAD_DIR):
-        for file in files:
-            if file.startswith(f"{file_id}_"):
-                file_path = os.path.join(root, file)
-                return {
-                    "file_id": file_id,
-                    "filename": file.replace(f"{file_id}_", "", 1),
-                    "path": file_path
-                }
-    
-    raise HTTPException(status_code=404, detail="File not found")
-
-@router.get("/{agent_id}/thread/{thread_id}/files")
-@router.get("/thread/{thread_id}/files")
-async def get_thread_files(thread_id: str, agent_id: str = DEFAULT_AGENT):
-    """
-    Get all files associated with a thread.
-    """
-    if thread_id not in thread_files or not thread_files[thread_id]:
-        return {"files": []}
-    
-    files = []
-    for file_id in thread_files[thread_id]:
-        try:
-            file_info = await get_file_info(file_id)
-            files.append(file_info)
-        except HTTPException:
-            continue
-    
-    return {"files": files}
 
 @app.get("/health")
 async def health_check():
