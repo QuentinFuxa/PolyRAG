@@ -41,7 +41,7 @@ instructions = instructions.format(current_date=current_date)
 
 
 def wrap_model(model: BaseChatModel) -> RunnableSerializable[AgentState, AIMessage]:
-    model = model.bind_tools(tools)
+    model = model.bind_tools(tools, tool_choice="auto")
     preprocessor = RunnableLambda(
         lambda state: [SystemMessage(content=instructions)] + state["messages"],
         name="StateModifier",
