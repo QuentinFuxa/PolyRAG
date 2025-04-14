@@ -8,9 +8,11 @@ import psycopg2
 from psycopg2 import pool
 from llmsherpa.readers import LayoutPDFReader
 from dotenv import load_dotenv
+from db_manager import DatabaseManager
 
 # Load environment variables
 load_dotenv()
+
 
 class SearchStrategy(Enum):
     TEXT = "text"
@@ -36,66 +38,6 @@ class DocumentBlock:
     metadata: BlockMetadata
     parent_idx: Optional[int] = None  # Changed from parent_id to parent_idx
     embedding: Optional[List[float]] = None
-
-class DatabaseManager:
-    """Manager for PostgreSQL database operations"""
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(DatabaseManager, cls).__new__(cls)
-            # Initialize the connection pool
-            db_params = {
-                "host": os.getenv("DB_HOST", "localhost"),
-                "database": os.getenv("DB_NAME", "lds"),
-                "user": os.getenv("DB_USER", "postgres"),
-                "password": os.getenv("DB_PASSWORD", ""),
-                "port": os.getenv("DB_PORT", "5432")
-            }
-            cls._instance.connection_string = f"postgresql://{db_params['user']}:{db_params['password']}@{db_params['host']}:{db_params['port']}/{db_params['database']}"
-            cls._instance.conn_pool = pool.SimpleConnectionPool(1, 10, **db_params)
-        return cls._instance
-    
-    def get_connection(self):
-        return self.conn_pool.getconn()
-    
-    def release_connection(self, conn):
-        self.conn_pool.putconn(conn)
-    
-    def execute_query(self, query, params=None):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(query, params or ())
-            conn.commit()
-            # Check if the query returns results
-            if cursor.description is not None:
-                result = cursor.fetchall()
-                return result
-            return None
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            cursor.close()
-            self.release_connection(conn)
-    
-    def execute_many(self, query, params_list):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.executemany(query, params_list)
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            cursor.close()
-            self.release_connection(conn)
-    
-    def get_connection_string(self):
-        """Returns the connection string for use with sqlalchemy or other tools"""
-        return self.connection_string
 
 class EmbeddingManager:
     """Manager for embedding operations (optional)"""
@@ -1035,6 +977,81 @@ class RAGSystem:
                 "color": "red"
             }
             
+            annotations.append(annotation)
+        
+        return annotations
+    
+    def debug_blocks(self, pdf_file):
+        """
+        Display all blocks in the PDF for debugging purposes.
+        
+        Args:
+            pdf_file: Name of the PDF file (without path or extension)
+            
+        Returns:
+            List of annotation objects in the format needed for highlighting
+        """
+        
+        query = """
+        SELECT 
+            id,
+            block_idx,
+            content, 
+            name,
+            page_idx, 
+            level,
+            tag,
+            block_class,
+            x0, 
+            y0, 
+            x1, 
+            y1,
+            parent_idx
+        FROM 
+            rag_document_blocks
+        WHERE 
+            name  = %s
+        """
+        params = (pdf_file,)
+        results = self.db_manager.execute_query(query, params)
+        
+        blocks = [
+            {
+                "id": row[0],
+                "block_idx": row[1],
+                "content": row[2],
+                "name": row[3],
+                "page_idx": row[4],
+                "level": row[5],
+                "tag": row[6],
+                "block_class": row[7],
+                "x0": row[8],
+                "y0": row[9],
+                "x1": row[10],
+                "y1": row[11],
+                "parent_idx": row[12],
+                "score": 1.0  # Default score for directly retrieved blocks
+            }
+            for row in results
+        ]
+        
+        dict_colors = {
+            'para': 'blue',
+            'header': 'red',
+            'list_item': 'green',
+            'table': 'purple',
+        }
+        
+        annotations = []
+        for block in blocks:
+            annotation = {
+                "page": block["page_idx"] + 1,  # Convert to 1-indexed page numbering
+                "x": block["x0"],
+                "y": block["y0"],
+                "height": block["y1"] - block["y0"],
+                "width": block["x1"] - block["x0"],
+                "color": dict_colors[block["tag"]]
+            }
             annotations.append(annotation)
         
         return annotations
