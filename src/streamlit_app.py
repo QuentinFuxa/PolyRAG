@@ -134,7 +134,8 @@ async def main() -> None:
     with st.sidebar:
         st.header(f"{APP_ICON} {APP_TITLE}")
         ""
-        "Full toolkit for running an AI agent service built with LangGraph, FastAPI and Streamlit"
+        """Platform for database exploration, document analysis, and data visualization. Powered by LangGraph, PostgreSQL, Plotly and nlm-ingestor.
+        Built with FastAPI and Streamlit."""
         with st.popover(":material/settings: Settings", use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
             model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
