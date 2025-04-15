@@ -148,9 +148,9 @@ async def main() -> None:
             use_streaming = st.toggle("Stream results", value=True)
 
 
-        st.caption(
-            "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
-        )
+        # st.caption(
+        #     "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
+        # )
 
     # Draw existing messages
     messages: list[ChatMessage] = st.session_state.messages
