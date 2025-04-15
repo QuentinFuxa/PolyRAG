@@ -140,7 +140,7 @@ def query_rag_from_idx_func(
 def highlight_pdf_func(
         pdf_file: str,
         block_indices: Optional[List[int]] = None,  # List of block indices to highlight
-        debug_blocks: Optional[bool] = False 
+        debug: Optional[bool] = False 
         ) -> str:
     """
     Prepare information for highlighting a PDF by block indices.
@@ -148,7 +148,7 @@ def highlight_pdf_func(
     Args:
         pdf_file: Name of the PDF file (without path or extension)
         block_indices: List of block indices to highlight
-        debug_blocks: Display all the blocks in the PDF for debugging (optional). Overwrite the parameter block_indices.
+        debug: Display all the blocks in the PDF for debugging (optional). Overwrite the parameter block_indices.
     
     Returns:
         JSON string containing PDF name and block indices for highlighting
@@ -157,7 +157,7 @@ def highlight_pdf_func(
     result = {
         "pdf_file": pdf_file,
         "block_indices": block_indices,
-        "debug_blocks": debug_blocks
+        "debug": debug
     }
     return result
 
@@ -192,4 +192,5 @@ highlight_pdf.description = """
 Use this tool to display a PDF with highlights.
 Input is the PDF filename (without extension) and a list of block indices to highlight.
 This will display the PDF with the specified blocks highlighted.
+ATTENTION : The uploaded PDFs cannot be used in this tool. Only the PDFs in the RAG system can be used.
 """

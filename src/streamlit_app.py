@@ -434,7 +434,7 @@ async def draw_messages(
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
                                     block_indices = tool_output['block_indices']
-                                    if tool_output.get('debug_blocks', False):
+                                    if tool_output.get('debug', False):
                                         annotations = rag_system.debug_blocks(pdf_file=pdf_name)
                                     else:
                                         annotations = rag_system.get_annotations_by_indices(
