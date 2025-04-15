@@ -34,20 +34,39 @@ def query_rag_func(
         get_parents: Whether to retrieve parent text blocks
         
     Returns:
-        JSON string with query results and text blocks information
+        JSON string with, for each block:
+            - document name
+            - id of the block
+            - text content of the block
+            - page number of the block
+            - parent block id
+            - level of the block
+            - tag of the block (header, list_item, etc.)
+
     """
     # Convert string enum to SearchStrategy
     strategy = SearchStrategy[search_strategy.upper()]
     
+    # clean source_names to remove any leading/trailing whitespace or commas
+    source_names = [name.strip().replace(",", "") for name in source_names if name.strip()]
+    
     # Query the RAG system
-    result = rag_system.query(query, source_names=source_names, get_children=get_children, get_parents=get_parents, strategy=strategy)
+    result = rag_system.query(
+        query,
+        source_names=source_names,
+        get_children=get_children,
+        get_parents=get_parents,
+        strategy=strategy,
+        num_results = 15
+        )
     
     if not result["success"]:
         return {"error": result["message"]}
     
     # Return text blocks instead of annotations
     return (
-            [{
+            [{  
+                "document_name": block["name"],
                 "idx": block["block_idx"],  # Using block_idx instead of block_id
                 "content": block["content"],
                 "page": block["page_idx"],
@@ -118,13 +137,18 @@ def query_rag_from_idx_func(
         ]
 
 
-def highlight_pdf_func(pdf_file: str, block_indices: List[int]) -> str:
+def highlight_pdf_func(
+        pdf_file: str,
+        block_indices: Optional[List[int]] = None,  # List of block indices to highlight
+        debug: Optional[bool] = False 
+        ) -> str:
     """
     Prepare information for highlighting a PDF by block indices.
     
     Args:
         pdf_file: Name of the PDF file (without path or extension)
         block_indices: List of block indices to highlight
+        debug: Display all the blocks in the PDF for debugging (optional). Overwrite the parameter block_indices.
     
     Returns:
         JSON string containing PDF name and block indices for highlighting
@@ -132,7 +156,8 @@ def highlight_pdf_func(pdf_file: str, block_indices: List[int]) -> str:
     # Create response for display in streamlit frontend
     result = {
         "pdf_file": pdf_file,
-        "block_indices": block_indices
+        "block_indices": block_indices,
+        "debug": debug
     }
     return result
 
@@ -143,7 +168,14 @@ query_rag.name = "Query_RAG"
 query_rag.description = """
 Use this tool to search for information in documents.
 Input is a question string.
-The tool returns text blocks related to the query.
+The tool returns list of objects containing:
+    - document name
+    - id of the block
+    - text content of the block
+    - page number of the block
+    - parent block id
+    - level of the block
+    - tag of the block (header, list_item, etc.)
 """
 
 query_rag_from_idx: BaseTool = tool(query_rag_from_idx_func)
@@ -160,4 +192,5 @@ highlight_pdf.description = """
 Use this tool to display a PDF with highlights.
 Input is the PDF filename (without extension) and a list of block indices to highlight.
 This will display the PDF with the specified blocks highlighted.
+ATTENTION : The uploaded PDFs cannot be used in this tool. Only the PDFs in the RAG system can be used.
 """

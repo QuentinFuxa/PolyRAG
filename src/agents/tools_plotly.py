@@ -4,9 +4,9 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine
 from langchain_core.tools import BaseTool, tool
 from agents._graph_store import GraphStore
+from db_manager import DatabaseManager
 
-connection_string="postgresql://postgres@localhost:5432/lds"
-engine = create_engine(connection_string)
+
 
 graph_store = GraphStore()
 
@@ -62,7 +62,7 @@ def create_graph(
     print(f"Template: {template}")
     
     # 1) Execute the SQL query
-    df = pd.read_sql(query, con=engine)
+    df = pd.read_sql(query, con=DatabaseManager.engine)
 
     # Verify we have a non-empty DataFrame
     if df.empty:

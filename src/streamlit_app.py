@@ -211,7 +211,7 @@ async def main() -> None:
                     
                     uploaded_file_ids.append(file_id)
                     print(f"File {file_name} uploaded successfully!")
-                    upload_status.update(f"File {file_name} uploaded successfully!")
+                    upload_status.update(label=f"File {file_name} uploaded successfully!")
                 except Exception as e:
                     print(f"Error uploading {file_name}: {e}")
                     upload_status.error(f"Error uploading {file_name}: {e}")
@@ -235,11 +235,10 @@ async def main() -> None:
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
-            st.rerun()  # Clear stale containers
+            st.rerun()
         except AgentClientError as e:
             st.error(f"Error generating response: {e}")
             st.stop()
-    # If messages have been generated, show feedback widget
     if len(messages) > 0 and st.session_state.last_message:
         with st.session_state.last_message:
             await handle_feedback()
@@ -400,10 +399,13 @@ async def draw_messages(
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
                                     block_indices = tool_output['block_indices']
-                                    annotations = rag_system.get_annotations_by_indices(
-                                        pdf_file=pdf_name,
-                                        block_indices=block_indices,
-                                    )                                    
+                                    if tool_output.get('debug', False):
+                                        annotations = rag_system.debug_blocks(pdf_file=pdf_name)
+                                    else:
+                                        annotations = rag_system.get_annotations_by_indices(
+                                            pdf_file=pdf_name,
+                                            block_indices=block_indices,
+                                        )            
                                     st.session_state.pdf_documents[pdf_name] = annotations                                    
                                     if st.button(f"View PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
                                         view_pdf(pdf_name, annotations)
