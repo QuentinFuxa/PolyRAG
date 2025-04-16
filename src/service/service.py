@@ -4,7 +4,7 @@ import logging
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
@@ -318,21 +318,33 @@ async def stream(user_input: StreamInput, agent_id: str = DEFAULT_AGENT) -> Stre
 @router.post("/feedback")
 async def feedback(feedback: Feedback) -> FeedbackResponse:
     """
-    Record feedback for a run to LangSmith.
-
-    This is a simple wrapper for the LangSmith create_feedback API, so the
-    credentials can be stored and managed in the service rather than the client.
-    See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
+    Record feedback in the database.    
+    The feedback can be used for analytics and monitoring purposes.
     """
-    # client = LangsmithClient()
-    # kwargs = feedback.kwargs or {}
-    # client.create_feedback(
-    #     run_id=feedback.run_id,
-    #     key=feedback.key,
-    #     score=feedback.score,
-    #     **kwargs,
-    # )
-    return FeedbackResponse()
+    try:
+        db_manager.save_feedback(
+            run_id=feedback.run_id,
+            key=feedback.key,
+            score=feedback.score,
+            additional_data=feedback.kwargs if feedback.kwargs else None
+        )
+        
+        # Optionally, send to LangSmith if configured
+        if settings.LANGCHAIN_API_KEY and settings.LANGCHAIN_PROJECT:
+            client = LangsmithClient()
+            kwargs = feedback.kwargs or {}
+            client.create_feedback(
+                run_id=feedback.run_id,
+                key=feedback.key,
+                score=feedback.score,
+                **kwargs,
+            )
+            
+        logger.info(f"Saved feedback for run {feedback.run_id}: {feedback.key}={feedback.score}")
+        return FeedbackResponse()
+    except Exception as e:
+        logger.error(f"Error saving feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving feedback: {str(e)}")
 
 
 @router.post("/history")
@@ -482,6 +494,27 @@ async def upload_file(
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@router.get("/feedback/{run_id}")
+async def get_feedback(run_id: str) -> Dict[str, Any]:
+    """Get all feedback entries for a specific run.
+    
+    Args:
+        run_id: The run ID to get feedback for
+        
+    Returns:
+        Dictionary containing the feedback entries
+    """
+    try:
+        feedback_entries = db_manager.get_feedback_for_run(run_id)
+        return {
+            "run_id": run_id,
+            "feedback": feedback_entries
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving feedback: {str(e)}")
 
 
 app.include_router(router)
