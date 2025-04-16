@@ -242,7 +242,7 @@ class RAGSystem:
                 print("Falling back to text search only.")
                 self.use_embeddings = False
     
-    def index_document(self, pdf_path, title=None, existing_sherpa_data=None):
+    def index_document(self, pdf_path, title=None, existing_sherpa_data=None, table_name="rag_document_blocks"):
         """Index a PDF document with optional pre-processed sherpa data"""
         # Generate a title if not provided
         if title is None:
@@ -264,11 +264,11 @@ class RAGSystem:
                     block.embedding = self.embedding_manager.compute_embedding(block.content)
         
         # Insert blocks
-        self._insert_blocks(title, blocks)
+        self._insert_blocks(title, blocks, table_name)
         
         return title
     
-    def _insert_blocks(self, name, blocks):
+    def _insert_blocks(self, name, blocks, table_name="rag_document_blocks"):
         """Insert blocks into database"""
         params_list = []
         
@@ -297,8 +297,8 @@ class RAGSystem:
         
         # Insert all blocks - schema updated for block_idx
         if self.use_embeddings:
-            query = """
-            INSERT INTO rag_document_blocks 
+            query = f"""
+            INSERT INTO {table_name}
             (block_idx, name, content, level, page_idx, tag, block_class, 
              x0, y0, x1, y1, parent_idx, embedding)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -319,8 +319,8 @@ class RAGSystem:
             # Add embedding to params
             params_list = [(p + (block.embedding,)) for p, block in zip(params_list, blocks)]
         else:
-            query = """
-            INSERT INTO rag_document_blocks 
+            query = f"""
+            INSERT INTO {table_name}
             (block_idx, name, content, level, page_idx, tag, block_class, 
              x0, y0, x1, y1, parent_idx)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -1008,10 +1008,12 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            rag_document_blocks
+            -- rag_document_blocks
+            uploaded_document_blocks
         WHERE 
             name  = %s
         """
+        print('pdf_file called : ', pdf_file)
         params = (pdf_file,)
         results = self.db_manager.execute_query(query, params)
         

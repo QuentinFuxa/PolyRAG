@@ -1,0 +1,20 @@
+database:
+  connection_string: "postgresql://postgres@localhost:5432/lds"
+  schema_app_data: "document_data"
+  tables_to_index: 
+    - "public.public_data"
+
+llm:
+  default_model: "gpt-4o-mini"
+  temperature: 0.7
+  timeout: 60
+
+app:
+  debug: false
+  log_level: "INFO"
+
+pdf-parser:
+  nlm-ingestor: 
+    api: http://localhost:5010/api/parseDocument?renderFormat=all&useNewIndentParser=true
+
+pdf_folder: '/Users/quentin/Documents/asnr/pdf_letters/'

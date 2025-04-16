@@ -15,6 +15,8 @@ from get_config import load_config
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+db_config = load_config()['database']
+schema_app_data = db_config['schema_app_data']
 
 class DatabaseManager:
     """Manager for PostgreSQL database operations."""
@@ -31,7 +33,7 @@ class DatabaseManager:
     def _initialize(self):
         """Initialize connection, tables, connection pool and embedding capabilities."""
         # Regular connection setup
-        self.connection_string = load_config()['database']['connection_string']
+        self.connection_string = db_config['connection_string']
         self.engine = create_engine(self.connection_string)        
         self.connection = psycopg2.connect(self.connection_string)
         register_uuid()
@@ -40,11 +42,11 @@ class DatabaseManager:
         # Connection pool setup
         parsed_url = urlparse(self.connection_string)
         db_params = {
-            "host": parsed_url.hostname or os.getenv("DB_HOST", "localhost"),
-            "database": parsed_url.path[1:] if parsed_url.path else os.getenv("DB_NAME", "lds"),
-            "user": parsed_url.username or os.getenv("DB_USER", "postgres"),
-            "password": parsed_url.password or os.getenv("DB_PASSWORD", ""),
-            "port": parsed_url.port or os.getenv("DB_PORT", "5432")
+            "host": parsed_url.hostname,
+            "database": parsed_url.path[1:],
+            "user": parsed_url.username,
+            "password": parsed_url.password,
+            "port": parsed_url.port
         }
         self.conn_pool = pool.SimpleConnectionPool(1, 10, **db_params)
         
@@ -57,15 +59,20 @@ class DatabaseManager:
             self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
             self.embedding_dim = 1536  # Default for Ada
         
-        # Create tables
         self._create_tables()
     
     def _create_tables(self):
-        """Create the necessary tables if they do not exist."""
+        """Create the necessary schema and tables if they do not exist."""
+        
         with self.connection.cursor() as cursor:
+            # Create schema if it does not exist
+            cursor.execute(f"""
+            CREATE SCHEMA IF NOT EXISTS {schema_app_data}
+            """)
+            
             # For the files
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS files (
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.files (
                 id UUID PRIMARY KEY,
                 thread_id UUID,
                 filename TEXT NOT NULL,
@@ -78,8 +85,8 @@ class DatabaseManager:
             """)
             
             # For the memory
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS memory (
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.memory (
                 thread_id UUID PRIMARY KEY,
                 state JSONB,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -87,8 +94,28 @@ class DatabaseManager:
             """)
             
             # Index
-            cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_files_thread_id ON files(thread_id)
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_files_thread_id ON {schema_app_data}.files(thread_id)
+            """)
+            
+            cursor.execute(f"""        
+            -- Uploaded document blocks table
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.uploaded_document_blocks (
+                id SERIAL PRIMARY KEY,
+                block_idx INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                content TEXT,
+                level INTEGER NOT NULL,
+                page_idx INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                block_class TEXT,
+                x0 FLOAT,
+                y0 FLOAT,
+                x1 FLOAT,
+                y1 FLOAT,
+                parent_idx INTEGER,
+                UNIQUE(name, block_idx)
+            );
             """)
     
     def close(self):
@@ -137,8 +164,8 @@ class DatabaseManager:
         """
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO files 
+                f"""
+                INSERT INTO {schema_app_data}.files 
                 (id, thread_id, filename, content_type, content, text_content, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
@@ -159,9 +186,9 @@ class DatabaseManager:
         """Get information and content of a file by ID."""
         with self.connection.cursor(cursor_factory=DictCursor) as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT id, thread_id, filename, content_type, content, text_content, metadata, created_at
-                FROM files
+                FROM {schema_app_data}.files
                 WHERE id = %s
                 """,
                 (file_id,)
@@ -175,9 +202,9 @@ class DatabaseManager:
         """Get only the text content of a file."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT text_content
-                FROM files
+                FROM {schema_app_data}.files
                 WHERE id = %s
                 """,
                 (file_id,)
@@ -192,8 +219,8 @@ class DatabaseManager:
         """Save the agent's state/memory for a thread."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO memory (thread_id, state)
+                f"""
+                INSERT INTO {schema_app_data}.memory (thread_id, state)
                 VALUES (%s, %s)
                 ON CONFLICT (thread_id) 
                 DO UPDATE SET state = %s, updated_at = CURRENT_TIMESTAMP
@@ -205,9 +232,9 @@ class DatabaseManager:
         """Retrieve the agent's state/memory for a thread."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT state
-                FROM memory
+                FROM {schema_app_data}.memory
                 WHERE thread_id = %s
                 """,
                 (thread_id,)

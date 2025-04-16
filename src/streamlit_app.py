@@ -14,8 +14,12 @@ from schema.task_data import TaskData, TaskDataStatus
 import json
 from streamlit_pdf_viewer import pdf_viewer
 from rag_system import RAGSystem
+from get_config import load_config
+from db_manager import DatabaseManager
 
+db_manager = DatabaseManager()
 rag_system = RAGSystem()
+config = load_config()
 
 # A Streamlit app for interacting with the langgraph agent via a simple chat interface.
 # The app has three main functions which are all run async:
@@ -45,29 +49,101 @@ def view_pdf(pdf_to_view, annotations=None):
         st.rerun()
 
 
-# Create a dialog function for PDF viewing
 @st.dialog("Document", width="large")
 def pdf_dialog():
     try:
         st.session_state.in_pdf_dialog = True
         print('Annotations:', st.session_state.annotations)
+        
+        # First, try the default PDF path
+        default_pdf_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
+        pdf_path = default_pdf_path
+        
+        # Check if the file exists in the default location
+        if not os.path.exists(default_pdf_path):
+            # If not found, query the database to look for uploaded PDF
+            try:
+                # Get thread_id from session state
+                thread_id = st.session_state.thread_id
+                
+                # Query the database to find the file
+                query = """
+                SELECT metadata 
+                FROM files 
+                WHERE thread_id = %s AND metadata->>'original_name' LIKE %s
+                ORDER BY created_at DESC 
+                LIMIT 1
+                """
+                
+                # Use the document name to find matches
+                filename_pattern = f"%{st.session_state.pdf_to_view}%"
+                results = db_manager.execute_query(query, (thread_id, filename_pattern))
+                
+                if results and len(results) > 0:
+                    # Extract the storage path from metadata
+                    metadata = results[0][0]  # First row, first column (metadata JSON)
+                    if isinstance(metadata, str):
+                        metadata = json.loads(metadata)
+                    
+                    if 'storage_path' in metadata:
+                        pdf_path = metadata['storage_path']
+                        print(f"Found uploaded PDF at: {pdf_path}")
+                    else:
+                        # Fall back to checking the uploaded folder directly
+                        uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
+                        if os.path.exists(uploaded_pdf_path):
+                            pdf_path = uploaded_pdf_path
+                            print(f"Found uploaded PDF in thread folder: {pdf_path}")
+                else:
+                    # Try the direct path without DB lookup
+                    uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
+                    if os.path.exists(uploaded_pdf_path):
+                        pdf_path = uploaded_pdf_path
+                        print(f"Found uploaded PDF in thread folder: {pdf_path}")
+            except Exception as e:
+                print(f"Error querying database for PDF: {e}")
+                # Continue with default path if database query fails
+        
+        # Display status message showing which path is being used
+        if pdf_path != default_pdf_path:
+            st.info(f"Displaying uploaded document: {os.path.basename(pdf_path)}")
+        
+        # Display the PDF with the determined path
         pdf_viewer(
-            '/Users/quentin/Documents/asnr/pdf_letters/' + st.session_state.pdf_to_view + '.pdf', 
+            pdf_path, 
             render_text=True,
             pages_vertical_spacing=0,
             annotations=st.session_state.annotations,
             annotation_outline_size=3,
             scroll_to_annotation=True,
         )
+        
         if st.button("Close"):
             st.session_state.pdf_to_view = None
             st.session_state.in_pdf_dialog = False
             st.rerun()
+        
+        # Reset state after closing
         st.session_state.pdf_to_view = None
         st.session_state.in_pdf_dialog = False
+        
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
-        st.write(f"Path attempted: {st.session_state.pdf_to_view}")
+        st.write(f"Unable to find PDF: {st.session_state.pdf_to_view}")
+        st.write(f"Error details: {str(e)}")
+        
+        # More detailed troubleshooting information
+        try:
+            thread_id = st.session_state.thread_id
+            default_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
+            uploaded_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
+            
+            st.write("Troubleshooting paths:")
+            st.write(f"- Default path exists: {os.path.exists(default_path)}")
+            st.write(f"- Uploaded path exists: {os.path.exists(uploaded_path)}")
+        except Exception:
+            pass
+        
         if st.button("Close Error"):
             st.session_state.pdf_to_view = None
             st.session_state.in_pdf_dialog = False
@@ -491,18 +567,22 @@ async def draw_messages(
 async def handle_feedback() -> None:
     """Draws a feedback widget and records feedback from the user."""
 
-    # Keep track of last feedback sent to avoid sending duplicates
-    if "last_feedback" not in st.session_state:
-        st.session_state.last_feedback = (None, None)
-
+    # Keep track of last star feedback sent to avoid duplicates
+    if "last_star_feedback" not in st.session_state:
+        st.session_state.last_star_feedback = (None, None)  # (run_id, stars)
+    
+    # Keep track of runs with text feedback submitted
+    if "text_feedback_runs" not in st.session_state:
+        st.session_state.text_feedback_runs = set()
+    
     latest_run_id = st.session_state.messages[-1].run_id
-    feedback = st.feedback("stars", key=latest_run_id)
-
-    # If the feedback value or run ID has changed, send a new feedback record
-    if feedback is not None and (latest_run_id, feedback) != st.session_state.last_feedback:
+    feedback_stars = st.feedback("stars", key=latest_run_id)
+    
+    # Auto-submit star feedback when it changes (original behavior)
+    if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
         # Normalize the feedback value (an index) to a score between 0 and 1
-        normalized_score = (feedback + 1) / 5.0
-
+        normalized_score = (feedback_stars + 1) / 5.0
+        
         agent_client: AgentClient = st.session_state.agent_client
         try:
             await agent_client.acreate_feedback(
@@ -514,9 +594,42 @@ async def handle_feedback() -> None:
         except AgentClientError as e:
             st.error(f"Error recording feedback: {e}")
             st.stop()
-        st.session_state.last_feedback = (latest_run_id, feedback)
+        
+        st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
         st.toast("Feedback recorded", icon=":material/reviews:")
-
+    
+    # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
+    if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
+        # Text input field with submit button
+        text_feedback = st.text_area(
+            "Additional feedback (optional)",
+            key=f"text_{latest_run_id}",
+            height=100,
+            placeholder="Please provide any additional comments or suggestions..."
+        )
+        
+        if text_feedback:  # Only show submit button if there's text
+            if st.button("Submit Feedback", key=f"submit_{latest_run_id}"):
+                # Normalize the star rating again for consistency
+                normalized_score = (feedback_stars + 1) / 5.0
+                
+                # Submit the text feedback
+                agent_client: AgentClient = st.session_state.agent_client
+                try:
+                    await agent_client.acreate_feedback(
+                        run_id=latest_run_id,
+                        key="human-feedback-with-comment",
+                        score=normalized_score,
+                        kwargs={"comment": text_feedback},
+                    )
+                except AgentClientError as e:
+                    st.error(f"Error recording text feedback: {e}")
+                    st.stop()
+                
+                # Mark this run as having received text feedback
+                st.session_state.text_feedback_runs.add(latest_run_id)
+                st.toast("Detailed feedback submitted. Thank you!", icon=":material/reviews:")
+                st.rerun()  # Rerun to hide the input after submission
 
 if __name__ == "__main__":
     asyncio.run(main())
