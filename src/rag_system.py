@@ -8,7 +8,7 @@ import psycopg2
 from psycopg2 import pool
 from llmsherpa.readers import LayoutPDFReader
 from dotenv import load_dotenv
-from db_manager import DatabaseManager
+from db_manager import DatabaseManager, schema_app_data
 
 # Load environment variables
 load_dotenv()
@@ -185,9 +185,9 @@ class RAGSystem:
     def _ensure_schema(self):
         """Create necessary database schema if it doesn't exist"""
         # Base schema - updated to use block_idx as primary identifier
-        schema = """        
+        schema = f"""        
         -- Document blocks table
-        CREATE TABLE IF NOT EXISTS rag_document_blocks (
+        CREATE TABLE IF NOT EXISTS {schema_app_data}.rag_document_blocks (
             id SERIAL PRIMARY KEY,
             block_idx INTEGER NOT NULL,  -- This is now our primary block identifier
             name TEXT NOT NULL,
@@ -205,7 +205,7 @@ class RAGSystem:
         );
         
         -- Text search index
-        CREATE INDEX IF NOT EXISTS idx_document_blocks_content ON rag_document_blocks 
+        CREATE INDEX IF NOT EXISTS idx_document_blocks_content ON {schema_app_data}.rag_document_blocks 
         USING gin(to_tsvector('english', content));
         """
         
@@ -223,17 +223,19 @@ class RAGSystem:
                     self.db_manager.execute_query("CREATE EXTENSION IF NOT EXISTS vector")
                 
                 # Add embedding column if not exists
-                col_exists_query = """
+                col_exists_query = f"""
                 SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'rag_document_blocks' AND column_name = 'embedding'
+                WHERE table_name = 'rag_document_blocks' 
+                AND table_schema = '{schema_app_data}'
+                AND column_name = 'embedding'
                 """
                 col_exists = self.db_manager.execute_query(col_exists_query)
                 
                 if not col_exists:
                     dim = self.embedding_manager.get_embedding_dimension()
                     embedding_schema = f"""
-                    ALTER TABLE rag_document_blocks ADD COLUMN IF NOT EXISTS embedding vector({dim});
-                    CREATE INDEX IF NOT EXISTS idx_document_blocks_embedding ON rag_document_blocks 
+                    ALTER TABLE {schema_app_data}.rag_document_blocks ADD COLUMN IF NOT EXISTS embedding vector({dim});
+                    CREATE INDEX IF NOT EXISTS idx_document_blocks_embedding ON {schema_app_data}.rag_document_blocks 
                     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
                     """
                     self.db_manager.execute_query(embedding_schema)
@@ -242,7 +244,7 @@ class RAGSystem:
                 print("Falling back to text search only.")
                 self.use_embeddings = False
     
-    def index_document(self, pdf_path, title=None, existing_sherpa_data=None, table_name="rag_document_blocks"):
+    def index_document(self, pdf_path, title=None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Index a PDF document with optional pre-processed sherpa data"""
         # Generate a title if not provided
         if title is None:
@@ -268,7 +270,7 @@ class RAGSystem:
         
         return title
     
-    def _insert_blocks(self, name, blocks, table_name="rag_document_blocks"):
+    def _insert_blocks(self, name, blocks, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Insert blocks into database"""
         params_list = []
         
@@ -393,7 +395,7 @@ class RAGSystem:
                 formatted_elements.append(element)
         ts_query = " | ".join(formatted_elements)
         
-        search_query = """
+        search_query = f"""
         SELECT 
             name, 
             block_idx,
@@ -409,7 +411,7 @@ class RAGSystem:
             parent_idx,
             ts_rank_cd(content_tsv, to_tsquery('french', %s)) AS score
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE 
             content_tsv @@ to_tsquery('french', %s)
         """
@@ -444,7 +446,7 @@ class RAGSystem:
             return []
         
         # Updated search query for block_idx
-        search_query = """
+        search_query = f"""
         SELECT 
             name, 
             block_idx,
@@ -460,7 +462,7 @@ class RAGSystem:
             parent_idx,
             1 - (embedding <=> %s) AS score
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE
             embedding IS NOT NULL
         """
@@ -580,7 +582,7 @@ class RAGSystem:
     
     def _get_block(self, block_idx, name):
         """Get a specific block by its block_idx"""
-        query = """
+        query = f"""
         SELECT 
             id,
             block_idx,
@@ -596,7 +598,7 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE 
             block_idx = %s AND name = %s
         """
@@ -625,7 +627,7 @@ class RAGSystem:
     
     def _get_siblings(self, name, page_idx, level, block_idx, parent_idx, limit=3):
         """Get sibling blocks (same parent, same level, nearby positions)"""
-        query = """
+        query = f"""
         SELECT 
             id,
             block_idx,
@@ -641,7 +643,7 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE 
             name = %s
             AND page_idx = %s
@@ -696,7 +698,7 @@ class RAGSystem:
     
     def _get_children(self, parent_idx, name, limit=5):
         """Get child blocks for a given parent"""
-        query = """
+        query = f"""
         SELECT 
             id,
             block_idx,
@@ -712,7 +714,7 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE 
             parent_idx = %s
             AND name = %s
@@ -893,7 +895,7 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            rag_document_blocks
+            {schema_app_data}.rag_document_blocks
         WHERE 
             block_idx IN ({placeholders})
         """
@@ -991,8 +993,29 @@ class RAGSystem:
         Returns:
             List of annotation objects in the format needed for highlighting
         """
+
+        rag_check_query = f"""
+        SELECT COUNT(*) FROM {schema_app_data}.rag_document_blocks WHERE name = %s
+        """
+        rag_results = self.db_manager.execute_query(rag_check_query, (pdf_file,))
         
-        query = """
+        upload_check_query = f"""
+        SELECT COUNT(*) FROM {schema_app_data}.uploaded_document_blocks WHERE name = %s
+        """
+        upload_results = self.db_manager.execute_query(upload_check_query, (pdf_file,))
+        
+        rag_count = rag_results[0][0] if rag_results else 0
+        upload_count = upload_results[0][0] if upload_results else 0
+        
+        table_name = f"{schema_app_data}.rag_document_blocks" if rag_count > 0 else f"{schema_app_data}.uploaded_document_blocks"
+        
+        if rag_count == 0 and upload_count == 0:
+            table_name = f"{schema_app_data}.uploaded_document_blocks"
+            print(f"No blocks found for {pdf_file} in either table. Defaulting to {table_name}.")
+        else:
+            print(f"Found {rag_count} blocks in rag_document_blocks and {upload_count} blocks in uploaded_document_blocks. Using {table_name}.")
+        
+        query = f"""
         SELECT 
             id,
             block_idx,
@@ -1008,12 +1031,11 @@ class RAGSystem:
             y1,
             parent_idx
         FROM 
-            -- rag_document_blocks
-            uploaded_document_blocks
+            {table_name}
         WHERE 
-            name  = %s
+            name = %s
         """
-        print('pdf_file called : ', pdf_file)
+        
         params = (pdf_file,)
         results = self.db_manager.execute_query(query, params)
         
@@ -1047,7 +1069,7 @@ class RAGSystem:
         annotations = []
         for block in blocks:
             annotation = {
-                "page": block["page_idx"] + 1,  # Convert to 1-indexed page numbering
+                "page": block["page_idx"] + 1,
                 "x": block["x0"],
                 "y": block["y0"],
                 "height": block["y1"] - block["y0"],
