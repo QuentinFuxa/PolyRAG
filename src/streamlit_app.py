@@ -159,6 +159,10 @@ async def main() -> None:
     if st.session_state.pdf_to_view:
         pdf_dialog()
 
+    if "suggested_command" not in st.session_state:
+        st.session_state.suggested_command = None
+    user_text = None
+
     # Hide the streamlit upper-right chrome
     st.html(
         """
@@ -266,7 +270,7 @@ async def main() -> None:
     # Draw existing messages
     messages: list[ChatMessage] = st.session_state.messages
 
-    if len(messages) == 0:
+    if len(messages) == 0 and user_text is None:
         match agent_client.agent:
             case "chatbot":
                 WELCOME = "Hello! I'm a simple chatbot. Ask me anything!"
@@ -281,6 +285,38 @@ async def main() -> None:
         with st.chat_message("ai"):
             st.write(WELCOME)
 
+
+        col1, col2 = st.columns(2, gap="medium")
+        
+        with col1:
+            with st.container():
+                if st.button("How many articles in the database ?", key="btn_db_query", use_container_width=True):
+                    st.session_state.suggested_command = "Quel est le nombre de documents dans la base de données?"
+                    st.rerun()
+        
+        with col2:
+            with st.container():
+                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True):
+                    st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
+                    st.rerun()
+        
+        col3, col4 = st.columns(2, gap="medium")
+        
+        with col3:
+            with st.container():
+                # st.markdown("### 📈 Visualisation de Données")
+                # st.write("Générer un graphique à partir des données de la base")
+                if st.button("Create a graph of the number of articles mentioning IA", key="btn_create_graph", use_container_width=True):
+                    st.session_state.suggested_command = "Crée un graphique en barres montrant les 5 documents les plus volumineux"
+                    st.rerun()
+        
+        with col4:
+            with st.container():
+                if st.button("Summarize the article AABBBAA", key="btn_document_summary", use_container_width=True):
+                    st.session_state.suggested_command = "Fais un résumé du document le plus récent"
+                    st.rerun()
+
+
     # draw_messages() expects an async iterator over messages
     async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
         for m in messages:
@@ -288,25 +324,33 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
-    if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]):
-        messages.append(ChatMessage(type="human", content=user_input.text, attached_files=[f.name for f in user_input.files]))
+    if user_input := st.chat_input('Your message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+        if st.session_state.suggested_command:
+            user_text = st.session_state.suggested_command
+            files = []
+            st.session_state.suggested_command = None
+        elif user_input:
+            user_text = user_input.text
+            files = user_input.files
+        
+        messages.append(ChatMessage(type="human", content=user_text, attached_files=[f.name for f in files]))
         additional_markdown = ""
-        if user_input.files: 
+        if files: 
             if additional_markdown == "":
                 additional_markdown = """  
                 """                   
-            for file in user_input.files:
+            for file in files:
                 additional_markdown += f""":violet-badge[:material/description: {file.name}] """
 
-        st.chat_message("human").write(user_input.text + additional_markdown)
+        st.chat_message("human").write(user_text + additional_markdown)
         
-        if user_input.files:
-            print(len(user_input.files), "files uploaded")
+        if files:
+            print(len(files), "files uploaded")
             upload_status = st.status("File being uploaded...", state="running")
             
             uploaded_file_ids = []
             
-            for file in user_input.files:
+            for file in files:
                 file_content = file.getvalue()
                 file_name = file.name
                 file_type = file.type
@@ -331,18 +375,18 @@ async def main() -> None:
         try:
             if use_streaming:
                 stream = agent_client.astream(
-                    message=user_input.text,
+                    message=user_text,
                     model=model,
                     thread_id=st.session_state.thread_id,
-                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
+                    file_ids=uploaded_file_ids if files else None,
                 )
                 await draw_messages(stream, is_new=True, agent_client=agent_client)
             else:
                 response = await agent_client.ainvoke(
-                    message=user_input.text,
+                    message=user_text,
                     model=model,
                     thread_id=st.session_state.thread_id,
-                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
+                    file_ids=uploaded_file_ids if files else None,
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
