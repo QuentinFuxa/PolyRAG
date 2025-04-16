@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import warnings
@@ -37,8 +38,13 @@ from service.utils import (
 )
 from db_manager import DatabaseManager
 from get_config import load_config
-db_manager = DatabaseManager()
 
+from fastapi import File, UploadFile
+from typing import Optional
+from rag_system import RAGSystem
+
+db_manager = DatabaseManager()
+rag_system = RAGSystem()
 
 warnings.filterwarnings("ignore", category=LangChainBetaWarning)
 logger = logging.getLogger(__name__)
@@ -318,14 +324,14 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
     credentials can be stored and managed in the service rather than the client.
     See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
     """
-    client = LangsmithClient()
-    kwargs = feedback.kwargs or {}
-    client.create_feedback(
-        run_id=feedback.run_id,
-        key=feedback.key,
-        score=feedback.score,
-        **kwargs,
-    )
+    # client = LangsmithClient()
+    # kwargs = feedback.kwargs or {}
+    # client.create_feedback(
+    #     run_id=feedback.run_id,
+    #     key=feedback.key,
+    #     score=feedback.score,
+    #     **kwargs,
+    # )
     return FeedbackResponse()
 
 
@@ -351,21 +357,6 @@ def history(input: ChatHistoryInput) -> ChatHistory:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
-####### MOVE THIS PART ########
-
-import os
-from pathlib import Path
-from fastapi import File, UploadFile, Form
-from typing import Optional
-import uuid
-
-UPLOAD_DIR = Path("./uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-thread_files = {}
-
-#################################
-
 @router.post("/{agent_id}/upload")
 @router.post("/upload")
 async def upload_file(
@@ -382,15 +373,17 @@ async def upload_file(
         agent_id: The agent to use (defaults to the default agent)
         
     Returns:
-        dict: Contains the file_id of the uploaded file
+        dict: Contains the file_id of the uploaded file and storage path for PDFs
     """
     try:
-        file_id = uuid.uuid4()
+        file_id = uuid4()
         thread_uuid = UUID(thread_id) if thread_id else None
         
         contents = await file.read()
         
         text_content = None
+        pdf_storage_path = None
+        
         try:
             if file.content_type.startswith('text/'):
                 text_content = contents.decode('utf-8', errors='ignore')
@@ -398,28 +391,38 @@ async def upload_file(
                 config = load_config()
                 pdf_parser = config.get("pdf-parser", {})
                 
-                if 'nlm-ingestor' in pdf_parser:
-                    import tempfile
-                    from llmsherpa.readers import LayoutPDFReader
-                    
-                    # temp file for the pdf
-                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
-                        temp_pdf.write(contents)
-                        temp_pdf_path = temp_pdf.name
-
-                    api_url = pdf_parser['nlm-ingestor']['api']
-                    pdf_reader = LayoutPDFReader(api_url)
-                    doc = pdf_reader.read_pdf(temp_pdf_path)
-                    text_content = doc.to_text()
+                base_storage_dir = "uploaded"
+                thread_dir = thread_id if thread_id else "no_thread"
+                storage_dir = os.path.join(base_storage_dir, thread_dir)
+                
+                os.makedirs(storage_dir, exist_ok=True)
+                
+                pdf_filename = f"{file_id}.pdf"
+                pdf_storage_path = os.path.join(storage_dir, pdf_filename)
+                
+                with open(pdf_storage_path, "wb") as pdf_file:
+                    pdf_file.write(contents)
+                
+                if 'nlm-ingestor' in pdf_parser:                    
+                    rag_system.index_document(
+                        pdf_path=pdf_storage_path, 
+                        title=file.filename[:-4], 
+                        table_name='uploaded_document_blocks'
+                    )
+                                    
+                    logger.info(f"PDF processed and stored at: {pdf_storage_path}")
+                else:
+                    logger.warning("The only supported PDF parser for now is 'nlm-ingestor'")
             else:
                 print(f"Unsupported file type: {file.content_type}")
         except Exception as e:
-            logger.warning(f"Impossible d'extraire le texte du fichier: {e}")
+            logger.warning(f"Impossible to extract file content: {e}")
                 
         metadata = {
             "original_name": file.filename,
             "content_type": file.content_type,
-            "size": len(contents)
+            "size": len(contents),
+            "storage_path": pdf_storage_path
         }
         
         db_manager.save_file(
@@ -444,23 +447,29 @@ async def upload_file(
                     content=f"Contenu du fichier {file.filename}:\n\n{text_content}"
                 )
                 
-                # Add system message to the messages history
                 new_messages = list(state.values.get("messages", []))
                 new_messages.append(file_message)
                 
-                # Update the state
                 await agent.aupdate_state(
                     values={"messages": new_messages},
                     config=config
                 )
                 
-                logger.info(f"The file {file.filename} has succesfuly been added to the messages history of the thread {thread_id}")
+                logger.info(f"The file {file.filename} has successfully been added to the messages history of the thread {thread_id}")
             except Exception as e:
-                logger.error(f"Error while ading the file content to the file history: {e}")
+                logger.error(f"Error while adding the file content to the file history: {e}")
         
-        logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}")
+        response_data = {
+            "file_id": str(file_id), 
+            "filename": file.filename
+        }
         
-        return {"file_id": str(file_id), "filename": file.filename}
+        if pdf_storage_path:
+            response_data["storage_path"] = pdf_storage_path
+        
+        logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}, Path: {pdf_storage_path}")
+        
+        return response_data
         
     except Exception as e:
         logger.error(f"Error while uploading the file: {e}")
