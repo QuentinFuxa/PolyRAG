@@ -93,9 +93,23 @@ class DatabaseManager:
             )
             """)
             
-            # Index
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.feedback (
+                id SERIAL PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                score FLOAT NOT NULL,
+                additional_data JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
             cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_files_thread_id ON {schema_app_data}.files(thread_id)
+            """)
+            
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_feedback_run_id ON {schema_app_data}.feedback(run_id)
             """)
             
             cursor.execute(f"""        
@@ -324,3 +338,53 @@ class DatabaseManager:
     def get_embedding_dimension(self) -> int:
         """Returns the dimension of embeddings used."""
         return self.embedding_dim if self.embedding_enabled else 0
+        
+    def save_feedback(self, run_id: str, key: str, score: float, additional_data: Optional[Dict[str, Any]] = None) -> int:
+        """Save user feedback to the database.
+        
+        Args:
+            run_id: The run ID that the feedback is for
+            key: The feedback key (e.g., 'human-feedback-stars')
+            score: The feedback score value (e.g., 1-5 for star ratings)
+            additional_data: Any additional feedback data to store
+            
+        Returns:
+            The ID of the inserted feedback record
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.feedback 
+                (run_id, key, score, additional_data)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    run_id,
+                    key,
+                    score,
+                    Json(additional_data) if additional_data else None
+                )
+            )
+            return cursor.fetchone()[0]
+            
+    def get_feedback_for_run(self, run_id: str) -> List[Dict[str, Any]]:
+        """Get all feedback entries for a specific run ID.
+        
+        Args:
+            run_id: The run ID to get feedback for
+            
+        Returns:
+            List of feedback entries as dictionaries
+        """
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT id, run_id, key, score, additional_data, created_at
+                FROM {schema_app_data}.feedback
+                WHERE run_id = %s
+                ORDER BY created_at DESC
+                """,
+                (run_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
