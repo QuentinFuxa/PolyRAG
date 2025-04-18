@@ -409,3 +409,147 @@ class AgentClient:
             raise AgentClientError("Server did not return a file_id")
         
         return response_data["file_id"]
+        
+    def get_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        Get a list of recent conversations.
+        
+        Args:
+            limit (int, optional): Maximum number of conversations to retrieve. Default: 20
+            
+        Returns:
+            list[dict[str, Any]]: List of conversations with thread_id, title, and created_at
+        """
+        try:
+            response = httpx.get(
+                f"{self.base_url}/conversations?limit={limit}",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()["conversations"]
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error getting conversations: {e}")
+            
+    def set_conversation_title(self, thread_id: str, title: str) -> None:
+        """
+        Set or update the title of a conversation.
+        
+        Args:
+            thread_id (str): The thread ID of the conversation
+            title (str): The title to set for the conversation
+        """
+        try:
+            response = httpx.post(
+                f"{self.base_url}/conversations/{thread_id}/title?title={title}",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error setting conversation title: {e}")
+            
+    def get_conversation_title(self, thread_id: str) -> str:
+        """
+        Get the title of a conversation.
+        
+        Args:
+            thread_id (str): The thread ID of the conversation
+            
+        Returns:
+            str: The title of the conversation
+        """
+        try:
+            response = httpx.get(
+                f"{self.base_url}/conversations/{thread_id}/title",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()["title"]
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error getting conversation title: {e}")
+            
+    def delete_conversation(self, thread_id: str) -> bool:
+        """
+        Delete a conversation and all associated data.
+        
+        Args:
+            thread_id (str): The thread ID of the conversation to delete
+            
+        Returns:
+            bool: True if the conversation was successfully deleted
+        """
+        try:
+            response = httpx.delete(
+                f"{self.base_url}/conversations/{thread_id}",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()["status"] == "success"
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error deleting conversation: {e}")
+            
+    async def aget_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        Get a list of recent conversations asynchronously.
+        
+        Args:
+            limit (int, optional): Maximum number of conversations to retrieve. Default: 20
+            
+        Returns:
+            list[dict[str, Any]]: List of conversations with thread_id, title, and created_at
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/conversations?limit={limit}",
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json()["conversations"]
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error getting conversations: {e}")
+                
+    async def aset_conversation_title(self, thread_id: str, title: str) -> None:
+        """
+        Set or update the title of a conversation asynchronously.
+        
+        Args:
+            thread_id (str): The thread ID of the conversation
+            title (str): The title to set for the conversation
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/conversations/{thread_id}/title?title={title}",
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error setting conversation title: {e}")
+                
+    async def aget_conversation_title(self, thread_id: str) -> str:
+        """
+        Get the title of a conversation asynchronously.
+        
+        Args:
+            thread_id (str): The thread ID of the conversation
+            
+        Returns:
+            str: The title of the conversation
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/conversations/{thread_id}/title",
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json()["title"]
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error getting conversation title: {e}")

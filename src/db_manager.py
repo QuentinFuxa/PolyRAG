@@ -104,12 +104,26 @@ class DatabaseManager:
             )
             """)
             
+            # For conversations history
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.conversations (
+                thread_id UUID PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
             cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_files_thread_id ON {schema_app_data}.files(thread_id)
             """)
             
             cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_feedback_run_id ON {schema_app_data}.feedback(run_id)
+            """)
+            
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON {schema_app_data}.conversations(created_at DESC)
             """)
             
             cursor.execute(f"""        
@@ -388,3 +402,105 @@ class DatabaseManager:
                 (run_id,)
             )
             return [dict(row) for row in cursor.fetchall()]
+            
+    # Conversation history methods
+    def save_conversation_title(self, thread_id: UUID, title: str) -> None:
+        """Save or update a conversation title.
+        
+        Args:
+            thread_id: The thread ID of the conversation
+            title: The title for the conversation
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.conversations (thread_id, title)
+                VALUES (%s, %s)
+                ON CONFLICT (thread_id) 
+                DO UPDATE SET title = %s, updated_at = CURRENT_TIMESTAMP
+                """,
+                (thread_id, title, title)
+            )
+    
+    def get_conversation_title(self, thread_id: UUID) -> Optional[str]:
+        """Get the title of a conversation.
+        
+        Args:
+            thread_id: The thread ID of the conversation
+            
+        Returns:
+            The conversation title or None if not found
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT title
+                FROM {schema_app_data}.conversations
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            return None
+    
+    def get_conversations(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get a list of recent conversations.
+        
+        Args:
+            limit: Maximum number of conversations to retrieve
+            
+        Returns:
+            List of conversations as dictionaries with thread_id, title, and created_at
+        """
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT thread_id, title, created_at, updated_at
+                FROM {schema_app_data}.conversations
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def delete_conversation(self, thread_id: UUID) -> bool:
+        """Delete a conversation and all associated data.
+        
+        Args:
+            thread_id: The thread ID of the conversation to delete
+            
+        Returns:
+            True if the conversation was found and deleted, False otherwise
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.conversations
+                WHERE thread_id = %s
+                RETURNING thread_id
+                """,
+                (thread_id,)
+            )
+            result = cursor.fetchone()
+            
+            # Also delete related memory and files
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.memory
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.files
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            
+            return result is not None

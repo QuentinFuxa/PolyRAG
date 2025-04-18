@@ -409,7 +409,7 @@ async def upload_file(
                 
                 os.makedirs(storage_dir, exist_ok=True)
                 
-                pdf_filename = f"{file_id}.pdf"
+                pdf_filename = file.filename
                 pdf_storage_path = os.path.join(storage_dir, pdf_filename)
                 
                 with open(pdf_storage_path, "wb") as pdf_file:
@@ -515,6 +515,97 @@ async def get_feedback(run_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error retrieving feedback: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving feedback: {str(e)}")
+
+
+@router.post("/conversations/{thread_id}/title")
+async def set_conversation_title(thread_id: str, title: str) -> Dict[str, Any]:
+    """Set or update the title of a conversation.
+    
+    Args:
+        thread_id: The thread ID of the conversation
+        title: The title to set for the conversation
+        
+    Returns:
+        Status confirmation
+    """
+    try:
+        db_manager.save_conversation_title(UUID(thread_id), title)
+        return {
+            "status": "success",
+            "thread_id": thread_id,
+            "title": title
+        }
+    except Exception as e:
+        logger.error(f"Error setting conversation title: {e}")
+        raise HTTPException(status_code=500, detail=f"Error setting conversation title: {str(e)}")
+
+
+@router.get("/conversations")
+async def get_conversations(limit: int = 20) -> Dict[str, Any]:
+    """Get a list of recent conversations.
+    
+    Args:
+        limit: Maximum number of conversations to retrieve (default 20)
+        
+    Returns:
+        Dictionary containing the list of conversations
+    """
+    try:
+        conversations = db_manager.get_conversations(limit)
+        return {
+            "conversations": conversations
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving conversations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversations: {str(e)}")
+
+
+@router.delete("/conversations/{thread_id}")
+async def delete_conversation(thread_id: str) -> Dict[str, Any]:
+    """Delete a conversation and all associated data.
+    
+    Args:
+        thread_id: The thread ID of the conversation to delete
+        
+    Returns:
+        Status confirmation
+    """
+    try:
+        result = db_manager.delete_conversation(UUID(thread_id))
+        if result:
+            return {"status": "success", "thread_id": thread_id}
+        else:
+            raise HTTPException(status_code=404, detail=f"Conversation with ID {thread_id} not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting conversation: {str(e)}")
+
+@router.get("/conversations/{thread_id}/title")
+async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
+    """Get the title of a conversation.
+    
+    Args:
+        thread_id: The thread ID of the conversation
+        
+    Returns:
+        Dictionary containing the conversation title
+    """
+    try:
+        title = db_manager.get_conversation_title(UUID(thread_id))
+        if title:
+            return {"thread_id": thread_id, "title": title}
+        else:
+            # Return default title and save it
+            default_title = "New conversation"
+            # db_manager.save_conversation_title(UUID(thread_id), default_title)
+            return {"thread_id": thread_id, "title": default_title}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        logger.error(f"Error retrieving conversation title: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversation title: {str(e)}")
 
 
 app.include_router(router)
