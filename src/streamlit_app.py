@@ -21,16 +21,6 @@ db_manager = DatabaseManager()
 rag_system = RAGSystem()
 config = load_config()
 
-# A Streamlit app for interacting with the langgraph agent via a simple chat interface.
-# The app has three main functions which are all run async:
-
-# - main() - sets up the streamlit app and high level structure
-# - draw_messages() - draws a set of chat messages - either replaying existing messages
-#   or streaming new ones.
-# - handle_feedback() - Draws a feedback widget and records feedback from the user.
-
-# The app heavily uses AgentClient to interact with the agent's FastAPI endpoints.
-
 APP_TITLE = "AI RAG Service Toolkit"
 APP_ICON = "🧪"
 
@@ -39,6 +29,8 @@ if "pdf_to_view" not in st.session_state:
     st.session_state.pdf_to_view = None 
 if "annotations" not in st.session_state:
     st.session_state.annotations = None
+if "confirming_delete_thread_id" not in st.session_state:
+    st.session_state.confirming_delete_thread_id = None
 
 # Function to set which PDF should be displayed
 def view_pdf(pdf_to_view, annotations=None):
@@ -53,7 +45,6 @@ def view_pdf(pdf_to_view, annotations=None):
 def pdf_dialog():
     try:
         st.session_state.in_pdf_dialog = True
-        print('Annotations:', st.session_state.annotations)
         
         # First, try the default PDF path
         default_pdf_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
@@ -87,22 +78,19 @@ def pdf_dialog():
                     
                     if 'storage_path' in metadata:
                         pdf_path = metadata['storage_path']
-                        print(f"Found uploaded PDF at: {pdf_path}")
                     else:
                         # Fall back to checking the uploaded folder directly
                         uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
                         if os.path.exists(uploaded_pdf_path):
                             pdf_path = uploaded_pdf_path
-                            print(f"Found uploaded PDF in thread folder: {pdf_path}")
                 else:
                     # Try the direct path without DB lookup
                     uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
                     if os.path.exists(uploaded_pdf_path):
                         pdf_path = uploaded_pdf_path
-                        print(f"Found uploaded PDF in thread folder: {pdf_path}")
             except Exception as e:
-                print(f"Error querying database for PDF: {e}")
                 # Continue with default path if database query fails
+                pass
         
         # Display status message showing which path is being used
         if pdf_path != default_pdf_path:
@@ -130,24 +118,10 @@ def pdf_dialog():
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
         st.write(f"Unable to find PDF: {st.session_state.pdf_to_view}")
-        st.write(f"Error details: {str(e)}")
-        
-        # More detailed troubleshooting information
-        try:
-            thread_id = st.session_state.thread_id
-            default_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
-            uploaded_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
-            
-            st.write("Troubleshooting paths:")
-            st.write(f"- Default path exists: {os.path.exists(default_path)}")
-            st.write(f"- Uploaded path exists: {os.path.exists(uploaded_path)}")
-        except Exception:
-            pass
         
         if st.button("Close Error"):
             st.session_state.pdf_to_view = None
-            st.session_state.in_pdf_dialog = False
-            st.rerun()
+
 
 async def main() -> None:
     st.set_page_config(
@@ -196,6 +170,23 @@ async def main() -> None:
             st.stop()
     agent_client: AgentClient = st.session_state.agent_client
 
+    query_thread_id = st.query_params.get("thread_id")
+    if query_thread_id and "thread_id" in st.session_state and query_thread_id != st.session_state.thread_id:
+        # Thread ID has changed, reload the conversation
+        try:
+            with st.spinner("Loading conversation..."):
+                messages: ChatHistory = agent_client.get_history(thread_id=query_thread_id).messages
+                st.session_state.messages = messages
+                st.session_state.thread_id = query_thread_id
+                # Also update conversation title
+                try:
+                    title = agent_client.get_conversation_title(query_thread_id)
+                    st.session_state.conversation_title = title
+                except:
+                    st.session_state.conversation_title = "Conversation"
+        except AgentClientError as e:
+            st.error(f"Error loading conversation: {e}")
+
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
@@ -216,6 +207,83 @@ async def main() -> None:
         ""
         """Platform for database exploration, document analysis, and data visualization. Powered by LangGraph, PostgreSQL, Plotly and nlm-ingestor.
         Built with FastAPI and Streamlit."""
+                
+        if st.button("**New conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
+            st.query_params.clear()
+            st.session_state.messages = []
+            st.session_state.conversation_title = "New conversation"
+            st.rerun()
+
+        if "conversation_title" not in st.session_state:
+            try:
+                title = agent_client.get_conversation_title(st.session_state.thread_id)
+                st.session_state.conversation_title = title
+            except:
+                st.session_state.conversation_title = "New conversation"
+                 
+        if st.session_state.get("editing_title", False):
+            new_title = st.text_input(
+                "Conversation title", 
+                value=st.session_state.conversation_title,
+                key="new_title_input"
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save", key="save_title"):
+                    agent_client.set_conversation_title(st.session_state.thread_id, new_title)
+                    st.session_state.conversation_title = new_title
+                    st.session_state.editing_title = False
+                    st.rerun()
+            with col2:
+                if st.button("Cancel", key="cancel_title"):
+                    st.session_state.editing_title = False
+                    st.rerun()
+        
+        try:
+            conversations = agent_client.get_conversations(limit=20)
+            if conversations:
+                st.subheader("Recent")
+                for conv in conversations:
+                    thread_id = conv["thread_id"]
+                    title = conv["title"]
+                    updated_at = conv["updated_at"]
+                    
+                    try:
+                        from datetime import datetime
+                        updated_date = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                        date_str = updated_date.strftime("%d/%m/%Y %H:%M")
+                    except:
+                        date_str = updated_at
+                    
+                    col1, col2, col3 = st.columns([8, 1, 1])
+                    with col1:
+                        if st.button(
+                            f"{title}",
+                            key=f"conv_{thread_id}",
+                            help=f"Last updated: {date_str}",
+                            type='tertiary',
+                        ):
+                            st.query_params["thread_id"] = thread_id
+                            st.rerun()
+                    with col2:
+                        if st.button(":material/edit:", key=f"edit_{thread_id}", help="Edit conversation title", type='tertiary'):
+                            # Navigate to the conversation and enable title editing mode
+                            st.query_params["thread_id"] = thread_id
+                            st.session_state.editing_title = True
+                            st.rerun()
+                    with col3:
+                        if st.button(":material/delete:", key=f"delete_{thread_id}", help="Delete this conversation", type='tertiary'):
+                            if agent_client.delete_conversation(thread_id):
+                                if thread_id == st.session_state.thread_id:
+                                    st.query_params.clear()
+                                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error loading conversations: {e}")
+        
+        st.divider()
+        
+        # Settings section
         with st.popover(":material/settings: Settings", use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
             model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
@@ -246,22 +314,6 @@ async def main() -> None:
                 "Prompts, responses and feedback in this app are anonymously recorded and saved to LangSmith for product evaluation and improvement purposes only."
             )
 
-        @st.dialog("Share/resume chat")
-        def share_chat_dialog() -> None:
-            session = st.runtime.get_instance()._session_mgr.list_active_sessions()[0]
-            st_base_url = urllib.parse.urlunparse(
-                [session.client.request.protocol, session.client.request.host, "", "", "", ""]
-            )
-            # if it's not localhost, switch to https by default
-            if not st_base_url.startswith("https") and "localhost" not in st_base_url:
-                st_base_url = st_base_url.replace("http", "https")
-            chat_url = f"{st_base_url}?thread_id={st.session_state.thread_id}"
-            st.markdown(f"**Chat URL:**\n```text\n{chat_url}\n```")
-            st.info("Copy the above URL to share or revisit this chat")
-
-        if st.button(":material/upload: Share/resume chat", use_container_width=True):
-            share_chat_dialog()
-
         "[View the source code](https://github.com/JoshuaC215/agent-service-toolkit)"
         st.caption(
             "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: .  "
@@ -290,8 +342,8 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("How many articles in the database ?", key="btn_db_query", use_container_width=True):
-                    st.session_state.suggested_command = "Quel est le nombre de documents dans la base de données?"
+                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True):
+                    st.session_state.suggested_command = "How many documents are in the database?"
                     st.rerun()
         
         with col2:
@@ -304,16 +356,14 @@ async def main() -> None:
         
         with col3:
             with st.container():
-                # st.markdown("### 📈 Visualisation de Données")
-                # st.write("Générer un graphique à partir des données de la base")
-                if st.button("Create a graph of the number of articles mentioning IA", key="btn_create_graph", use_container_width=True):
-                    st.session_state.suggested_command = "Crée un graphique en barres montrant les 5 documents les plus volumineux"
+                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True):
+                    st.session_state.suggested_command = "Create a bar chart showing the 5 largest documents"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Summarize the article AABBBAA", key="btn_document_summary", use_container_width=True):
-                    st.session_state.suggested_command = "Fais un résumé du document le plus récent"
+                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True):
+                    st.session_state.suggested_command = "Summarize the most recent document"
                     st.rerun()
 
 
@@ -345,7 +395,6 @@ async def main() -> None:
         st.chat_message("human").write(user_text + additional_markdown)
         
         if files:
-            print(len(files), "files uploaded")
             upload_status = st.status("File being uploaded...", state="running")
             
             uploaded_file_ids = []
@@ -356,7 +405,6 @@ async def main() -> None:
                 file_type = file.type
                 
                 try:
-                    print(f"Sends {file_name} to server...")
                     file_id = agent_client.upload_file(
                         file_name=file_name,
                         file_content=file_content,
@@ -365,10 +413,8 @@ async def main() -> None:
                     )
                     
                     uploaded_file_ids.append(file_id)
-                    print(f"File {file_name} uploaded successfully!")
                     upload_status.update(label=f"File {file_name} uploaded successfully!")
                 except Exception as e:
-                    print(f"Error uploading {file_name}: {e}")
                     upload_status.error(f"Error uploading {file_name}: {e}")
             
             upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
@@ -390,6 +436,21 @@ async def main() -> None:
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
+
+            if len(messages) > 1 and st.session_state.conversation_title == "New conversation":
+                try:
+                    title_prompt = f"Generate a short title (< 50 chars) summarizing this conversation. First user message: {user_text}"
+                    title_response = await agent_client.ainvoke(
+                        message=title_prompt,
+                        model=model
+                    )
+                    generated_title = title_response.content.strip().strip('"\'')
+                    
+                    await agent_client.aset_conversation_title(st.session_state.thread_id, generated_title)
+                    st.session_state.conversation_title = generated_title
+                except Exception as e:
+                    pass
+                    
             st.rerun()
         except AgentClientError as e:
             st.error(f"Error generating response: {e}")
@@ -424,7 +485,6 @@ async def draw_messages(
 
     if "pdf_documents" not in st.session_state:
         st.session_state.pdf_documents = {}
-
 
     # Keep track of the last message container
     last_message_type = None
