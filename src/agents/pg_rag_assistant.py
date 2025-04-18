@@ -19,6 +19,7 @@ from agents.rag_tool import query_rag, query_rag_from_idx, highlight_pdf
 
 from core import get_model, settings
 
+from memory.postgres import get_postgres_saver
 
 class AgentState(MessagesState, total=False):
     """total=False is PEP589 specs.
@@ -133,4 +134,4 @@ def pending_tool_calls(state: AgentState) -> Literal["tools", "done"]:
 
 agent.add_conditional_edges("model", pending_tool_calls, {"tools": "tools", "done": END})
 
-pg_rag_assistant = agent.compile(checkpointer=MemorySaver())
+pg_rag_assistant = agent.compile(checkpointer=get_postgres_saver())
