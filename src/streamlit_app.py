@@ -14,18 +14,12 @@ from schema.task_data import TaskData, TaskDataStatus
 import json
 from streamlit_pdf_viewer import pdf_viewer
 from rag_system import RAGSystem
+from get_config import load_config
+from db_manager import DatabaseManager
 
+db_manager = DatabaseManager()
 rag_system = RAGSystem()
-
-# A Streamlit app for interacting with the langgraph agent via a simple chat interface.
-# The app has three main functions which are all run async:
-
-# - main() - sets up the streamlit app and high level structure
-# - draw_messages() - draws a set of chat messages - either replaying existing messages
-#   or streaming new ones.
-# - handle_feedback() - Draws a feedback widget and records feedback from the user.
-
-# The app heavily uses AgentClient to interact with the agent's FastAPI endpoints.
+config = load_config()
 
 APP_TITLE = "Siance Chat"
 APP_ICON = "🧪"
@@ -35,6 +29,8 @@ if "pdf_to_view" not in st.session_state:
     st.session_state.pdf_to_view = None 
 if "annotations" not in st.session_state:
     st.session_state.annotations = None
+if "confirming_delete_thread_id" not in st.session_state:
+    st.session_state.confirming_delete_thread_id = None
 
 # Function to set which PDF should be displayed
 def view_pdf(pdf_to_view, annotations=None):
@@ -45,33 +41,87 @@ def view_pdf(pdf_to_view, annotations=None):
         st.rerun()
 
 
-# Create a dialog function for PDF viewing
 @st.dialog("Document", width="large")
 def pdf_dialog():
     try:
         st.session_state.in_pdf_dialog = True
-        print('Annotations:', st.session_state.annotations)
+        
+        # First, try the default PDF path
+        default_pdf_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
+        pdf_path = default_pdf_path
+        
+        # Check if the file exists in the default location
+        if not os.path.exists(default_pdf_path):
+            # If not found, query the database to look for uploaded PDF
+            try:
+                # Get thread_id from session state
+                thread_id = st.session_state.thread_id
+                
+                # Query the database to find the file
+                query = """
+                SELECT metadata 
+                FROM files 
+                WHERE thread_id = %s AND metadata->>'original_name' LIKE %s
+                ORDER BY created_at DESC 
+                LIMIT 1
+                """
+                
+                # Use the document name to find matches
+                filename_pattern = f"%{st.session_state.pdf_to_view}%"
+                results = db_manager.execute_query(query, (thread_id, filename_pattern))
+                
+                if results and len(results) > 0:
+                    # Extract the storage path from metadata
+                    metadata = results[0][0]  # First row, first column (metadata JSON)
+                    if isinstance(metadata, str):
+                        metadata = json.loads(metadata)
+                    
+                    if 'storage_path' in metadata:
+                        pdf_path = metadata['storage_path']
+                    else:
+                        # Fall back to checking the uploaded folder directly
+                        uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
+                        if os.path.exists(uploaded_pdf_path):
+                            pdf_path = uploaded_pdf_path
+                else:
+                    # Try the direct path without DB lookup
+                    uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
+                    if os.path.exists(uploaded_pdf_path):
+                        pdf_path = uploaded_pdf_path
+            except Exception as e:
+                # Continue with default path if database query fails
+                pass
+        
+        # Display status message showing which path is being used
+        if pdf_path != default_pdf_path:
+            st.info(f"Displaying uploaded document: {os.path.basename(pdf_path)}")
+        
+        # Display the PDF with the determined path
         pdf_viewer(
-            '/Users/quentin/Documents/asnr/pdf_letters/' + st.session_state.pdf_to_view + '.pdf', 
+            pdf_path, 
             render_text=True,
             pages_vertical_spacing=0,
             annotations=st.session_state.annotations,
             annotation_outline_size=3,
             scroll_to_annotation=True,
         )
+        
         if st.button("Close"):
             st.session_state.pdf_to_view = None
             st.session_state.in_pdf_dialog = False
             st.rerun()
+        
+        # Reset state after closing
         st.session_state.pdf_to_view = None
         st.session_state.in_pdf_dialog = False
+        
     except Exception as e:
         st.error(f"Error displaying PDF: {e}")
-        st.write(f"Path attempted: {st.session_state.pdf_to_view}")
+        st.write(f"Unable to find PDF: {st.session_state.pdf_to_view}")
+        
         if st.button("Close Error"):
             st.session_state.pdf_to_view = None
-            st.session_state.in_pdf_dialog = False
-            st.rerun()
+
 
 async def main() -> None:
     st.set_page_config(
@@ -82,6 +132,10 @@ async def main() -> None:
     
     if st.session_state.pdf_to_view:
         pdf_dialog()
+
+    if "suggested_command" not in st.session_state:
+        st.session_state.suggested_command = None
+    user_text = None
 
     # Hide the streamlit upper-right chrome
     st.html(
@@ -116,6 +170,23 @@ async def main() -> None:
             st.stop()
     agent_client: AgentClient = st.session_state.agent_client
 
+    query_thread_id = st.query_params.get("thread_id")
+    if query_thread_id and "thread_id" in st.session_state and query_thread_id != st.session_state.thread_id:
+        # Thread ID has changed, reload the conversation
+        try:
+            with st.spinner("Loading conversation..."):
+                messages: ChatHistory = agent_client.get_history(thread_id=query_thread_id).messages
+                st.session_state.messages = messages
+                st.session_state.thread_id = query_thread_id
+                # Also update conversation title
+                try:
+                    title = agent_client.get_conversation_title(query_thread_id)
+                    st.session_state.conversation_title = title
+                except:
+                    st.session_state.conversation_title = "Conversation"
+        except AgentClientError as e:
+            st.error(f"Error loading conversation: {e}")
+
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
@@ -135,6 +206,83 @@ async def main() -> None:
         st.header(f"{APP_ICON} {APP_TITLE}")
         ""
         "Interrogation des lettres de suite et tendances"
+                
+        if st.button("**New conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
+            st.query_params.clear()
+            st.session_state.messages = []
+            st.session_state.conversation_title = "New conversation"
+            st.rerun()
+
+        if "conversation_title" not in st.session_state:
+            try:
+                title = agent_client.get_conversation_title(st.session_state.thread_id)
+                st.session_state.conversation_title = title
+            except:
+                st.session_state.conversation_title = "New conversation"
+                 
+        if st.session_state.get("editing_title", False):
+            new_title = st.text_input(
+                "Conversation title", 
+                value=st.session_state.conversation_title,
+                key="new_title_input"
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save", key="save_title"):
+                    agent_client.set_conversation_title(st.session_state.thread_id, new_title)
+                    st.session_state.conversation_title = new_title
+                    st.session_state.editing_title = False
+                    st.rerun()
+            with col2:
+                if st.button("Cancel", key="cancel_title"):
+                    st.session_state.editing_title = False
+                    st.rerun()
+        
+        try:
+            conversations = agent_client.get_conversations(limit=20)
+            if conversations:
+                st.subheader("Recent")
+                for conv in conversations:
+                    thread_id = conv["thread_id"]
+                    title = conv["title"]
+                    updated_at = conv["updated_at"]
+                    
+                    try:
+                        from datetime import datetime
+                        updated_date = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                        date_str = updated_date.strftime("%d/%m/%Y %H:%M")
+                    except:
+                        date_str = updated_at
+                    
+                    col1, col2, col3 = st.columns([8, 1, 1])
+                    with col1:
+                        if st.button(
+                            f"{title}",
+                            key=f"conv_{thread_id}",
+                            help=f"Last updated: {date_str}",
+                            type='tertiary',
+                        ):
+                            st.query_params["thread_id"] = thread_id
+                            st.rerun()
+                    with col2:
+                        if st.button(":material/edit:", key=f"edit_{thread_id}", help="Edit conversation title", type='tertiary'):
+                            # Navigate to the conversation and enable title editing mode
+                            st.query_params["thread_id"] = thread_id
+                            st.session_state.editing_title = True
+                            st.rerun()
+                    with col3:
+                        if st.button(":material/delete:", key=f"delete_{thread_id}", help="Delete this conversation", type='tertiary'):
+                            if agent_client.delete_conversation(thread_id):
+                                if thread_id == st.session_state.thread_id:
+                                    st.query_params.clear()
+                                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error loading conversations: {e}")
+        
+        st.divider()
+        
+        # Settings section
         with st.popover(":material/settings: Paramètres", use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
             model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
@@ -155,7 +303,7 @@ async def main() -> None:
     # Draw existing messages
     messages: list[ChatMessage] = st.session_state.messages
 
-    if len(messages) == 0:
+    if len(messages) == 0 and user_text is None:
         match agent_client.agent:
             case "chatbot":
                 WELCOME = "Hello! I'm a simple chatbot. Ask me anything!"
@@ -170,6 +318,36 @@ async def main() -> None:
         with st.chat_message("ai"):
             st.write(WELCOME)
 
+
+        col1, col2 = st.columns(2, gap="medium")
+        
+        with col1:
+            with st.container():
+                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True):
+                    st.session_state.suggested_command = "How many documents are in the database?"
+                    st.rerun()
+        
+        with col2:
+            with st.container():
+                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True):
+                    st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
+                    st.rerun()
+        
+        col3, col4 = st.columns(2, gap="medium")
+        
+        with col3:
+            with st.container():
+                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True):
+                    st.session_state.suggested_command = "Create a bar chart showing the 5 largest documents"
+                    st.rerun()
+        
+        with col4:
+            with st.container():
+                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True):
+                    st.session_state.suggested_command = "Summarize the most recent document"
+                    st.rerun()
+
+
     # draw_messages() expects an async iterator over messages
     async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
         for m in messages:
@@ -177,31 +355,37 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
-    if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]):
-        messages.append(ChatMessage(type="human", content=user_input.text, attached_files=[f.name for f in user_input.files]))
+    if user_input := st.chat_input('Your message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+        if st.session_state.suggested_command:
+            user_text = st.session_state.suggested_command
+            files = []
+            st.session_state.suggested_command = None
+        elif user_input:
+            user_text = user_input.text
+            files = user_input.files
+        
+        messages.append(ChatMessage(type="human", content=user_text, attached_files=[f.name for f in files]))
         additional_markdown = ""
-        if user_input.files: 
+        if files: 
             if additional_markdown == "":
                 additional_markdown = """  
                 """                   
-            for file in user_input.files:
+            for file in files:
                 additional_markdown += f""":violet-badge[:material/description: {file.name}] """
 
-        st.chat_message("human").write(user_input.text + additional_markdown)
+        st.chat_message("human").write(user_text + additional_markdown)
         
-        if user_input.files:
-            print(len(user_input.files), "files uploaded")
+        if files:
             upload_status = st.status("File being uploaded...", state="running")
             
             uploaded_file_ids = []
             
-            for file in user_input.files:
+            for file in files:
                 file_content = file.getvalue()
                 file_name = file.name
                 file_type = file.type
                 
                 try:
-                    print(f"Sends {file_name} to server...")
                     file_id = agent_client.upload_file(
                         file_name=file_name,
                         file_content=file_content,
@@ -210,31 +394,44 @@ async def main() -> None:
                     )
                     
                     uploaded_file_ids.append(file_id)
-                    print(f"File {file_name} uploaded successfully!")
                     upload_status.update(label=f"File {file_name} uploaded successfully!")
                 except Exception as e:
-                    print(f"Error uploading {file_name}: {e}")
                     upload_status.error(f"Error uploading {file_name}: {e}")
             
             upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
         try:
             if use_streaming:
                 stream = agent_client.astream(
-                    message=user_input.text,
+                    message=user_text,
                     model=model,
                     thread_id=st.session_state.thread_id,
-                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
+                    file_ids=uploaded_file_ids if files else None,
                 )
                 await draw_messages(stream, is_new=True, agent_client=agent_client)
             else:
                 response = await agent_client.ainvoke(
-                    message=user_input.text,
+                    message=user_text,
                     model=model,
                     thread_id=st.session_state.thread_id,
-                    file_ids=uploaded_file_ids if user_input.files else None,  # Passer les IDs des fichiers
+                    file_ids=uploaded_file_ids if files else None,
                 )
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
+
+            if len(messages) > 1 and st.session_state.conversation_title == "New conversation":
+                try:
+                    title_prompt = f"Generate a short title (< 50 chars) summarizing this conversation. First user message: {user_text}"
+                    title_response = await agent_client.ainvoke(
+                        message=title_prompt,
+                        model=model
+                    )
+                    generated_title = title_response.content.strip().strip('"\'')
+                    
+                    await agent_client.aset_conversation_title(st.session_state.thread_id, generated_title)
+                    st.session_state.conversation_title = generated_title
+                except Exception as e:
+                    pass
+                    
             st.rerun()
         except AgentClientError as e:
             st.error(f"Error generating response: {e}")
@@ -269,7 +466,6 @@ async def draw_messages(
 
     if "pdf_documents" not in st.session_state:
         st.session_state.pdf_documents = {}
-
 
     # Keep track of the last message container
     last_message_type = None
@@ -456,18 +652,22 @@ async def draw_messages(
 async def handle_feedback() -> None:
     """Draws a feedback widget and records feedback from the user."""
 
-    # Keep track of last feedback sent to avoid sending duplicates
-    if "last_feedback" not in st.session_state:
-        st.session_state.last_feedback = (None, None)
-
+    # Keep track of last star feedback sent to avoid duplicates
+    if "last_star_feedback" not in st.session_state:
+        st.session_state.last_star_feedback = (None, None)  # (run_id, stars)
+    
+    # Keep track of runs with text feedback submitted
+    if "text_feedback_runs" not in st.session_state:
+        st.session_state.text_feedback_runs = set()
+    
     latest_run_id = st.session_state.messages[-1].run_id
-    feedback = st.feedback("stars", key=latest_run_id)
-
-    # If the feedback value or run ID has changed, send a new feedback record
-    if feedback is not None and (latest_run_id, feedback) != st.session_state.last_feedback:
+    feedback_stars = st.feedback("stars", key=latest_run_id)
+    
+    # Auto-submit star feedback when it changes (original behavior)
+    if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
         # Normalize the feedback value (an index) to a score between 0 and 1
-        normalized_score = (feedback + 1) / 5.0
-
+        normalized_score = (feedback_stars + 1) / 5.0
+        
         agent_client: AgentClient = st.session_state.agent_client
         try:
             await agent_client.acreate_feedback(
@@ -479,9 +679,42 @@ async def handle_feedback() -> None:
         except AgentClientError as e:
             st.error(f"Error recording feedback: {e}")
             st.stop()
-        st.session_state.last_feedback = (latest_run_id, feedback)
+        
+        st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
         st.toast("Feedback recorded", icon=":material/reviews:")
-
+    
+    # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
+    if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
+        # Text input field with submit button
+        text_feedback = st.text_area(
+            "Additional feedback (optional)",
+            key=f"text_{latest_run_id}",
+            height=100,
+            placeholder="Please provide any additional comments or suggestions..."
+        )
+        
+        if text_feedback:  # Only show submit button if there's text
+            if st.button("Submit Feedback", key=f"submit_{latest_run_id}"):
+                # Normalize the star rating again for consistency
+                normalized_score = (feedback_stars + 1) / 5.0
+                
+                # Submit the text feedback
+                agent_client: AgentClient = st.session_state.agent_client
+                try:
+                    await agent_client.acreate_feedback(
+                        run_id=latest_run_id,
+                        key="human-feedback-with-comment",
+                        score=normalized_score,
+                        kwargs={"comment": text_feedback},
+                    )
+                except AgentClientError as e:
+                    st.error(f"Error recording text feedback: {e}")
+                    st.stop()
+                
+                # Mark this run as having received text feedback
+                st.session_state.text_feedback_runs.add(latest_run_id)
+                st.toast("Detailed feedback submitted. Thank you!", icon=":material/reviews:")
+                st.rerun()  # Rerun to hide the input after submission
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,43 +1,33 @@
 import logging
-
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-from core.settings import settings
+from get_config import load_config
 
 logger = logging.getLogger(__name__)
 
-
 def validate_postgres_config() -> None:
     """
-    Validate that all required PostgreSQL configuration is present.
-    Raises ValueError if any required configuration is missing.
+    Validate that the PostgreSQL configuration is present in the config file.
+    Raises ValueError if required configuration is missing.
     """
-    required_vars = [
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_HOST",
-        "POSTGRES_PORT",
-        "POSTGRES_DB",
-    ]
-
-    missing = [var for var in required_vars if not getattr(settings, var, None)]
-    if missing:
-        raise ValueError(
-            f"Missing required PostgreSQL configuration: {', '.join(missing)}. "
-            "These environment variables must be set to use PostgreSQL persistence."
-        )
-
+    config = load_config()
+    
+    if 'database' not in config:
+        raise ValueError("Missing 'database' section in configuration")
+    
+    db_config = config['database']
+    
+    if 'connection_string' not in db_config:
+        raise ValueError("Missing 'connection_string' in database configuration")
+    
+    connection_string = db_config['connection_string']
+    if not connection_string or not connection_string.startswith('postgresql'):
+        raise ValueError("Invalid PostgreSQL connection string")
 
 def get_postgres_connection_string() -> str:
-    """Build and return the PostgreSQL connection string from settings."""
-    return (
-        f"postgresql://{settings.POSTGRES_USER}:"
-        f"{settings.POSTGRES_PASSWORD.get_secret_value()}@"
-        f"{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/"
-        f"{settings.POSTGRES_DB}"
-    )
-
+    """Build and return the PostgreSQL connection string from config."""
+    config = load_config()
+    return config['database']['connection_string']
 
 def get_postgres_saver() -> BaseCheckpointSaver:
     """Initialize and return a PostgreSQL saver instance."""

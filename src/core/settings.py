@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     # Database Configuration
     DATABASE_TYPE: DatabaseType = (
-        DatabaseType.SQLITE
+        DatabaseType.POSTGRES
     )  # Options: DatabaseType.SQLITE or DatabaseType.POSTGRES
     SQLITE_DB_PATH: str = "checkpoints.db"
 

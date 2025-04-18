@@ -1,9 +1,10 @@
+import os
 import json
 import logging
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
@@ -37,8 +38,13 @@ from service.utils import (
 )
 from db_manager import DatabaseManager
 from get_config import load_config
-db_manager = DatabaseManager()
 
+from fastapi import File, UploadFile
+from typing import Optional
+from rag_system import RAGSystem
+
+db_manager = DatabaseManager()
+rag_system = RAGSystem()
 
 warnings.filterwarnings("ignore", category=LangChainBetaWarning)
 logger = logging.getLogger(__name__)
@@ -312,21 +318,33 @@ async def stream(user_input: StreamInput, agent_id: str = DEFAULT_AGENT) -> Stre
 @router.post("/feedback")
 async def feedback(feedback: Feedback) -> FeedbackResponse:
     """
-    Record feedback for a run to LangSmith.
-
-    This is a simple wrapper for the LangSmith create_feedback API, so the
-    credentials can be stored and managed in the service rather than the client.
-    See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
+    Record feedback in the database.    
+    The feedback can be used for analytics and monitoring purposes.
     """
-    client = LangsmithClient()
-    kwargs = feedback.kwargs or {}
-    client.create_feedback(
-        run_id=feedback.run_id,
-        key=feedback.key,
-        score=feedback.score,
-        **kwargs,
-    )
-    return FeedbackResponse()
+    try:
+        db_manager.save_feedback(
+            run_id=feedback.run_id,
+            key=feedback.key,
+            score=feedback.score,
+            additional_data=feedback.kwargs if feedback.kwargs else None
+        )
+        
+        # Optionally, send to LangSmith if configured
+        if settings.LANGCHAIN_API_KEY and settings.LANGCHAIN_PROJECT:
+            client = LangsmithClient()
+            kwargs = feedback.kwargs or {}
+            client.create_feedback(
+                run_id=feedback.run_id,
+                key=feedback.key,
+                score=feedback.score,
+                **kwargs,
+            )
+            
+        logger.info(f"Saved feedback for run {feedback.run_id}: {feedback.key}={feedback.score}")
+        return FeedbackResponse()
+    except Exception as e:
+        logger.error(f"Error saving feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving feedback: {str(e)}")
 
 
 @router.post("/history")
@@ -351,21 +369,6 @@ def history(input: ChatHistoryInput) -> ChatHistory:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
-####### MOVE THIS PART ########
-
-import os
-from pathlib import Path
-from fastapi import File, UploadFile, Form
-from typing import Optional
-import uuid
-
-UPLOAD_DIR = Path("./uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-thread_files = {}
-
-#################################
-
 @router.post("/{agent_id}/upload")
 @router.post("/upload")
 async def upload_file(
@@ -382,15 +385,17 @@ async def upload_file(
         agent_id: The agent to use (defaults to the default agent)
         
     Returns:
-        dict: Contains the file_id of the uploaded file
+        dict: Contains the file_id of the uploaded file and storage path for PDFs
     """
     try:
-        file_id = uuid.uuid4()
+        file_id = uuid4()
         thread_uuid = UUID(thread_id) if thread_id else None
         
         contents = await file.read()
         
         text_content = None
+        pdf_storage_path = None
+        
         try:
             if file.content_type.startswith('text/'):
                 text_content = contents.decode('utf-8', errors='ignore')
@@ -398,28 +403,38 @@ async def upload_file(
                 config = load_config()
                 pdf_parser = config.get("pdf-parser", {})
                 
-                if 'nlm-ingestor' in pdf_parser:
-                    import tempfile
-                    from llmsherpa.readers import LayoutPDFReader
-                    
-                    # temp file for the pdf
-                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
-                        temp_pdf.write(contents)
-                        temp_pdf_path = temp_pdf.name
-
-                    api_url = pdf_parser['nlm-ingestor']['api']
-                    pdf_reader = LayoutPDFReader(api_url)
-                    doc = pdf_reader.read_pdf(temp_pdf_path)
-                    text_content = doc.to_text()
+                base_storage_dir = "uploaded"
+                thread_dir = thread_id if thread_id else "no_thread"
+                storage_dir = os.path.join(base_storage_dir, thread_dir)
+                
+                os.makedirs(storage_dir, exist_ok=True)
+                
+                pdf_filename = file.filename
+                pdf_storage_path = os.path.join(storage_dir, pdf_filename)
+                
+                with open(pdf_storage_path, "wb") as pdf_file:
+                    pdf_file.write(contents)
+                
+                if 'nlm-ingestor' in pdf_parser:                    
+                    rag_system.index_document(
+                        pdf_path=pdf_storage_path, 
+                        title=file.filename[:-4], 
+                        table_name='uploaded_document_blocks'
+                    )
+                                    
+                    logger.info(f"PDF processed and stored at: {pdf_storage_path}")
+                else:
+                    logger.warning("The only supported PDF parser for now is 'nlm-ingestor'")
             else:
                 print(f"Unsupported file type: {file.content_type}")
         except Exception as e:
-            logger.warning(f"Impossible d'extraire le texte du fichier: {e}")
+            logger.warning(f"Impossible to extract file content: {e}")
                 
         metadata = {
             "original_name": file.filename,
             "content_type": file.content_type,
-            "size": len(contents)
+            "size": len(contents),
+            "storage_path": pdf_storage_path
         }
         
         db_manager.save_file(
@@ -444,23 +459,29 @@ async def upload_file(
                     content=f"Contenu du fichier {file.filename}:\n\n{text_content}"
                 )
                 
-                # Add system message to the messages history
                 new_messages = list(state.values.get("messages", []))
                 new_messages.append(file_message)
                 
-                # Update the state
                 await agent.aupdate_state(
                     values={"messages": new_messages},
                     config=config
                 )
                 
-                logger.info(f"The file {file.filename} has succesfuly been added to the messages history of the thread {thread_id}")
+                logger.info(f"The file {file.filename} has successfully been added to the messages history of the thread {thread_id}")
             except Exception as e:
-                logger.error(f"Error while ading the file content to the file history: {e}")
+                logger.error(f"Error while adding the file content to the file history: {e}")
         
-        logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}")
+        response_data = {
+            "file_id": str(file_id), 
+            "filename": file.filename
+        }
         
-        return {"file_id": str(file_id), "filename": file.filename}
+        if pdf_storage_path:
+            response_data["storage_path"] = pdf_storage_path
+        
+        logger.info(f"File uploaded: {file.filename}, ID: {file_id}, Thread: {thread_id}, Path: {pdf_storage_path}")
+        
+        return response_data
         
     except Exception as e:
         logger.error(f"Error while uploading the file: {e}")
@@ -473,6 +494,118 @@ async def upload_file(
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@router.get("/feedback/{run_id}")
+async def get_feedback(run_id: str) -> Dict[str, Any]:
+    """Get all feedback entries for a specific run.
+    
+    Args:
+        run_id: The run ID to get feedback for
+        
+    Returns:
+        Dictionary containing the feedback entries
+    """
+    try:
+        feedback_entries = db_manager.get_feedback_for_run(run_id)
+        return {
+            "run_id": run_id,
+            "feedback": feedback_entries
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving feedback: {str(e)}")
+
+
+@router.post("/conversations/{thread_id}/title")
+async def set_conversation_title(thread_id: str, title: str) -> Dict[str, Any]:
+    """Set or update the title of a conversation.
+    
+    Args:
+        thread_id: The thread ID of the conversation
+        title: The title to set for the conversation
+        
+    Returns:
+        Status confirmation
+    """
+    try:
+        db_manager.save_conversation_title(UUID(thread_id), title)
+        return {
+            "status": "success",
+            "thread_id": thread_id,
+            "title": title
+        }
+    except Exception as e:
+        logger.error(f"Error setting conversation title: {e}")
+        raise HTTPException(status_code=500, detail=f"Error setting conversation title: {str(e)}")
+
+
+@router.get("/conversations")
+async def get_conversations(limit: int = 20) -> Dict[str, Any]:
+    """Get a list of recent conversations.
+    
+    Args:
+        limit: Maximum number of conversations to retrieve (default 20)
+        
+    Returns:
+        Dictionary containing the list of conversations
+    """
+    try:
+        conversations = db_manager.get_conversations(limit)
+        return {
+            "conversations": conversations
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving conversations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversations: {str(e)}")
+
+
+@router.delete("/conversations/{thread_id}")
+async def delete_conversation(thread_id: str) -> Dict[str, Any]:
+    """Delete a conversation and all associated data.
+    
+    Args:
+        thread_id: The thread ID of the conversation to delete
+        
+    Returns:
+        Status confirmation
+    """
+    try:
+        result = db_manager.delete_conversation(UUID(thread_id))
+        if result:
+            return {"status": "success", "thread_id": thread_id}
+        else:
+            raise HTTPException(status_code=404, detail=f"Conversation with ID {thread_id} not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting conversation: {str(e)}")
+
+@router.get("/conversations/{thread_id}/title")
+async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
+    """Get the title of a conversation.
+    
+    Args:
+        thread_id: The thread ID of the conversation
+        
+    Returns:
+        Dictionary containing the conversation title
+    """
+    try:
+        title = db_manager.get_conversation_title(UUID(thread_id))
+        if title:
+            return {"thread_id": thread_id, "title": title}
+        else:
+            # Return default title and save it
+            default_title = "New conversation"
+            # db_manager.save_conversation_title(UUID(thread_id), default_title)
+            return {"thread_id": thread_id, "title": default_title}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        logger.error(f"Error retrieving conversation title: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversation title: {str(e)}")
 
 
 app.include_router(router)

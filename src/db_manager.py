@@ -15,6 +15,8 @@ from get_config import load_config
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+db_config = load_config()['database']
+schema_app_data = db_config['schema_app_data']
 
 class DatabaseManager:
     """Manager for PostgreSQL database operations."""
@@ -31,7 +33,7 @@ class DatabaseManager:
     def _initialize(self):
         """Initialize connection, tables, connection pool and embedding capabilities."""
         # Regular connection setup
-        self.connection_string = load_config()['database']['connection_string']
+        self.connection_string = db_config['connection_string']
         self.engine = create_engine(self.connection_string)        
         self.connection = psycopg2.connect(self.connection_string)
         register_uuid()
@@ -40,11 +42,11 @@ class DatabaseManager:
         # Connection pool setup
         parsed_url = urlparse(self.connection_string)
         db_params = {
-            "host": parsed_url.hostname or os.getenv("DB_HOST", "localhost"),
-            "database": parsed_url.path[1:] if parsed_url.path else os.getenv("DB_NAME", "lds"),
-            "user": parsed_url.username or os.getenv("DB_USER", "postgres"),
-            "password": parsed_url.password or os.getenv("DB_PASSWORD", ""),
-            "port": parsed_url.port or os.getenv("DB_PORT", "5432")
+            "host": parsed_url.hostname,
+            "database": parsed_url.path[1:],
+            "user": parsed_url.username,
+            "password": parsed_url.password,
+            "port": parsed_url.port
         }
         self.conn_pool = pool.SimpleConnectionPool(1, 10, **db_params)
         
@@ -57,15 +59,20 @@ class DatabaseManager:
             self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
             self.embedding_dim = 1536  # Default for Ada
         
-        # Create tables
         self._create_tables()
     
     def _create_tables(self):
-        """Create the necessary tables if they do not exist."""
+        """Create the necessary schema and tables if they do not exist."""
+        
         with self.connection.cursor() as cursor:
+            # Create schema if it does not exist
+            cursor.execute(f"""
+            CREATE SCHEMA IF NOT EXISTS {schema_app_data}
+            """)
+            
             # For the files
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS files (
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.files (
                 id UUID PRIMARY KEY,
                 thread_id UUID,
                 filename TEXT NOT NULL,
@@ -78,17 +85,65 @@ class DatabaseManager:
             """)
             
             # For the memory
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS memory (
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.memory (
                 thread_id UUID PRIMARY KEY,
                 state JSONB,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
-            # Index
-            cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_files_thread_id ON files(thread_id)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.feedback (
+                id SERIAL PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                score FLOAT NOT NULL,
+                additional_data JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # For conversations history
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.conversations (
+                thread_id UUID PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_files_thread_id ON {schema_app_data}.files(thread_id)
+            """)
+            
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_feedback_run_id ON {schema_app_data}.feedback(run_id)
+            """)
+            
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON {schema_app_data}.conversations(created_at DESC)
+            """)
+            
+            cursor.execute(f"""        
+            -- Uploaded document blocks table
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.uploaded_document_blocks (
+                id SERIAL PRIMARY KEY,
+                block_idx INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                content TEXT,
+                level INTEGER NOT NULL,
+                page_idx INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                block_class TEXT,
+                x0 FLOAT,
+                y0 FLOAT,
+                x1 FLOAT,
+                y1 FLOAT,
+                parent_idx INTEGER,
+                UNIQUE(name, block_idx)
+            );
             """)
     
     def close(self):
@@ -137,8 +192,8 @@ class DatabaseManager:
         """
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO files 
+                f"""
+                INSERT INTO {schema_app_data}.files 
                 (id, thread_id, filename, content_type, content, text_content, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
@@ -159,9 +214,9 @@ class DatabaseManager:
         """Get information and content of a file by ID."""
         with self.connection.cursor(cursor_factory=DictCursor) as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT id, thread_id, filename, content_type, content, text_content, metadata, created_at
-                FROM files
+                FROM {schema_app_data}.files
                 WHERE id = %s
                 """,
                 (file_id,)
@@ -175,9 +230,9 @@ class DatabaseManager:
         """Get only the text content of a file."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT text_content
-                FROM files
+                FROM {schema_app_data}.files
                 WHERE id = %s
                 """,
                 (file_id,)
@@ -192,8 +247,8 @@ class DatabaseManager:
         """Save the agent's state/memory for a thread."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO memory (thread_id, state)
+                f"""
+                INSERT INTO {schema_app_data}.memory (thread_id, state)
                 VALUES (%s, %s)
                 ON CONFLICT (thread_id) 
                 DO UPDATE SET state = %s, updated_at = CURRENT_TIMESTAMP
@@ -205,9 +260,9 @@ class DatabaseManager:
         """Retrieve the agent's state/memory for a thread."""
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT state
-                FROM memory
+                FROM {schema_app_data}.memory
                 WHERE thread_id = %s
                 """,
                 (thread_id,)
@@ -297,3 +352,155 @@ class DatabaseManager:
     def get_embedding_dimension(self) -> int:
         """Returns the dimension of embeddings used."""
         return self.embedding_dim if self.embedding_enabled else 0
+        
+    def save_feedback(self, run_id: str, key: str, score: float, additional_data: Optional[Dict[str, Any]] = None) -> int:
+        """Save user feedback to the database.
+        
+        Args:
+            run_id: The run ID that the feedback is for
+            key: The feedback key (e.g., 'human-feedback-stars')
+            score: The feedback score value (e.g., 1-5 for star ratings)
+            additional_data: Any additional feedback data to store
+            
+        Returns:
+            The ID of the inserted feedback record
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.feedback 
+                (run_id, key, score, additional_data)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    run_id,
+                    key,
+                    score,
+                    Json(additional_data) if additional_data else None
+                )
+            )
+            return cursor.fetchone()[0]
+            
+    def get_feedback_for_run(self, run_id: str) -> List[Dict[str, Any]]:
+        """Get all feedback entries for a specific run ID.
+        
+        Args:
+            run_id: The run ID to get feedback for
+            
+        Returns:
+            List of feedback entries as dictionaries
+        """
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT id, run_id, key, score, additional_data, created_at
+                FROM {schema_app_data}.feedback
+                WHERE run_id = %s
+                ORDER BY created_at DESC
+                """,
+                (run_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+            
+    # Conversation history methods
+    def save_conversation_title(self, thread_id: UUID, title: str) -> None:
+        """Save or update a conversation title.
+        
+        Args:
+            thread_id: The thread ID of the conversation
+            title: The title for the conversation
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.conversations (thread_id, title)
+                VALUES (%s, %s)
+                ON CONFLICT (thread_id) 
+                DO UPDATE SET title = %s, updated_at = CURRENT_TIMESTAMP
+                """,
+                (thread_id, title, title)
+            )
+    
+    def get_conversation_title(self, thread_id: UUID) -> Optional[str]:
+        """Get the title of a conversation.
+        
+        Args:
+            thread_id: The thread ID of the conversation
+            
+        Returns:
+            The conversation title or None if not found
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT title
+                FROM {schema_app_data}.conversations
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            return None
+    
+    def get_conversations(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get a list of recent conversations.
+        
+        Args:
+            limit: Maximum number of conversations to retrieve
+            
+        Returns:
+            List of conversations as dictionaries with thread_id, title, and created_at
+        """
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT thread_id, title, created_at, updated_at
+                FROM {schema_app_data}.conversations
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def delete_conversation(self, thread_id: UUID) -> bool:
+        """Delete a conversation and all associated data.
+        
+        Args:
+            thread_id: The thread ID of the conversation to delete
+            
+        Returns:
+            True if the conversation was found and deleted, False otherwise
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.conversations
+                WHERE thread_id = %s
+                RETURNING thread_id
+                """,
+                (thread_id,)
+            )
+            result = cursor.fetchone()
+            
+            # Also delete related memory and files
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.memory
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.files
+                WHERE thread_id = %s
+                """,
+                (thread_id,)
+            )
+            
+            return result is not None
