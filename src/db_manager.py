@@ -318,10 +318,6 @@ class DatabaseManager:
             cursor.close()
             self.release_connection(conn)
     
-    def query_to_dataframe(self, query: str) -> pd.DataFrame:
-        """Execute a query and return the results as a pandas DataFrame."""
-        return pd.read_sql(query, self.engine)
-    
     def is_embedding_enabled(self) -> bool:
         """Check if embedding functionality is enabled."""
         return self.embedding_enabled
