@@ -31,6 +31,8 @@ if "annotations" not in st.session_state:
     st.session_state.annotations = None
 if "confirming_delete_thread_id" not in st.session_state:
     st.session_state.confirming_delete_thread_id = None
+if "graphs" not in st.session_state:
+    st.session_state.graphs = {}
 
 # Function to set which PDF should be displayed
 def view_pdf(pdf_to_view, annotations=None):
@@ -374,6 +376,11 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
+    if hasattr(st.session_state, "graphs") and st.session_state.graphs:
+        for graph_id, plot_data in st.session_state.graphs.items():
+            st.plotly_chart(plot_data)
+
+
     if user_input := st.chat_input('Your message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         if st.session_state.suggested_command:
             user_text = st.session_state.suggested_command
@@ -584,25 +591,18 @@ async def draw_messages(
                             if tool_result.tool_call_id:
                                 status = call_results[tool_result.tool_call_id]
                             
-                            # Handle different tool types
-                            if tool_name == "create_graph":
+                            if tool_name == "Graph_Viewer" and agent_client:
                                 try:
-                                    # Get graph_id from the tool result
                                     graph_id = tool_result.content
-                                    status.write(f"Retrieving graph with ID: {graph_id}")
-                                    
-                                    # Call the retrieve_graph function to get the graph data
+                                    status.write(f"Retrieving graph with ID: {graph_id}")                                    
                                     graph_data = agent_client.retrieve_graph(graph_id)
                                     
-                                    # Parse the graph data (assuming it's JSON)
                                     if graph_data:
                                         try:
-                                            # Try to parse as JSON for plotly
                                             plot_data = json.loads(graph_data)
-                                            status.write("Graph retrieved successfully")
-                                            st.plotly_chart(plot_data)
+                                            status.write("Graph retrieved successfully")                                            
+                                            st.session_state.graphs[graph_id] = plot_data                                            
                                         except json.JSONDecodeError:
-                                            # If not JSON, display as text
                                             status.write("Retrieved non-JSON graph data")
                                             st.code(graph_data)
                                     else:

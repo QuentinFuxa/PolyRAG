@@ -9,6 +9,7 @@ from db_manager import DatabaseManager
 
 
 graph_store = GraphStore()
+db_manager = DatabaseManager()
 
 def create_graph(
     query: str,            # SQL query
@@ -22,7 +23,7 @@ def create_graph(
     height: int=600,            # chart height
     orientation:str='v',       # orientation 'v' or 'h' for bar charts
     labels: dict=None,           # dictionary for renaming axis labels or legend labels
-    template: int='plotly_white' # chart style template
+    template: str='plotly_white' # chart style template
 ):
     """
     Executes the SQL query, stores the result in a Pandas DataFrame, 
@@ -62,7 +63,7 @@ def create_graph(
     print(f"Template: {template}")
     
     # 1) Execute the SQL query
-    df = pd.read_sql(query, con=DatabaseManager.engine)
+    df = pd.read_sql(query, con=db_manager.engine)
 
     # Verify we have a non-empty DataFrame
     if df.empty:
