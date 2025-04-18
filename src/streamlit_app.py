@@ -94,7 +94,7 @@ def pdf_dialog():
         
         # Display status message showing which path is being used
         if pdf_path != default_pdf_path:
-            st.info(f"Displaying uploaded document: {os.path.basename(pdf_path)}")
+            st.info(f"Affichage du document téléchargé : {os.path.basename(pdf_path)}")
         
         # Display the PDF with the determined path
         pdf_viewer(
@@ -106,7 +106,7 @@ def pdf_dialog():
             scroll_to_annotation=True,
         )
         
-        if st.button("Close"):
+        if st.button("Fermer"):
             st.session_state.pdf_to_view = None
             st.session_state.in_pdf_dialog = False
             st.rerun()
@@ -116,10 +116,10 @@ def pdf_dialog():
         st.session_state.in_pdf_dialog = False
         
     except Exception as e:
-        st.error(f"Error displaying PDF: {e}")
-        st.write(f"Unable to find PDF: {st.session_state.pdf_to_view}")
+        st.error(f"Erreur lors de l'affichage du PDF : {e}")
+        st.write(f"Impossible de trouver le PDF : {st.session_state.pdf_to_view}")
         
-        if st.button("Close Error"):
+        if st.button("Fermer l'erreur"):
             st.session_state.pdf_to_view = None
 
 
@@ -133,8 +133,6 @@ async def main() -> None:
     if st.session_state.pdf_to_view:
         pdf_dialog()
 
-    if "suggested_command" not in st.session_state:
-        st.session_state.suggested_command = None
     user_text = None
 
     # Hide the streamlit upper-right chrome
@@ -162,11 +160,11 @@ async def main() -> None:
             port = os.getenv("PORT", 8080)
             agent_url = f"http://{host}:{port}"
         try:
-            with st.spinner("Connecting to agent service..."):
+            with st.spinner("Connexion au service d'agent..."):
                 st.session_state.agent_client = AgentClient(base_url=agent_url)
         except AgentClientError as e:
-            st.error(f"Error connecting to agent service at {agent_url}: {e}")
-            st.markdown("The service might be booting up. Try again in a few seconds.")
+            st.error(f"Erreur lors de la connexion au service d'agent à {agent_url} : {e}")
+            st.markdown("Le service est peut-être en cours de démarrage. Réessayez dans quelques secondes.")
             st.stop()
     agent_client: AgentClient = st.session_state.agent_client
 
@@ -174,7 +172,7 @@ async def main() -> None:
     if query_thread_id and "thread_id" in st.session_state and query_thread_id != st.session_state.thread_id:
         # Thread ID has changed, reload the conversation
         try:
-            with st.spinner("Loading conversation..."):
+            with st.spinner("Chargement de la conversation..."):
                 messages: ChatHistory = agent_client.get_history(thread_id=query_thread_id).messages
                 st.session_state.messages = messages
                 st.session_state.thread_id = query_thread_id
@@ -185,7 +183,7 @@ async def main() -> None:
                 except:
                     st.session_state.conversation_title = "Conversation"
         except AgentClientError as e:
-            st.error(f"Error loading conversation: {e}")
+            st.error(f"Erreur lors du chargement de la conversation : {e}")
 
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
@@ -196,7 +194,7 @@ async def main() -> None:
             try:
                 messages: ChatHistory = agent_client.get_history(thread_id=thread_id).messages
             except AgentClientError:
-                st.error("No message history found for this Thread ID.")
+                st.error("Aucun historique de messages trouvé pour cet ID de discussion.")
                 messages = []
         st.session_state.messages = messages
         st.session_state.thread_id = thread_id
@@ -207,10 +205,10 @@ async def main() -> None:
         ""
         "Interrogation des lettres de suite et tendances"
                 
-        if st.button("**New conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
+        if st.button("**Nouvelle conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
             st.query_params.clear()
             st.session_state.messages = []
-            st.session_state.conversation_title = "New conversation"
+            st.session_state.conversation_title = "Nouvelle conversation"
             st.rerun()
 
         if "conversation_title" not in st.session_state:
@@ -218,30 +216,30 @@ async def main() -> None:
                 title = agent_client.get_conversation_title(st.session_state.thread_id)
                 st.session_state.conversation_title = title
             except:
-                st.session_state.conversation_title = "New conversation"
+                st.session_state.conversation_title = "Nouvelle conversation"
                  
         if st.session_state.get("editing_title", False):
             new_title = st.text_input(
-                "Conversation title", 
+                "Titre de la conversation", 
                 value=st.session_state.conversation_title,
                 key="new_title_input"
             )
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Save", key="save_title"):
+                if st.button("Enregistrer", key="save_title"):
                     agent_client.set_conversation_title(st.session_state.thread_id, new_title)
                     st.session_state.conversation_title = new_title
                     st.session_state.editing_title = False
                     st.rerun()
             with col2:
-                if st.button("Cancel", key="cancel_title"):
+                if st.button("Annuler", key="cancel_title"):
                     st.session_state.editing_title = False
                     st.rerun()
         
         try:
             conversations = agent_client.get_conversations(limit=20)
             if conversations:
-                st.subheader("Recent")
+                st.subheader("Récents")
                 for conv in conversations:
                     thread_id = conv["thread_id"]
                     title = conv["title"]
@@ -259,41 +257,41 @@ async def main() -> None:
                         if st.button(
                             f"{title}",
                             key=f"conv_{thread_id}",
-                            help=f"Last updated: {date_str}",
+                            help=f"Dernière mise à jour : {date_str}",
                             type='tertiary',
                         ):
                             st.query_params["thread_id"] = thread_id
                             st.rerun()
                     with col2:
-                        if st.button(":material/edit:", key=f"edit_{thread_id}", help="Edit conversation title", type='tertiary'):
+                        if st.button(":material/edit:", key=f"edit_{thread_id}", help="Modifier le titre de la conversation", type='tertiary'):
                             # Navigate to the conversation and enable title editing mode
                             st.query_params["thread_id"] = thread_id
                             st.session_state.editing_title = True
                             st.rerun()
                     with col3:
-                        if st.button(":material/delete:", key=f"delete_{thread_id}", help="Delete this conversation", type='tertiary'):
+                        if st.button(":material/delete:", key=f"delete_{thread_id}", help="Supprimer cette conversation", type='tertiary'):
                             if agent_client.delete_conversation(thread_id):
                                 if thread_id == st.session_state.thread_id:
                                     st.query_params.clear()
                                 st.rerun()
                 
         except Exception as e:
-            st.error(f"Error loading conversations: {e}")
+            st.error(f"Erreur lors du chargement des conversations : {e}")
         
         st.divider()
         
         # Settings section
         with st.popover(":material/settings: Paramètres", use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
-            model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
+            model = st.selectbox("LLM à utiliser", options=agent_client.info.models, index=model_idx)
             agent_list = [a.key for a in agent_client.info.agents]
             agent_idx = agent_list.index(agent_client.info.default_agent)
             agent_client.agent = st.selectbox(
-                "Agent to use",
+                "Agent à utiliser",
                 options=agent_list,
                 index=agent_idx,
             )
-            use_streaming = st.toggle("Stream results", value=True)
+            use_streaming = st.toggle("Diffuser les résultats", value=True)
 
 
         # st.caption(
@@ -306,15 +304,15 @@ async def main() -> None:
     if len(messages) == 0 and user_text is None:
         match agent_client.agent:
             case "chatbot":
-                WELCOME = "Hello! I'm a simple chatbot. Ask me anything!"
+                WELCOME = "Bonjour ! Je suis un chatbot simple. Posez-moi n'importe quelle question !"
             case "interrupt-agent":
-                WELCOME = "Hello! I'm an interrupt agent. Tell me your birthday and I will predict your personality!"
+                WELCOME = "Bonjour ! Je suis un agent d'interruption. Dites-moi votre date de naissance et je prédirai votre personnalité !"
             case "research-assistant":
-                WELCOME = "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!"
+                WELCOME = "Bonjour ! Je suis un assistant de recherche alimenté par l'IA avec recherche web et calculatrice. Posez-moi n'importe quelle question !"
             case "pg_rag_assistant":
                 WELCOME = "Bonjour ! Je suis un assistant virtuel conçu pour vous aider avec des informations et des questions concernant les Lettres de suite de l'ASNR. Je peux vous fournir des données, des analyses et des insights sur les inspections et les rapports associés. Comment puis-je vous aider aujourd'hui ?"
             case _:
-                WELCOME = "Hello! I'm an AI agent. Ask me anything!"
+                WELCOME = "Bonjour ! Je suis un agent IA. Posez-moi n'importe quelle question !"
         with st.chat_message("ai"):
             st.write(WELCOME)
 
@@ -323,8 +321,8 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True):
-                    st.session_state.suggested_command = "How many documents are in the database?"
+                if st.button("Combien d'articles dans la base de données ?", key="btn_db_query", use_container_width=True):
+                    st.session_state.suggested_command = "Combien de documents sont dans la base de données ?"
                     st.rerun()
         
         with col2:
@@ -337,14 +335,14 @@ async def main() -> None:
         
         with col3:
             with st.container():
-                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True):
-                    st.session_state.suggested_command = "Create a bar chart showing the 5 largest documents"
+                if st.button("Créer un graphique du nombre d'articles mentionnant l'IA", key="btn_create_graph", use_container_width=True):
+                    st.session_state.suggested_command = "Créer un graphique à barres montrant les 5 plus grands documents"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True):
-                    st.session_state.suggested_command = "Summarize the most recent document"
+                if st.button("Résumer l'article le plus récent", key="btn_document_summary", use_container_width=True):
+                    st.session_state.suggested_command = "Résumer le document le plus récent"
                     st.rerun()
 
 
@@ -355,7 +353,7 @@ async def main() -> None:
 
     await draw_messages(amessage_iter())
 
-    if user_input := st.chat_input('Your message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+    if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         if st.session_state.suggested_command:
             user_text = st.session_state.suggested_command
             files = []
@@ -376,7 +374,7 @@ async def main() -> None:
         st.chat_message("human").write(user_text + additional_markdown)
         
         if files:
-            upload_status = st.status("File being uploaded...", state="running")
+            upload_status = st.status("Fichier en cours de téléchargement...", state="running")
             
             uploaded_file_ids = []
             
@@ -394,11 +392,11 @@ async def main() -> None:
                     )
                     
                     uploaded_file_ids.append(file_id)
-                    upload_status.update(label=f"File {file_name} uploaded successfully!")
+                    upload_status.update(label=f"Fichier {file_name} téléchargé avec succès !")
                 except Exception as e:
-                    upload_status.error(f"Error uploading {file_name}: {e}")
+                    upload_status.error(f"Erreur de téléchargement de {file_name} : {e}")
             
-            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
+            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} fichiers téléchargés")                
         try:
             if use_streaming:
                 stream = agent_client.astream(
@@ -418,9 +416,9 @@ async def main() -> None:
                 messages.append(response)
                 st.chat_message("ai").write(response.content)
 
-            if len(messages) > 1 and st.session_state.conversation_title == "New conversation":
+            if len(messages) > 1 and st.session_state.conversation_title == "Nouvelle conversation":
                 try:
-                    title_prompt = f"Generate a short title (< 50 chars) summarizing this conversation. First user message: {user_text}"
+                    title_prompt = f"Générer un titre court (< 50 caractères) résumant cette conversation. Premier message de l'utilisateur : {user_text}"
                     title_response = await agent_client.ainvoke(
                         message=title_prompt,
                         model=model
@@ -434,7 +432,7 @@ async def main() -> None:
                     
             st.rerun()
         except AgentClientError as e:
-            st.error(f"Error generating response: {e}")
+            st.error(f"Erreur lors de la génération de la réponse : {e}")
             st.stop()
     if len(messages) > 0 and st.session_state.last_message:
         with st.session_state.last_message:
@@ -492,7 +490,7 @@ async def draw_messages(
             streaming_placeholder.write(streaming_content)
             continue
         if not isinstance(msg, ChatMessage):
-            st.error(f"Unexpected message type: {type(msg)}")
+            st.error(f"Type de message inattendu : {type(msg)}")
             st.write(msg)
             st.stop()
 
@@ -541,19 +539,19 @@ async def draw_messages(
                         tool_names = {}  
                         for tool_call in msg.tool_calls:
                             status = st.status(
-                                f"""Tool Call: {tool_call["name"]}""",
+                                f"""Appel d'outil : {tool_call["name"]}""",
                                 state="running" if is_new else "complete",
                             )
                             call_results[tool_call["id"]] = status
                             tool_names[tool_call["id"]] = tool_call["name"]
-                            status.write("Input:")
+                            status.write("Entrée :")
                             status.write(tool_call["args"])
                         for idx in range(len(call_results)):
                             tool_result: ChatMessage = await anext(messages_agen)
                             tool_name = tool_names.get(tool_result.tool_call_id)
 
                             if tool_result.type != "tool":
-                                st.error(f"Unexpected ChatMessage type: {tool_result.type}")
+                                st.error(f"Type de ChatMessage inattendu : {tool_result.type}")
                                 st.write(tool_result)
                                 st.stop()
 
@@ -566,11 +564,11 @@ async def draw_messages(
                                 status = call_results[tool_result.tool_call_id]
                             
                             # Handle different tool types
-                            if tool_name == "create_graph":
+                            if tool_name == "Graph_Viewer" and agent_client:
                                 try:
                                     # Get graph_id from the tool result
                                     graph_id = tool_result.content
-                                    status.write(f"Retrieving graph with ID: {graph_id}")
+                                    status.write(f"Récupération du graphique avec ID : {graph_id}")
                                     
                                     # Call the retrieve_graph function to get the graph data
                                     graph_data = agent_client.retrieve_graph(graph_id)
@@ -580,17 +578,17 @@ async def draw_messages(
                                         try:
                                             # Try to parse as JSON for plotly
                                             plot_data = json.loads(graph_data)
-                                            status.write("Graph retrieved successfully")
+                                            status.write("Graphique récupéré avec succès")
                                             st.plotly_chart(plot_data)
                                         except json.JSONDecodeError:
                                             # If not JSON, display as text
-                                            status.write("Retrieved non-JSON graph data")
+                                            status.write("Données de graphique non-JSON récupérées")
                                             st.code(graph_data)
                                     else:
-                                        status.write("No graph data returned")
+                                        status.write("Aucune donnée de graphique retournée")
                                 except Exception as e:
-                                    status.error(f"Error retrieving graph: {e}")
-                            elif tool_name == "PDF_Viewer":
+                                    status.error(f"Erreur lors de la récupération du graphique : {e}")
+                            elif tool_name == "PDF_Viewer" and agent_client:
                                 try:
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
@@ -603,16 +601,16 @@ async def draw_messages(
                                             block_indices=block_indices,
                                         )            
                                     st.session_state.pdf_documents[pdf_name] = annotations                                    
-                                    if st.button(f"View PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
+                                    if st.button(f"Voir le PDF : {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
                                         view_pdf(pdf_name, annotations)
                                         
-                                    status.update(state="complete", label=f"PDF ready: {pdf_name}")
+                                    status.update(state="complete", label=f"PDF prêt : {pdf_name}")
                                 except Exception as e:
-                                    status.error(f"Error processing PDF: {e}")
-                                    st.write(f"Raw output: {tool_result.content}")                                  
+                                    status.error(f"Erreur lors du traitement du PDF : {e}")
+                                    st.write(f"Sortie brute : {tool_result.content}")                                  
                             
                             # Update the status
-                            status.write("Output:")
+                            status.write("Sortie :")
                             status.write(tool_result.content)
                             status.update(state="complete")
                             
@@ -625,7 +623,7 @@ async def draw_messages(
                 try:
                     task_data: TaskData = TaskData.model_validate(msg.custom_data)
                 except ValidationError:
-                    st.error("Unexpected CustomData message received from agent")
+                    st.error("Message CustomData inattendu reçu de l'agent")
                     st.write(msg.custom_data)
                     st.stop()
 
@@ -644,7 +642,7 @@ async def draw_messages(
 
             # In case of an unexpected message type, log an error and stop
             case _:
-                st.error(f"Unexpected ChatMessage type: {msg.type}")
+                st.error(f"Type de ChatMessage inattendu : {msg.type}")
                 st.write(msg)
                 st.stop()
 
@@ -674,27 +672,27 @@ async def handle_feedback() -> None:
                 run_id=latest_run_id,
                 key="human-feedback-stars",
                 score=normalized_score,
-                kwargs={"comment": "In-line human feedback"},
+                kwargs={"comment": "Feedback humain en ligne"},
             )
         except AgentClientError as e:
-            st.error(f"Error recording feedback: {e}")
+            st.error(f"Erreur lors de l'enregistrement du commentaire : {e}")
             st.stop()
         
         st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
-        st.toast("Feedback recorded", icon=":material/reviews:")
+        st.toast("Commentaire enregistré", icon=":material/reviews:")
     
     # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
     if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
         # Text input field with submit button
         text_feedback = st.text_area(
-            "Additional feedback (optional)",
+            "Commentaire supplémentaire (facultatif)",
             key=f"text_{latest_run_id}",
             height=100,
-            placeholder="Please provide any additional comments or suggestions..."
+            placeholder="Veuillez fournir des commentaires ou suggestions supplémentaires..."
         )
         
         if text_feedback:  # Only show submit button if there's text
-            if st.button("Submit Feedback", key=f"submit_{latest_run_id}"):
+            if st.button("Envoyer le commentaire", key=f"submit_{latest_run_id}"):
                 # Normalize the star rating again for consistency
                 normalized_score = (feedback_stars + 1) / 5.0
                 
@@ -708,12 +706,12 @@ async def handle_feedback() -> None:
                         kwargs={"comment": text_feedback},
                     )
                 except AgentClientError as e:
-                    st.error(f"Error recording text feedback: {e}")
+                    st.error(f"Erreur lors de l'enregistrement du commentaire : {e}")
                     st.stop()
                 
                 # Mark this run as having received text feedback
                 st.session_state.text_feedback_runs.add(latest_run_id)
-                st.toast("Detailed feedback submitted. Thank you!", icon=":material/reviews:")
+                st.toast("Commentaire détaillé soumis. Merci !", icon=":material/reviews:")
                 st.rerun()  # Rerun to hide the input after submission
 
 if __name__ == "__main__":
