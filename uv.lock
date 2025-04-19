@@ -45,6 +45,9 @@ dependencies = [
     { name = "streamlit" },
     { name = "tiktoken" },
     { name = "uvicorn" },
+    { name = "streamlit-pdf-viewer" },
+    { name = "plotly" },
+    { name = "psycopg2-binary" },
 ]
 
 [package.dev-dependencies]
