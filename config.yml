@@ -1,4 +1,5 @@
 database:
+  connection_string_old: "postgresql://postgres@localhost:5432/demo_articles"
   connection_string: "postgresql://postgres@localhost:5432/lds"
   schema_app_data: "document_data"
   tables_to_index: 

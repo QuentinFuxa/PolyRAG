@@ -174,3 +174,5 @@ cython_debug/
 asnr/*
 
 *.pdf
+
+system_prompt.txt
