@@ -592,7 +592,7 @@ async def draw_messages(
                                         status.write("Aucune donnée de graphique retournée")
                                 except Exception as e:
                                     status.error(f"Erreur lors de la récupération du graphique : {e}")
-                            elif tool_name == "PDF_Viewer" and agent_client:
+                            elif tool_name == "PDF_Viewer":
                                 try:
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
