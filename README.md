@@ -1,15 +1,18 @@
-# 🧰 AI Agent Service Toolkit
+# 🧪 AI & RAG Service Toolkit
 
-[![build status](https://github.com/JoshuaC215/agent-service-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/JoshuaC215/agent-service-toolkit/actions/workflows/test.yml) [![codecov](https://codecov.io/github/JoshuaC215/agent-service-toolkit/graph/badge.svg?token=5MTJSYWD05)](https://codecov.io/github/JoshuaC215/agent-service-toolkit) [![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FJoshuaC215%2Fagent-service-toolkit%2Frefs%2Fheads%2Fmain%2Fpyproject.toml)](https://github.com/JoshuaC215/agent-service-toolkit/blob/main/pyproject.toml)
-[![GitHub License](https://img.shields.io/github/license/JoshuaC215/agent-service-toolkit)](https://github.com/JoshuaC215/agent-service-toolkit/blob/main/LICENSE) [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_red.svg)](https://agent-service-toolkit.streamlit.app/)
+This repository provides a comprehensive toolkit for building and running AI agent services using LangGraph, FastAPI, and Streamlit. It extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating advanced capabilities for **RAG (Retrieval-Augmented Generation) over both structured databases and unstructured PDF documents**.
 
-A full toolkit for running an AI agent service built with LangGraph, FastAPI and Streamlit.
+The toolkit includes:
+- **Database RAG:** Dynamically discovers PostgreSQL database schemas, generates tailored prompts for the LLM, and allows the agent to query the database via SQL.
+- **Document RAG:** Processes PDFs using llmsherpa, indexes content for vector and text search in PostgreSQL, and enables searching within documents.
+- **Interactive Visualization:** Features an advanced PDF viewer that highlights relevant sections found via RAG, and supports Plotly graph generation.
+- **Core Agent Framework:** Built on LangGraph with support for tools, human-in-the-loop interruptions, and supervision.
+- **Web Services:** A FastAPI backend serves the agent, and a Streamlit frontend provides a user-friendly chat interface.
+- **Supporting Features:** File uploads, content moderation (LlamaGuard), feedback mechanism (LangSmith), Docker support, and testing.
 
 It includes a [LangGraph](https://langchain-ai.github.io/langgraph/) agent, a [FastAPI](https://fastapi.tiangolo.com/) service to serve it, a client to interact with the service, and a [Streamlit](https://streamlit.io/) app that uses the client to provide a chat interface. Data structures and settings are built with [Pydantic](https://github.com/pydantic/pydantic).
 
 This project offers a template for you to easily build and run your own agents using the LangGraph framework. It demonstrates a complete setup from agent definition to user interface, making it easier to get started with LangGraph-based projects by providing a full, robust toolkit.
-
-**[🎥 Watch a video walkthrough of the repo and app](https://www.youtube.com/watch?v=pdYVHw_YCNY)**
 
 ## Overview
 
@@ -50,28 +53,49 @@ docker compose watch
 
 ### Key Features
 
-1. **LangGraph Agent and latest features**: A customizable agent built using the LangGraph framework. Implements the latest LangGraph v0.3 features including human in the loop with `interrupt()`, and flow control with `Command`, and `langgraph-supervisor`.
-1. **FastAPI Service**: Serves the agent with both streaming and non-streaming endpoints.
-1. **Advanced Streaming**: A novel approach to support both token-based and message-based streaming.
-1. **Streamlit Interface**: Provides a user-friendly chat interface for interacting with the agent.
-1. **Multiple Agent Support**: Run multiple agents in the service and call by URL path. Available agents and models are described in `/info`
-1. **Asynchronous Design**: Utilizes async/await for efficient handling of concurrent requests.
-1. **Content Moderation**: Implements LlamaGuard for content moderation (requires Groq API key).
-1. **Feedback Mechanism**: Includes a star-based feedback system integrated with LangSmith.
-1. **Docker Support**: Includes Dockerfiles and a docker compose file for easy development and deployment.
-1. **Testing**: Includes robust unit and integration tests for the full repo.
+**1. Database RAG & Interaction (PostgreSQL):**
+   - **Dynamic Schema Discovery:** Automatically inspects specified database schemas, tables, columns, and data types.
+   - **Intelligent Prompt Generation:** Creates tailored system prompts describing the discovered DB schema, guiding the LLM on how to query effectively.
+   - **SQL Execution Tool:** Provides an `execute_sql` tool allowing the agent to directly query the database.
+   - **Sample Data Fetching:** Optionally includes example values from columns in the prompt for better context.
+   - **Special Column Identification:** Detects `vector` and `tsvector` columns, enabling guidance for semantic and full-text searches.
+
+**2. Document RAG & Visualization (PDFs):**
+   - **PDF Processing (llmsherpa):** Extracts structured content, text, and layout information from PDF documents.
+   - **Vector & Text Search:** Indexes document chunks in PostgreSQL for efficient semantic (embedding) and keyword (full-text) search.
+   - **Interactive PDF Viewer:** Displays source PDFs with relevant sections highlighted based on RAG results, using tools like `Query_RAG`, `Query_RAG_From_ID`, and `PDF_Viewer`.
+   - **Dependency:** Requires the [nlm-ingestor](https://github.com/nlmatics/nlm-ingestor) service for PDF processing (see setup note below).
+
+**3. Data Visualization:**
+   - **Plotly Graph Generation:** The agent can generate and display interactive Plotly charts based on data analysis or user requests.
+
+**4. Core Agent & Service Framework:**
+   - **LangGraph Agent:** Customizable agent architecture using LangGraph v0.3+ features (interruptions, commands, supervision).
+   - **FastAPI Service:** Asynchronous backend serving the agent via REST API with streaming support.
+   - **Streamlit Interface:** User-friendly chat UI for interacting with the agent.
+   - **Multiple Agent Support:** Easily extendable to host multiple distinct agents.
+
+**5. Supporting Features:**
+   - **File Upload & Processing:** Allows users to upload files for the agent to potentially process or index.
+   - **Content Moderation:** Optional integration with LlamaGuard (requires Groq API key).
+   - **Feedback Mechanism:** Star-based feedback system integrated with LangSmith tracing.
+   - **Docker Support:** Comprehensive Dockerfiles and `compose.yaml` for development and deployment.
+   - **Testing:** Unit and integration tests covering various components.
 
 ### Key Files
 
-The repository is structured as follows:
-
-- `src/agents/`: Defines several agents with different capabilities
-- `src/schema/`: Defines the protocol schema
-- `src/core/`: Core modules including LLM definition and settings
-- `src/service/service.py`: FastAPI service to serve the agents
-- `src/client/client.py`: Client to interact with the agent service
-- `src/streamlit_app.py`: Streamlit app providing a chat interface
-- `tests/`: Unit and integration tests
+- `src/agents/`: Agent definitions (e.g., combining tools and logic). Includes `tools.py` where tools like `execute_sql` are defined.
+- `src/db_manager.py`: Manages PostgreSQL connections and includes schema discovery logic for Database RAG.
+- `src/prompt_generator.py`: Contains the function to generate dynamic system prompts for the agent based on discovered DB schema and available tools.
+- `src/rag_system.py`: Handles PDF processing (via llmsherpa), indexing document chunks, and searching logic for Document RAG.
+- `src/schema/`: Defines Pydantic models for data structures and API communication.
+- `src/core/`: Core modules like LLM configuration and application settings.
+- `src/service/service.py`: The FastAPI application serving the agent(s).
+- `src/client/client.py`: A client library for interacting with the agent service.
+- `src/streamlit_app.py`: The Streamlit chat interface application.
+- `tests/`: Unit and integration tests.
+- `docker/`: Dockerfiles for the services.
+- `compose.yaml`: Docker Compose configuration.
 
 ## Setup and Usage
 
@@ -83,7 +107,10 @@ The repository is structured as follows:
    ```
 
 2. Set up environment variables:
-   Create a `.env` file in the root directory. At least one LLM API key or configuration is required. See the [`.env.example` file](./.env.example) for a full list of available environment variables, including a variety of model provider API keys, header-based authentication, LangSmith tracing, testing and development modes, and OpenWeatherMap API key.
+   Create a `.env` file in the root directory.
+   - **LLM Configuration:** At least one LLM API key (e.g., `OPENAI_API_KEY`) is required.
+   - **Database Connection:** Set the `DATABASE_URL` variable to your PostgreSQL connection string (e.g., `DATABASE_URL=postgresql://user:password@host:port/dbname`). This is crucial for both agent memory and the RAG features.
+   - **Other Options:** See the [`.env.example` file](./.env.example) for a full list of available environment variables (other model providers, LangSmith tracing, LlamaGuard, etc.).
 
 3. You can now run the agent service and the Streamlit app locally, either with Docker or just using Python. The Docker setup is recommended for simpler environment setup and immediate reloading of the services when you make changes to your code.
 
@@ -221,3 +248,8 @@ Contributions are welcome! Please feel free to submit a Pull Request. Currently 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Note on PDF Processing Dependency:**
+The Document RAG features rely on processing PDFs via the [nlm-ingestor](https://github.com/nlmatics/nlm-ingestor) service, which uses llmsherpa. You will need to run this service separately (e.g., using its Docker image) and potentially configure its URL in the environment variables (`LLMSHERPA_API_URL`) if it's not running on the default localhost address expected by `src/rag_system.py`.

@@ -598,7 +598,7 @@ async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
             return {"thread_id": thread_id, "title": title}
         else:
             # Return default title and save it
-            default_title = "New conversation"
+            default_title = "Nouvelle conversation"
             # db_manager.save_conversation_title(UUID(thread_id), default_title)
             return {"thread_id": thread_id, "title": default_title}
     except ValueError:

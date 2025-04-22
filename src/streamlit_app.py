@@ -31,6 +31,8 @@ if "annotations" not in st.session_state:
     st.session_state.annotations = None
 if "confirming_delete_thread_id" not in st.session_state:
     st.session_state.confirming_delete_thread_id = None
+if "graphs" not in st.session_state:
+    st.session_state.graphs = {}
 
 # Function to set which PDF should be displayed
 def view_pdf(pdf_to_view, annotations=None):
@@ -133,6 +135,8 @@ async def main() -> None:
     if st.session_state.pdf_to_view:
         pdf_dialog()
 
+    if "suggested_command" not in st.session_state:
+        st.session_state.suggested_command = None
     user_text = None
 
     # Hide the streamlit upper-right chrome
@@ -181,7 +185,7 @@ async def main() -> None:
                     title = agent_client.get_conversation_title(query_thread_id)
                     st.session_state.conversation_title = title
                 except:
-                    st.session_state.conversation_title = "Conversation"
+                    st.session_state.conversation_title = "Nouvelle conversation"
         except AgentClientError as e:
             st.error(f"Erreur lors du chargement de la conversation : {e}")
 
@@ -321,13 +325,13 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("Combien d'articles dans la base de données ?", key="btn_db_query", use_container_width=True):
-                    st.session_state.suggested_command = "Combien de documents sont dans la base de données ?"
+                if st.button("Combien de lettres de suite de type NPX ?", key="btn_db_query", use_container_width=True, icon=":material/description:", type="secondary"):
+                    st.session_state.suggested_command = "Combien de lettres de suite de sont de type NPX ?"
                     st.rerun()
         
         with col2:
             with st.container():
-                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True):
+                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:"):
                     st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
                     st.rerun()
         
@@ -335,14 +339,14 @@ async def main() -> None:
         
         with col3:
             with st.container():
-                if st.button("Créer un graphique du nombre d'articles mentionnant l'IA", key="btn_create_graph", use_container_width=True):
-                    st.session_state.suggested_command = "Créer un graphique à barres montrant les 5 plus grands documents"
+                if st.button("Montre l'évolution du nombre de LDS sur le thème de la radioprotection", key="btn_create_graph", use_container_width=True, icon=":material/monitoring:"):
+                    st.session_state.suggested_command = "Crée un graphique linéaire du nombre de LDS par mois sur le thème de la radioprotection depuis 2024"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Résumer l'article le plus récent", key="btn_document_summary", use_container_width=True):
-                    st.session_state.suggested_command = "Résumer le document le plus récent"
+                if st.button("Résume la dernière inspection de Gravelines", key="btn_document_summary", use_container_width=True, icon=":material/list:"):
+                    st.session_state.suggested_command = "Résume la dernière LDS qui a eu lieue à Gravelines"
                     st.rerun()
 
 
@@ -352,6 +356,10 @@ async def main() -> None:
             yield m
 
     await draw_messages(amessage_iter())
+
+    if hasattr(st.session_state, "graphs") and st.session_state.graphs:
+        for graph_id, plot_data in st.session_state.graphs.items():
+            st.plotly_chart(plot_data)
 
     if user_input := st.chat_input('Votre message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         if st.session_state.suggested_command:
@@ -418,7 +426,7 @@ async def main() -> None:
 
             if len(messages) > 1 and st.session_state.conversation_title == "Nouvelle conversation":
                 try:
-                    title_prompt = f"Générer un titre court (< 50 caractères) résumant cette conversation. Premier message de l'utilisateur : {user_text}"
+                    title_prompt = f"Générer un titre court (< 40 caractères) résumant cette conversation. Premier message de l'utilisateur : {user_text}"
                     title_response = await agent_client.ainvoke(
                         message=title_prompt,
                         model=model
@@ -563,23 +571,19 @@ async def draw_messages(
                             if tool_result.tool_call_id:
                                 status = call_results[tool_result.tool_call_id]
                             
-                            # Handle different tool types
                             if tool_name == "Graph_Viewer" and agent_client:
                                 try:
-                                    # Get graph_id from the tool result
                                     graph_id = tool_result.content
                                     status.write(f"Récupération du graphique avec ID : {graph_id}")
                                     
                                     # Call the retrieve_graph function to get the graph data
                                     graph_data = agent_client.retrieve_graph(graph_id)
                                     
-                                    # Parse the graph data (assuming it's JSON)
                                     if graph_data:
                                         try:
-                                            # Try to parse as JSON for plotly
                                             plot_data = json.loads(graph_data)
-                                            status.write("Graphique récupéré avec succès")
-                                            st.plotly_chart(plot_data)
+                                            status.write("Graph retrieved successfully")                                            
+                                            st.session_state.graphs[graph_id] = plot_data                                            
                                         except json.JSONDecodeError:
                                             # If not JSON, display as text
                                             status.write("Données de graphique non-JSON récupérées")
@@ -679,7 +683,7 @@ async def handle_feedback() -> None:
             st.stop()
         
         st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
-        st.toast("Commentaire enregistré", icon=":material/reviews:")
+        st.toast("Note enregistrée", icon=":material/reviews:")
     
     # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
     if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:

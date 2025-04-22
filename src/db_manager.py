@@ -318,10 +318,6 @@ class DatabaseManager:
             cursor.close()
             self.release_connection(conn)
     
-    def query_to_dataframe(self, query: str) -> pd.DataFrame:
-        """Execute a query and return the results as a pandas DataFrame."""
-        return pd.read_sql(query, self.engine)
-    
     def is_embedding_enabled(self) -> bool:
         """Check if embedding functionality is enabled."""
         return self.embedding_enabled
@@ -504,3 +500,78 @@ class DatabaseManager:
             )
             
             return result is not None
+
+    def list_schemas(self) -> List[str]:
+        """List all non-system schemas in the database."""
+        query = """
+        SELECT schema_name 
+        FROM information_schema.schemata 
+        WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+          AND schema_name NOT LIKE 'pg_temp_%' 
+          AND schema_name NOT LIKE 'pg_toast_temp_%';
+        """
+        results = self.execute_query(query)
+        return [row[0] for row in results]
+
+    def list_tables(self, schema: str) -> List[str]:
+        """List all tables in a given schema."""
+        query = """
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = %s AND table_type = 'BASE TABLE';
+        """
+        results = self.execute_query(query, (schema,))
+        return [row[0] for row in results]
+
+    def get_table_columns(self, schema: str, table: str) -> List[Dict[str, str]]:
+        """Get column names and data types for a table."""
+        query = """
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_schema = %s AND table_name = %s
+        ORDER BY ordinal_position;
+        """
+        results = self.execute_query(query, (schema, table))
+        return [{'name': row[0], 'type': row[1]} for row in results]
+
+    def get_column_samples(self, schema: str, table: str, column: str, n: int = 30) -> List[Any]:
+        """
+        Get up to n distinct, non-null sample values from a column.
+        Fetches more internally to increase chances of getting diverse samples.
+        """
+        if not (schema.isidentifier() and table.isidentifier() and column.isidentifier()):
+             raise ValueError("Invalid schema, table, or column name")
+             
+        internal_limit = max(n * 5, 500) 
+        
+        query = f"""
+        SELECT DISTINCT "{column}"
+        FROM (
+            SELECT "{column}"
+            FROM "{schema}"."{table}"
+            WHERE "{column}" IS NOT NULL
+            LIMIT %s  -- Limit initial scan significantly
+        ) AS limited_scan
+        LIMIT %s; -- Apply the final limit 'n'
+        """
+        try:
+            results = self.execute_query(query, (internal_limit, n))
+            return [str(row[0]) if not isinstance(row[0], (str, int, float, bool, list, dict)) else row[0] for row in results]
+        except Exception as e:
+            logger.error(f"Error sampling column {schema}.{table}.{column}: {e}")
+            return [f"Error sampling: {e}"]
+
+
+    def identify_special_columns(self, schema: str, table: str) -> Dict[str, List[str]]:
+        """Identify columns potentially used for embeddings (vector) or full-text search (tsvector)."""
+        columns = self.get_table_columns(schema, table)
+        special_cols = {'embedding': [], 'tsvector': []}
+        for col in columns:
+            col_name = col['name']
+            col_type = col['type'].lower()
+            # Check for 'vector' type, potentially with dimensions like 'vector(1536)'
+            if 'vector' in col_type: 
+                special_cols['embedding'].append(col_name)
+            elif 'tsvector' == col_type:
+                special_cols['tsvector'].append(col_name)
+        return special_cols
