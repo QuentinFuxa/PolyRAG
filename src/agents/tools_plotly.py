@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -6,9 +7,8 @@ from langchain_core.tools import BaseTool, tool
 from agents._graph_store import GraphStore
 from db_manager import DatabaseManager
 
-
-
 graph_store = GraphStore()
+db_manager = DatabaseManager()
 
 def create_graph(
     query: str,            # SQL query
@@ -47,22 +47,23 @@ def create_graph(
         template (str): The chart style template
     """
 
-    print('Graph with the following parameters:')
-    print(f"Query: {query}")
-    print(f"Chart Type: {chart_type}")
-    print(f"X Column: {x_col}")
-    print(f"Y Column: {y_col}")
-    print(f"Color Column: {color_col}")
-    print(f"Size Column: {size_col}")
-    print(f"Title: {title}")
-    print(f"Width: {width}")
-    print(f"Height: {height}")
-    print(f"Orientation: {orientation}")
-    print(f"Labels: {labels}")
-    print(f"Template: {template}")
+    # print('Graph with the following parameters:')
+    # print(f"Query: {query}")
+    # print(f"Chart Type: {chart_type}")
+    # print(f"X Column: {x_col}")
+    # print(f"Y Column: {y_col}")
+    # print(f"Color Column: {color_col}")
+    # print(f"Size Column: {size_col}")
+    # print(f"Title: {title}")
+    # print(f"Width: {width}")
+    # print(f"Height: {height}")
+    # print(f"Orientation: {orientation}")
+    # print(f"Labels: {labels}")
+    # print(f"Template: {template}")
     
     # 1) Execute the SQL query
-    df = pd.read_sql(query, con=DatabaseManager.engine)
+    cleaned_query = re.sub(r'(?<!%)%(?!%)', '%%', query)
+    df = pd.read_sql(cleaned_query, con=DatabaseManager.engine)
 
     # Verify we have a non-empty DataFrame
     if df.empty:

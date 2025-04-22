@@ -256,7 +256,7 @@ async def main() -> None:
                     except:
                         date_str = updated_at
                     
-                    col1, col2, col3 = st.columns([8, 1, 1])
+                    col1, col2, col3 = st.columns([0.9, 0.05, 0.05])
                     with col1:
                         if st.button(
                             f"{title}",
@@ -325,13 +325,13 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("Combien de lettres de suite de type NPX ?", key="btn_db_query", use_container_width=True, icon=":material/description:", type="secondary"):
+                if st.button("Combien de lettres de suite de type NPX ?", key="btn_db_query", use_container_width=True, icon=":material/description:", type="secondary", disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "Combien de lettres de suite de sont de type NPX ?"
                     st.rerun()
         
         with col2:
             with st.container():
-                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:"):
+                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:", disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
                     st.rerun()
         
@@ -339,13 +339,13 @@ async def main() -> None:
         
         with col3:
             with st.container():
-                if st.button("Montre l'évolution du nombre de LDS sur le thème de la radioprotection", key="btn_create_graph", use_container_width=True, icon=":material/monitoring:"):
+                if st.button("Montre l'évolution du nombre de LDS sur le thème de la radioprotection", key="btn_create_graph", use_container_width=True, icon=":material/monitoring:", disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "Crée un graphique linéaire du nombre de LDS par mois sur le thème de la radioprotection depuis 2024"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Résume la dernière inspection de Gravelines", key="btn_document_summary", use_container_width=True, icon=":material/list:"):
+                if st.button("Résume la dernière inspection de Gravelines", key="btn_document_summary", use_container_width=True, icon=":material/list:", disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "Résume la dernière LDS qui a eu lieue à Gravelines"
                     st.rerun()
 
