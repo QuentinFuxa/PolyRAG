@@ -14,15 +14,15 @@ from schema.task_data import TaskData, TaskDataStatus
 import json
 from streamlit_pdf_viewer import pdf_viewer
 from rag_system import RAGSystem
-from get_config import load_config
 from db_manager import DatabaseManager
 
 db_manager = DatabaseManager()
 rag_system = RAGSystem()
-config = load_config()
 
 APP_TITLE = "AI RAG Service Toolkit"
-APP_ICON = "🧪"
+APP_ICON = ":material/experiment:"
+AI_ICON = ":material/flare:"
+USER_ICON = ":material/person:"
 
 # Initialize session state for PDF viewing
 if "pdf_to_view" not in st.session_state:
@@ -49,7 +49,7 @@ def pdf_dialog():
         st.session_state.in_pdf_dialog = True
         
         # First, try the default PDF path
-        default_pdf_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
+        default_pdf_path = os.environ['PDF_FOLDER'] + st.session_state.pdf_to_view + '.pdf'
         pdf_path = default_pdf_path
         
         # Check if the file exists in the default location
@@ -337,7 +337,7 @@ async def main() -> None:
                 WELCOME = "Hello! I'm an AI-powered research assistant with a Postgres database access, a plotly and PDF visualisation tools. Ask me anything!"
             case _:
                 WELCOME = "Hello! I'm an AI agent. Ask me anything!"
-        with st.chat_message("ai"):
+        with st.chat_message("ai", avatar=AI_ICON):
             st.write(WELCOME)
 
 
@@ -400,7 +400,7 @@ async def main() -> None:
             for file in files:
                 additional_markdown += f""":violet-badge[:material/description: {file.name}] """
 
-        st.chat_message("human").write(user_text + additional_markdown)
+        st.chat_message("human", avatar=USER_ICON).write(user_text + additional_markdown)
         
         if files:
             upload_status = st.status("File being uploaded...", state="running")
@@ -443,7 +443,7 @@ async def main() -> None:
                     file_ids=uploaded_file_ids if files else None,
                 )
                 messages.append(response)
-                st.chat_message("ai").write(response.content)
+                st.chat_message("ai", avatar=AI_ICON).write(response.content)
 
             if len(messages) > 1 and st.session_state.conversation_title == "New conversation":
                 try:
@@ -511,7 +511,7 @@ async def draw_messages(
             if not streaming_placeholder:
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
                 with st.session_state.last_message:
                     streaming_placeholder = st.empty()
 
@@ -535,7 +535,7 @@ async def draw_messages(
                     for file in msg.attached_files:
                         additional_markdown += f""":violet-badge[:material/description: {file}] """
 
-                st.chat_message("human").write(msg.content + additional_markdown)
+                st.chat_message("human", avatar=USER_ICON).write(msg.content + additional_markdown)
 
             # A message from the agent is the most complex case, since we need to
             # handle streaming tokens and tool calls.
@@ -547,7 +547,7 @@ async def draw_messages(
                 # If the last message type was not AI, create a new chat message
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
 
                 with st.session_state.last_message:
                     # If the message has content, write it out.

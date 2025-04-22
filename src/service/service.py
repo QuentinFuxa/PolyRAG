@@ -37,7 +37,6 @@ from service.utils import (
     remove_tool_calls,
 )
 from db_manager import DatabaseManager
-from get_config import load_config
 
 from fastapi import File, UploadFile
 from typing import Optional
@@ -400,8 +399,7 @@ async def upload_file(
             if file.content_type.startswith('text/'):
                 text_content = contents.decode('utf-8', errors='ignore')
             elif file.content_type.startswith('application/pdf'):
-                config = load_config()
-                pdf_parser = config.get("pdf-parser", {})
+                pdf_parser = os.environ.get("UPLOADED_PDF_PARSER", None)
                 
                 base_storage_dir = "uploaded"
                 thread_dir = thread_id if thread_id else "no_thread"

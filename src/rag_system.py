@@ -241,15 +241,17 @@ class RAGSystem:
                     self.db_manager.execute_query(embedding_schema)
             except Exception as e:
                 print(f"Warning: Could not create vector extension or embedding column: {e}")
-                print("Falling back to text search only.")
-                self.use_embeddings = False
+                print("Falling back to text search only.") # Corrected indentation
+                self.use_embeddings = False # Corrected indentation
     
-    def index_document(self, pdf_path, title=None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
-        """Index a PDF document with optional pre-processed sherpa data"""
-        # Generate a title if not provided
-        if title is None:
-            title = os.path.basename(pdf_path).split(".")[0]
-        
+    def index_document(self, pdf_path, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
+        """
+        Index a PDF document using its path as the unique identifier (name).
+        Optionally accepts pre-processed sherpa data.
+        """
+        # Use the pdf_path directly as the unique name identifier for the document source
+        document_name = pdf_path
+
         # Process the document with llmsherpa if data not provided
         if existing_sherpa_data is None:
             sherpa_data = self.sherpa_processor.process_pdf(pdf_path)
@@ -265,10 +267,10 @@ class RAGSystem:
                 if block.content:
                     block.embedding = self.embedding_manager.compute_embedding(block.content)
         
-        # Insert blocks
-        self._insert_blocks(title, blocks, table_name)
+        # Insert blocks using the document_name (pdf_path)
+        self._insert_blocks(document_name, blocks, table_name)
         
-        return title
+        return document_name # Return the name used for indexing
     
     def _insert_blocks(self, name, blocks, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Insert blocks into database"""

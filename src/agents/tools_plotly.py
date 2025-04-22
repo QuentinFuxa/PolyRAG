@@ -64,7 +64,7 @@ def create_graph(
     
     # 1) Execute the SQL query
     cleaned_query = re.sub(r'(?<!%)%(?!%)', '%%', query)
-    df = pd.read_sql(cleaned_query, con=DatabaseManager.engine)
+    df = pd.read_sql(cleaned_query, con=db_manager.engine)
 
     # Verify we have a non-empty DataFrame
     if df.empty:
