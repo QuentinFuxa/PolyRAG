@@ -2,12 +2,56 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-# Assuming DatabaseManager is accessible, adjust import if needed
-# from .db_manager import DatabaseManager
-# For now, using a placeholder import path
+import logging
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+
 from db_manager import DatabaseManager
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from core import settings, get_model
 
 logger = logging.getLogger(__name__)
+
+try:
+    summarization_model = get_model(settings.DEFAULT_MODEL) 
+    summarization_prompt_template = ChatPromptTemplate.from_messages([
+        ("system", """You are an expert data analyst. Given the following information about a database column and sample values, provide a concise, one-sentence summary describing the nature of the data in this column. Focus on data type, range, common patterns, or purpose if discernible. Be brief and informative.
+
+Column Name: `{col_name}`
+Column Type: `{col_type}`
+Sample Values (up to 30):
+{sample_values_str}"""),
+        ("human", "Provide the concise summary:")
+    ])
+    summarization_chain = summarization_prompt_template | summarization_model | StrOutputParser()
+    logger.info("Summarization LLM chain initialized.")
+except Exception as e:
+    logger.error(f"Failed to initialize summarization LLM chain: {e}")
+    summarization_chain = None
+
+def _summarize_column_with_llm(col_name: str, col_type: str, samples: List[Any]) -> str:
+    """Generates a column summary using an LLM."""
+    if not summarization_chain:
+        return "(LLM summarizer not available)"
+    if not samples:
+        return "No samples available for summary."
+
+    sample_values_str = "\n".join([f"- {repr(s)}" for s in samples])
+
+    try:
+        summary = summarization_chain.invoke({
+            "col_name": col_name,
+            "col_type": col_type,
+            "sample_values_str": sample_values_str
+        })
+        summary = summary.strip().replace("\n", " ")
+        return summary
+    except Exception as e:
+        logger.error(f"Error generating LLM summary for column {col_name}: {e}")
+        return f"(Error during LLM summary generation: {e})"
+
+
 
 def generate_db_rag_prompt(
     db_name: str,
@@ -15,11 +59,12 @@ def generate_db_rag_prompt(
     tables_to_include: Optional[Dict[str, List[str]]] = None,
     assistant_name: str = "Database Query Assistant",
     db_type: str = "PostgreSQL",
-    include_samples: bool = True,
-    sample_size: int = 3
+    include_summary: bool = True,
+    examples_to_show: int = 5
 ) -> str:
     """
     Generates a system prompt for an LLM to query a database based on discovered schema.
+    Includes column summaries and a limited number of examples.
 
     Args:
         db_name: Name of the database (for informational purposes).
@@ -28,8 +73,8 @@ def generate_db_rag_prompt(
                            If None, all tables in schemas_to_include are used.
         assistant_name: Name for the assistant in the prompt.
         db_type: Type of the database (e.g., PostgreSQL).
-        include_samples: Whether to fetch and include column sample data.
-        sample_size: Number of distinct samples to fetch per column.
+        include_summary: Whether to generate and include a summary for each column.
+        examples_to_show: Number of distinct sample values to show in the prompt.
 
     Returns:
         A formatted system prompt string.
@@ -42,8 +87,6 @@ def generate_db_rag_prompt(
 
     current_date = datetime.now().strftime("%Y-%m-%d")
     prompt_lines = [
-        f"You are a helpful {assistant_name}.",
-        f"Today's date is {current_date}.",
         f"You are a helpful {assistant_name}.",
         f"Today's date is {current_date}.",
         f"You have access to a {db_type} database named '{db_name}' and tools to interact with associated documents.",
@@ -91,31 +134,43 @@ def generate_db_rag_prompt(
                         table_descriptions.append(f"{i+1}. **Column Name**: `{col_name}`")
                         table_descriptions.append(f"   - **Type**: `{col_type}`")
 
-                        # Add notes for special columns
                         if col_name in embedding_cols:
                             table_descriptions.append(f"   - **Note**: This column contains embeddings, suitable for semantic similarity searches (e.g., using vector operators like `<=>`).")
                         if col_name in tsvector_cols:
                              table_descriptions.append(f"   - **Note**: This column contains tsvector data, suitable for full-text keyword searches (e.g., using functions like `to_tsquery` and `@@`).")
 
-                        if include_samples:
+                        samples = []
+                        if include_summary or examples_to_show > 0:
                             try:
-                                samples = db_manager.get_column_samples(schema, table, col_name, n=sample_size)
-                                if samples:
-                                     # Format samples nicely, handling potential non-string types safely
-                                    sample_str = ", ".join([repr(s) for s in samples])
-                                    table_descriptions.append(f"   - **Example values**: `{sample_str}`")
-                                else:
-                                     table_descriptions.append(f"   - **Example values**: (No distinct non-null values found or sampled)")
+                                samples = db_manager.get_column_samples(schema, table, col_name) 
                             except Exception as sample_error:
                                 logger.error(f"Error sampling column {schema}.{table}.{col_name}: {sample_error}")
-                                table_descriptions.append(f"   - **Example values**: (Error retrieving samples: {sample_error})")
-                        table_descriptions.append("") # Add space between columns
+                                table_descriptions.append(f"   - **Summary**: (Error retrieving samples: {sample_error})")
+
+                        if examples_to_show > 0 and samples:
+                            display_count = min(10, len(samples))
+                            if include_summary:
+                                summary = _summarize_column_with_llm(col_name, col_type, samples)
+                                table_descriptions.append(f"   - **Summary**: {summary}")
+
+                            display_count = min(examples_to_show, len(samples))
+                            limited_examples = samples[:display_count]
+                            example_str = ", ".join([repr(s) for s in limited_examples])
+                            table_descriptions.append(f"   - **Examples**: `{example_str}`")
+
+                        elif examples_to_show > 0:
+                             table_descriptions.append(f"   - **Examples**: (No distinct non-null values found or sampled)")
+                             if include_summary:
+                                 table_descriptions.append(f"   - **Summary**: (No samples to summarize)")
+
+
+                        table_descriptions.append("")
 
                 except Exception as table_error:
                     logger.error(f"Error processing table {schema}.{table}: {table_error}")
                     table_descriptions.append(f"  - (Error retrieving details for this table: {table_error})")
                 
-                table_descriptions.append("") # Add space between tables
+                table_descriptions.append("")
 
         except Exception as schema_error:
             logger.error(f"Error processing schema {schema}: {schema_error}")
@@ -126,7 +181,6 @@ def generate_db_rag_prompt(
     prompt_lines.extend(table_descriptions)
 
 
-    # --- Add RAG Tool Descriptions and Instructions ---
     prompt_lines.extend([
         "",
         "## Document Interaction Tools",
@@ -157,7 +211,7 @@ def generate_db_rag_prompt(
         "  - `block_ids`: (List[int], required) List of block IDs (obtained from `Query_RAG` or `Query_RAG_From_ID`) to highlight in the PDF.",
         "- **IMPORTANT**: After using `Query_RAG` and/or `Query_RAG_From_ID` to find information in a document, ALWAYS call `PDF_Viewer` as the final step for that document interaction to display the highlighted context to the user. A button will appear for the user to view the PDF.",
         "",
-        "### Tool: execute_sql", # Keep the SQL tool description
+        "### Tool: execute_sql",
         "- Use this tool to execute SQL queries against the database described above.",
         "- Parameters:",
         f"  - `query`: (string, required) The SQL query to execute. Ensure it is valid for {db_type}.",
@@ -184,38 +238,23 @@ def generate_db_rag_prompt(
 
     return "\n".join(prompt_lines)
 
-# Example Usage (for testing purposes)
+# Example Usage
 if __name__ == '__main__':
-    # Configure logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # --- Configuration ---
-    # Replace with your actual database name and desired schemas/tables
-    test_db_name = "asnr_chat_db" # Example DB name from config
-    # Schemas to inspect (e.g., 'public' or custom schemas)
+    test_db_name = "arxiv_qbio_metadata_2025"
     test_schemas = ['public'] 
-    # Optional: Specify exact tables within schemas, or leave None to get all
-    # test_tables = {'public': ['public_data', 'another_table']} 
     test_tables = None 
-    # --- End Configuration ---
 
     print(f"Generating prompt for database '{test_db_name}', schemas: {test_schemas}...")
     
-    # Ensure DB connection details are correctly set in config.yml or environment variables
-    # for DatabaseManager to work.
     generated_prompt = generate_db_rag_prompt(
         db_name=test_db_name,
         schemas_to_include=test_schemas,
         tables_to_include=test_tables,
-        include_samples=True,
-        sample_size=3
+        include_summary=True,
+        examples_to_show=5
     )
 
-    print("\n--- Generated Prompt ---")
-    print(generated_prompt)
-    print("--- End Generated Prompt ---")
-
-    # You might want to save this to a file:
-    # with open("generated_prompt.txt", "w") as f:
-    #     f.write(generated_prompt)
-    # print("\nPrompt saved to generated_prompt.txt")
+    with open("system_prompt.txt", "w") as f:
+        f.write(generated_prompt)

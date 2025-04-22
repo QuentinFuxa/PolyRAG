@@ -534,22 +534,28 @@ class DatabaseManager:
         results = self.execute_query(query, (schema, table))
         return [{'name': row[0], 'type': row[1]} for row in results]
 
-    def get_column_samples(self, schema: str, table: str, column: str, n: int = 3) -> List[Any]:
-        """Get distinct, non-null sample values from a column."""
+    def get_column_samples(self, schema: str, table: str, column: str, n: int = 30) -> List[Any]:
+        """
+        Get up to n distinct, non-null sample values from a column.
+        Fetches more internally to increase chances of getting diverse samples.
+        """
         if not (schema.isidentifier() and table.isidentifier() and column.isidentifier()):
-             raise ValueError("Invalid schema, table, or column name")             
+             raise ValueError("Invalid schema, table, or column name")
+             
+        internal_limit = max(n * 5, 500) 
+        
         query = f"""
         SELECT DISTINCT "{column}"
         FROM (
             SELECT "{column}"
             FROM "{schema}"."{table}"
             WHERE "{column}" IS NOT NULL
-            LIMIT 100  -- Limit initial scan for distinct values
-        ) AS limited_sample
-        LIMIT %s;
+            LIMIT %s  -- Limit initial scan significantly
+        ) AS limited_scan
+        LIMIT %s; -- Apply the final limit 'n'
         """
         try:
-            results = self.execute_query(query, (n,))
+            results = self.execute_query(query, (internal_limit, n))
             return [str(row[0]) if not isinstance(row[0], (str, int, float, bool, list, dict)) else row[0] for row in results]
         except Exception as e:
             logger.error(f"Error sampling column {schema}.{table}.{column}: {e}")
