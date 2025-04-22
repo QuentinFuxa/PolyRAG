@@ -241,16 +241,24 @@ class RAGSystem:
                     self.db_manager.execute_query(embedding_schema)
             except Exception as e:
                 print(f"Warning: Could not create vector extension or embedding column: {e}")
-                print("Falling back to text search only.") # Corrected indentation
-                self.use_embeddings = False # Corrected indentation
+                print("Falling back to text search only.")
+                self.use_embeddings = False
     
-    def index_document(self, pdf_path, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
+    def index_document(self, pdf_path, document_name_override: Optional[str] = None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
         """
-        Index a PDF document using its path as the unique identifier (name).
+        Index a PDF document from a given path.
+        Uses pdf_path as the unique identifier (name) by default, but can be overridden.
         Optionally accepts pre-processed sherpa data.
+
+        Args:
+            pdf_path: Path to the PDF file to process.
+            document_name_override: If provided, use this string as the unique 'name' identifier
+                                     when storing blocks, instead of pdf_path. Useful for URLs
+                                     where the path is temporary.
+            existing_sherpa_data: Pre-processed data from llmsherpa (optional).
+            table_name: The database table to insert blocks into.
         """
-        # Use the pdf_path directly as the unique name identifier for the document source
-        document_name = pdf_path
+        document_name = document_name_override if document_name_override is not None else pdf_path
 
         # Process the document with llmsherpa if data not provided
         if existing_sherpa_data is None:
