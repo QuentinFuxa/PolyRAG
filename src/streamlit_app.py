@@ -2,7 +2,7 @@ import asyncio
 import os
 import urllib.parse
 from collections.abc import AsyncGenerator
-
+from uuid import uuid4
 import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -214,6 +214,7 @@ async def main() -> None:
             st.query_params.clear()
             st.session_state.messages = []
             st.session_state.conversation_title = "New conversation"
+            st.session_state.thread_id = str(uuid4())
             st.rerun()
 
         if "conversation_title" not in st.session_state:
