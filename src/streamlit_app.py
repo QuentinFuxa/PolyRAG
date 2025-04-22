@@ -257,7 +257,7 @@ async def main() -> None:
                     except:
                         date_str = updated_at
                     
-                    col1, col2, col3 = st.columns([8, 1, 1])
+                    col1, col2, col3 = st.columns([0.9, 0.05, 0.05])
                     with col1:
                         if st.button(
                             f"{title}",
@@ -344,13 +344,13 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True):
+                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "How many documents are in the database?"
                     st.rerun()
         
         with col2:
             with st.container():
-                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True):
+                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
                     st.rerun()
         
@@ -358,13 +358,13 @@ async def main() -> None:
         
         with col3:
             with st.container():
-                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True):
+                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "Create a bar chart showing the 5 largest documents"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True):
+                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "Summarize the most recent document"
                     st.rerun()
 
