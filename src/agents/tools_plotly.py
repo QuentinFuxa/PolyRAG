@@ -5,14 +5,15 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine
 from langchain_core.tools import BaseTool, tool
 from agents._graph_store import GraphStore
+from typing import Optional, List, Dict, Any
 from db_manager import DatabaseManager
 
 graph_store = GraphStore()
 db_manager = DatabaseManager()
-db_manager = DatabaseManager()
 
 def create_graph(
-    query: str,            # SQL query
+    query: Optional[str] = None, # SQL query to fetch data (use either query or data)
+    data: Optional[List[Dict[str, Any]]] = None, # Direct data input as list of dicts (use either query or data)
     chart_type: str ='bar',      # chart type (bar, scatter, line, pie, etc.)
     x_col: str = None,            # column name for the X-axis
     y_col: str = None,            # column name for the Y-axis
@@ -26,18 +27,18 @@ def create_graph(
     template: str='plotly_white' # chart style template
 ):
     """
-    Executes the SQL query, stores the result in a Pandas DataFrame, 
-    and generates a Plotly chart as JSON.
-    
-    The tool returns graph which will be rendered automatically - 
+    Generates a Plotly chart as JSON from either a SQL query or directly provided data.
+
+    The tool returns a graph ID which will be rendered automatically by the frontend.
     DO NOT create links or references to the graph in your response.
     Just acknowledge that a graph has been created and explain what it shows.
-    
+
     Args:
-        query (str): A valid SQL query
+        query (Optional[str]): A valid SQL query to fetch data. Provide either 'query' or 'data'.
+        data (Optional[List[Dict[str, Any]]]): Data provided directly as a list of dictionaries. Provide either 'query' or 'data'.
         chart_type (str): The type of chart to generate (bar, scatter, line, pie, etc.)
-        x_col (str): The column name for the X-axis
-        y_col (str): The column name for the Y-axis
+        x_col (str): The column name for the X-axis.
+        y_col (str): The column name for the Y-axis.
         color_col (str): The column name for color encoding (categories)
         size_col (str): The column name for size encoding (e.g., scatter bubble chart)
         title (str): The chart title
@@ -61,10 +62,23 @@ def create_graph(
     # print(f"Orientation: {orientation}")
     # print(f"Labels: {labels}")
     # print(f"Template: {template}")
-    
-    # 1) Execute the SQL query
-    cleaned_query = re.sub(r'(?<!%)%(?!%)', '%%', query)
-    df = pd.read_sql(cleaned_query, con=db_manager.engine)
+
+    # Validate input: Ensure either query or data is provided, but not both
+    if query and data:
+        raise ValueError("Provide either 'query' or 'data', not both.")
+    if not query and not data:
+        raise ValueError("Must provide either 'query' or 'data'.")
+
+    # 1) Load data into DataFrame
+    if data:
+        df = pd.DataFrame(data)
+    elif query:
+        # Execute the SQL query
+        cleaned_query = re.sub(r'(?<!%)%(?!%)', '%%', query)
+        df = pd.read_sql(cleaned_query, con=db_manager.engine)
+    else:
+         # This case should not be reached due to validation above, but added for safety
+         raise ValueError("No data source provided (neither query nor data).")
 
     # Verify we have a non-empty DataFrame
     if df.empty:
