@@ -12,7 +12,7 @@ from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 import json
-from streamlit_pdf_viewer import pdf_viewer
+from pdf_viewer_with_annotations import display_pdf
 from rag_system import RAGSystem
 from db_manager import DatabaseManager
 
@@ -45,85 +45,22 @@ def view_pdf(pdf_to_view, annotations=None):
 
 @st.dialog("Document", width="large")
 def pdf_dialog():
-    try:
-        st.session_state.in_pdf_dialog = True
-        
-        # First, try the default PDF path
-        default_pdf_path = os.environ['PDF_FOLDER'] + st.session_state.pdf_to_view + '.pdf'
-        pdf_path = default_pdf_path
-        
-        # Check if the file exists in the default location
-        if not os.path.exists(default_pdf_path):
-            # If not found, query the database to look for uploaded PDF
-            try:
-                # Get thread_id from session state
-                thread_id = st.session_state.thread_id
-                
-                # Query the database to find the file
-                query = """
-                SELECT metadata 
-                FROM files 
-                WHERE thread_id = %s AND metadata->>'original_name' LIKE %s
-                ORDER BY created_at DESC 
-                LIMIT 1
-                """
-                
-                # Use the document name to find matches
-                filename_pattern = f"%{st.session_state.pdf_to_view}%"
-                results = db_manager.execute_query(query, (thread_id, filename_pattern))
-                
-                if results and len(results) > 0:
-                    # Extract the storage path from metadata
-                    metadata = results[0][0]  # First row, first column (metadata JSON)
-                    if isinstance(metadata, str):
-                        metadata = json.loads(metadata)
-                    
-                    if 'storage_path' in metadata:
-                        pdf_path = metadata['storage_path']
-                    else:
-                        # Fall back to checking the uploaded folder directly
-                        uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
-                        if os.path.exists(uploaded_pdf_path):
-                            pdf_path = uploaded_pdf_path
-                else:
-                    # Try the direct path without DB lookup
-                    uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
-                    if os.path.exists(uploaded_pdf_path):
-                        pdf_path = uploaded_pdf_path
-            except Exception as e:
-                # Continue with default path if database query fails
-                pass
-        
-        # Display status message showing which path is being used
-        if pdf_path != default_pdf_path:
-            st.info(f"Displaying uploaded document: {os.path.basename(pdf_path)}")
-        
-        # Display the PDF with the determined path
-        pdf_viewer(
-            pdf_path, 
-            render_text=True,
-            pages_vertical_spacing=0,
-            annotations=st.session_state.annotations,
-            annotation_outline_size=3,
-            scroll_to_annotation=True,
-        )
-        
-        if st.button("Close"):
-            st.session_state.pdf_to_view = None
-            st.session_state.in_pdf_dialog = False
-            st.rerun()
-        
-        # Reset state after closing
-        st.session_state.pdf_to_view = None
-        st.session_state.in_pdf_dialog = False
-        
-    except Exception as e:
-        st.error(f"Error displaying PDF: {e}")
-        st.write(f"Unable to find PDF: {st.session_state.pdf_to_view}")
-        
-        if st.button("Close Error"):
-            st.session_state.pdf_to_view = None
+    """Displays the selected PDF using the new display_pdf function."""
+    st.session_state.in_pdf_dialog = True
+    
+    pdf_name = st.session_state.pdf_to_view
+    annotations = st.session_state.annotations
 
+    if pdf_name:
+        display_pdf(document_name=pdf_name, annotations=annotations)
+    else:
+        st.error("No PDF selected for viewing.")
+
+    if st.button("Close"):
+        st.session_state.pdf_to_view = None
+        st.session_state.annotations = None
+        st.session_state.in_pdf_dialog = False
+        st.rerun()
 
 async def main() -> None:
     st.set_page_config(

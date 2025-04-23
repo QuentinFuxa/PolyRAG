@@ -201,12 +201,13 @@ class RAGSystem:
             x1 FLOAT,
             y1 FLOAT,
             parent_idx INTEGER,  -- Changed from parent_id to parent_idx
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED, -- Added generated TSVECTOR column
             UNIQUE(name, block_idx)  -- Changed unique constraint
         );
         
-        -- Text search index
-        CREATE INDEX IF NOT EXISTS idx_document_blocks_content ON {schema_app_data}.rag_document_blocks 
-        USING gin(to_tsvector('english', content));
+        -- Text search index on the generated column
+        CREATE INDEX IF NOT EXISTS idx_document_blocks_content_tsv ON {schema_app_data}.rag_document_blocks 
+        USING gin(content_tsv);
         """
         
         self.db_manager.execute_query(schema)
@@ -419,11 +420,11 @@ class RAGSystem:
             x1, 
             y1,
             parent_idx,
-            ts_rank_cd(content_tsv, to_tsquery('french', %s)) AS score
+            ts_rank_cd(content_tsv, to_tsquery('english', %s)) AS score -- Use 'english' to match index
         FROM 
             {schema_app_data}.rag_document_blocks
         WHERE 
-            content_tsv @@ to_tsquery('french', %s)
+            content_tsv @@ to_tsquery('english', %s) -- Use 'english' to match index
         """
         
         params = [ts_query, ts_query]

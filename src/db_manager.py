@@ -32,7 +32,9 @@ class DatabaseManager:
     def _initialize(self):
         """Initialize connection, tables, connection pool and embedding capabilities."""
         # Regular connection setup
-        self.connection_string = os.environ.get("DATABASE_URL")
+        self.connection_string = os.getenv("DATABASE_URL")
+        if not self.connection_string:
+            raise ValueError("DATABASE_URL environment variable not set.")
         self.engine = create_engine(self.connection_string)        
         self.connection = psycopg2.connect(self.connection_string)
         register_uuid()
@@ -80,15 +82,6 @@ class DatabaseManager:
                 text_content TEXT,
                 metadata JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-            
-            # For the memory
-            cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema_app_data}.memory (
-                thread_id UUID PRIMARY KEY,
-                state JSONB,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
@@ -268,37 +261,7 @@ class DatabaseManager:
             if result:
                 return result[0]
             return None
-    
-    # Memory operations
-    def save_memory(self, thread_id: UUID, state: Dict[str, Any]) -> None:
-        """Save the agent's state/memory for a thread."""
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO {schema_app_data}.memory (thread_id, state)
-                VALUES (%s, %s)
-                ON CONFLICT (thread_id) 
-                DO UPDATE SET state = %s, updated_at = CURRENT_TIMESTAMP
-                """,
-                (thread_id, Json(state), Json(state))
-            )
-    
-    def get_memory(self, thread_id: UUID) -> Optional[Dict[str, Any]]:
-        """Retrieve the agent's state/memory for a thread."""
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT state
-                FROM {schema_app_data}.memory
-                WHERE thread_id = %s
-                """,
-                (thread_id,)
-            )
-            result = cursor.fetchone()
-            if result:
-                return result[0]
-            return None
-    
+
     def execute_query(self, query: str, params=None) -> List[tuple]:
         """
         Execute a SQL query with optional parameters and return the results.
@@ -509,15 +472,6 @@ class DatabaseManager:
             )
             result = cursor.fetchone()
             
-            # Also delete related memory and files
-            cursor.execute(
-                f"""
-                DELETE FROM {schema_app_data}.memory
-                WHERE thread_id = %s
-                """,
-                (thread_id,)
-            )
-            
             cursor.execute(
                 f"""
                 DELETE FROM {schema_app_data}.files
@@ -597,14 +551,12 @@ class DatabaseManager:
             A dictionary with source details (id, name, path, url, is_indexed) or None if not found.
         """
         with self.connection.cursor(cursor_factory=DictCursor) as cursor:
-            cursor.execute(
-                f"""
+            query = f"""
                 SELECT id, name, path, url, is_indexed, created_at, updated_at
                 FROM {schema_app_data}.document_sources
-                WHERE name = %s
-                """,
-                (name,)
-            )
+                WHERE name LIKE %s
+            """
+            cursor.execute(query, (f"%{name}%",))
             result = cursor.fetchone()
             if result:
                 return dict(result)

@@ -52,16 +52,16 @@ def index_pdf_from_url(pdf_url, db_manager, rag_system, temp_dir):
         if source_status and source_status.get('is_indexed'):
             print(f"URL '{pdf_url}' is already indexed. Skipping.")
             return source_status.get('id') # Return existing source ID
-
-        source_id = db_manager.add_document_source(name=pdf_url, url=pdf_url)
+        pdf_name = pdf_url.split('/')[-1][:-4]
+        source_id = db_manager.add_document_source(name=pdf_name, url=pdf_url)
         print(f"Ensured document source entry for URL '{pdf_url}' with ID: {source_id}")
 
         temp_pdf_path = download_pdf(pdf_url, temp_dir)
         if not temp_pdf_path:
             print(f"Skipping indexing for {pdf_url} due to download failure.")
             return None
-
-        rag_system.index_document(temp_pdf_path, document_name_override=pdf_url)
+        
+        rag_system.index_document(temp_pdf_path, document_name_override=pdf_name)
         print(f"Successfully processed and indexed content from URL: {pdf_url}")
 
         if db_manager.set_document_indexed(name=pdf_url, indexed=True):
