@@ -19,7 +19,7 @@ from db_manager import DatabaseManager
 db_manager = DatabaseManager()
 rag_system = RAGSystem()
 
-APP_TITLE = "AI RAG Service Toolkit"
+APP_TITLE = "PolyRAG"
 APP_ICON = ":material/experiment:"
 AI_ICON = ":material/flare:"
 USER_ICON = ":material/person:"
@@ -144,8 +144,8 @@ async def main() -> None:
     with st.sidebar:
         st.header(f"{APP_ICON} {APP_TITLE}")
         ""
-        """Platform for database exploration, document analysis, and data visualization. Powered by LangGraph, PostgreSQL, Plotly and nlm-ingestor.
-        Built with FastAPI and Streamlit."""
+        """Platform for database and PDF document RAG, with visualization capabilities.
+        Powered by LangGraph, PostgreSQL, Plotly and PDF processors. Built with FastAPI and Streamlit."""
                 
         if st.button("**New conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
             st.query_params.clear()
@@ -236,25 +236,12 @@ async def main() -> None:
             )
             use_streaming = st.toggle("Stream results", value=True)
 
-        @st.dialog("Architecture")
-        def architecture_dialog() -> None:
-            st.image(
-                "https://github.com/JoshuaC215/agent-service-toolkit/blob/main/media/agent_architecture.png?raw=true"
-            )
-            "[View full size on Github](https://github.com/JoshuaC215/agent-service-toolkit/blob/main/media/agent_architecture.png)"
-            st.caption(
-                "App hosted on [Streamlit Cloud](https://share.streamlit.io/) with FastAPI service running in [Azure](https://learn.microsoft.com/en-us/azure/app-service/)"
-            )
-
-        if st.button(":material/schema: Architecture", use_container_width=True):
-            architecture_dialog()
-
         with st.popover(":material/policy: Privacy", use_container_width=True):
             st.write(
                 "Prompts, responses and feedback in this app are anonymously recorded and saved to LangSmith for product evaluation and improvement purposes only."
             )
 
-        "[View the source code](https://github.com/JoshuaC215/agent-service-toolkit)"
+        "[View the source code](https://github.com/QuentinFuxa/PolyRAG)"
         st.caption(
             "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: .  "
         )
@@ -271,7 +258,7 @@ async def main() -> None:
             case "research-assistant":
                 WELCOME = "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!"
             case "pg_rag_assistant":
-                WELCOME = "Hello! I'm an AI-powered research assistant with a Postgres database access, a plotly and PDF visualisation tools. Ask me anything!"
+                WELCOME = "Hello! I'm an AI-powered research assistant with Postgres database access, PDF analysis, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!"
             case _:
                 WELCOME = "Hello! I'm an AI agent. Ask me anything!"
         with st.chat_message("ai", avatar=AI_ICON):
@@ -282,28 +269,27 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("How many articles in the database?", key="btn_db_query", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "How many documents are in the database?"
+                if st.button("How many preprints in the q-bio.PE category since the beginning of the year?", key="btn_db_query", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = "How many preprints in the q-bio.PE category since the beginning of the year?"
                     st.rerun()
         
         with col2:
             with st.container():
-                if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
+                if st.button("Plot a graph of anemia distribution by condition and age for the year 2012", key="btn_create_graph", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = "Plot a graph of anemia distribution by condition and age for the year 2012"
                     st.rerun()
-        
         col3, col4 = st.columns(2, gap="medium")
         
         with col3:
             with st.container():
-                if st.button("Create a graph of the number of articles mentioning AI", key="btn_create_graph", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "Create a bar chart showing the 5 largest documents"
+                if st.button("/debug 2504.12888v1", key="btn_debug_pdf", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = "/debug 2504.12888v1"
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Summarize the most recent article", key="btn_document_summary", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "Summarize the most recent document"
+                if st.button("Summarize the most recent preprint", key="btn_document_summary", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = "Summarize the most recent preprint"
                     st.rerun()
 
 

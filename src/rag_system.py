@@ -120,7 +120,7 @@ class SherpaDocumentProcessor:
             elif "table_rows" in block_data:
                 # Handle table rows if present
                 for row in block_data["table_rows"]:
-                        content += " | ".join(str(cell['cell_value']) for cell in block_data["table_rows"][0]['cells']) + "\n"
+                        content += " | ".join(str(cell['cell_value']) for cell in row['cells']) + "\n"
             else:
                 raise ValueError("Invalid block data format")
             
@@ -910,7 +910,7 @@ class RAGSystem:
                 "y": block["y0"],
                 "height": block["y1"] - block["y0"],
                 "width": block["x1"] - block["x0"],
-                "color": "red"
+                "color": "red",
             }
             
             annotations.append(annotation)
