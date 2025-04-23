@@ -6,7 +6,9 @@ A comprehensive toolkit for building and running advanced AI agent services with
 
 PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating sophisticated capabilities for Retrieval-Augmented Generation across structured and unstructured data sources. Built on LangGraph, FastAPI, and Streamlit, it provides a complete framework from agent definition to user interface.
 
-![Application Screenshot](media/app_screenshot.png)
+![Application Screenshot](media/demo_1.png)
+![Application Screenshot](media/demo_2.png)
+![Application Screenshot](media/demo_3.png)
 
 ## Features
 
@@ -62,10 +64,6 @@ echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
 # Run with Docker Compose
 docker compose watch
 ```
-
-## Architecture
-
-![Agent Architecture](media/agent_architecture.png)
 
 ## Configuration
 
