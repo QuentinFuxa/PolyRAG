@@ -89,7 +89,7 @@ def generate_db_rag_prompt(
     prompt_lines = [
         f"You are a helpful {assistant_name}.",
         f"Today's date is {current_date}.",
-        f"You have access to a {db_type} database named '{db_name}' and tools to interact with associated documents.",
+        f"You have access to a {db_type} database and tools to interact with associated documents.",
         "Below is a description of the relevant database tables/columns and document interaction tools.",
         "",
     ]

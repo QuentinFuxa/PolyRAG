@@ -81,18 +81,20 @@ def query_rag_func(
 def query_rag_from_idx_func(
     block_indices: Union[int, List[int]],  # Block indices to retrieve
     source_name: Optional[str] = None,  # Document name (optional)
-    get_children: bool = False  # Whether to retrieve child blocks
+    get_children: bool = False,  # Whether to retrieve child blocks
+    get_surrounding: bool = True  # Whether to retrieve surrounding blocks (2 before, 2 after)
     ) -> str:
     """
-    Get specific document blocks by their indices
+    Get specific document blocks by their indices, optionally including surrounding blocks.
     
     Args:
-        block_indices: Block index or list of block indices to retrieve
-        source_name: Name of the document (optional)
-        get_children: Whether to retrieve child blocks
+        block_indices: Block index or list of block indices to retrieve.
+        source_name: Name of the document (optional).
+        get_children: Whether to retrieve child blocks.
+        get_surrounding: Whether to retrieve the 2 blocks before and 2 after each specified index.
         
     Returns:
-        JSON string with text blocks information
+        JSON string with text blocks information.
     """
     # Convert single index to list if needed
     if isinstance(block_indices, (int, str)):
@@ -106,9 +108,24 @@ def query_rag_from_idx_func(
         except:
             # If parsing fails, convert to list
             block_indices = [int(block_indices)]
-    
-    # Get blocks by indices
-    blocks = rag_system.get_blocks_by_idx(block_indices, source_name, get_children)
+
+    # Determine the final list of indices to fetch
+    if get_surrounding:
+        final_indices_to_fetch = set()
+        for idx in block_indices:
+            # Add the index itself and 2 before/after, ensuring non-negative
+            for offset in range(-2, 3): # -2, -1, 0, 1, 2
+                surrounding_idx = idx + offset
+                if surrounding_idx >= 0:
+                    final_indices_to_fetch.add(surrounding_idx)
+        # Convert set to sorted list for consistent ordering
+        indices_to_fetch = sorted(list(final_indices_to_fetch))
+    else:
+        # If not getting surrounding, just use the original list
+        indices_to_fetch = block_indices
+
+    # Get blocks by the potentially expanded list of indices
+    blocks = rag_system.get_blocks_by_idx(indices_to_fetch, source_name, get_children)
     
     if not blocks:
         return {"error": "No blocks found with the provided indices"}
