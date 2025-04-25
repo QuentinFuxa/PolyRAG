@@ -1,12 +1,12 @@
 import asyncio
 import os
 import urllib.parse
+import uuid
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
-from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
@@ -116,7 +116,7 @@ async def main() -> None:
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
-            thread_id = get_script_run_ctx().session_id
+            thread_id = str(uuid.uuid4())
             messages = []
         else:
             try:
@@ -130,6 +130,7 @@ async def main() -> None:
     # Config options
     with st.sidebar:
         st.header(f"{APP_ICON} {APP_TITLE}")
+
         ""
         """Platform for database and PDF document RAG, with visualization capabilities.
         Powered by LangGraph, PostgreSQL, Plotly and PDF processors. Built with FastAPI and Streamlit."""
