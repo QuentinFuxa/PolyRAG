@@ -13,10 +13,13 @@ PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC2
 ## Features
 
 - **Advanced RAG Agent:** Handles complex interactions involving database querying, document analysis, and visualization
+
+![Example](src/example.png)
+
 - **Database RAG:** 
   - Dynamically discovers PostgreSQL database schemas
   - Generates tailored prompts for the LLM
-  - Enables SQL querying via the `execute_sql` tool
+  - Enables secure SQL querying via the `execute_sql` tool
   
 - **Document RAG:** Two configurable backends:
   - **`nlm-ingestor` (Recommended):** Preserves document hierarchy for better context understanding
@@ -102,7 +105,7 @@ client = AgentClient() # Assumes service running locally
 
 # Ask the RAG agent a question
 response = client.invoke(
-    "What are the main risks mentioned in document INSSN-LYO-2023-0461?",
+    "What are the main risks mentioned in document 2503_01910 v1?",
     agent="pg_rag_assistant"
 )
 response.pretty_print()

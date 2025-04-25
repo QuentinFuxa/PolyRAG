@@ -24,42 +24,41 @@ APP_ICON = ":material/experiment:"
 AI_ICON = ":material/flare:"
 USER_ICON = ":material/person:"
 
-# Initialize session state for PDF viewing
-if "pdf_to_view" not in st.session_state:
-    st.session_state.pdf_to_view = None 
-if "annotations" not in st.session_state:
-    st.session_state.annotations = None
-if "confirming_delete_thread_id" not in st.session_state:
-    st.session_state.confirming_delete_thread_id = None
-if "graphs" not in st.session_state:
-    st.session_state.graphs = {}
 
-# Function to set which PDF should be displayed
-def view_pdf(pdf_to_view, annotations=None):
+st.session_state.pdf_to_view = st.session_state.get("pdf_to_view", None)
+st.session_state.annotations = st.session_state.get("annotations", None)
+st.session_state.debug_viewer = st.session_state.get("debug_viewer", False)
+st.session_state.confirming_delete_thread_id = st.session_state.get("confirming_delete_thread_id", None)
+st.session_state.graphs = st.session_state.get("graphs", {})
+
+
+def view_pdf(pdf_to_view, annotations=None, debug_viewer=False):
     st.session_state.pdf_to_view = pdf_to_view
     st.session_state.annotations = annotations
+    st.session_state.debug_viewer = debug_viewer
     if not st.session_state.get("in_pdf_dialog", False):
         st.session_state.in_pdf_dialog = True
         st.rerun()
 
-
-@st.dialog("Document", width="large")
+dialog_title = "Document" if not st.session_state.debug_viewer else "/debug" + ' ' + str(st.session_state.pdf_to_view)
+@st.dialog(dialog_title, width="large")
 def pdf_dialog():
     """Displays the selected PDF using the new display_pdf function."""
     st.session_state.in_pdf_dialog = True
     
     pdf_name = st.session_state.pdf_to_view
     annotations = st.session_state.annotations
-
+    debug_viewer = st.session_state.get("debug_viewer", False)
     if pdf_name:
-        display_pdf(document_name=pdf_name, annotations=annotations)
+        display_pdf(document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer)
     else:
         st.error("No PDF selected for viewing.")
+        
+    st.session_state.pdf_to_view = None
+    st.session_state.annotations = None
+    st.session_state.in_pdf_dialog = False
 
     if st.button("Close"):
-        st.session_state.pdf_to_view = None
-        st.session_state.annotations = None
-        st.session_state.in_pdf_dialog = False
         st.rerun()
 
 async def main() -> None:
@@ -76,18 +75,6 @@ async def main() -> None:
         st.session_state.suggested_command = None
     user_text = None
 
-    # Hide the streamlit upper-right chrome
-    st.html(
-        """
-        <style>
-        [data-testid="stStatusWidget"] {
-                visibility: hidden;
-                height: 0%;
-                position: fixed;
-            }
-        </style>
-        """,
-    )
     if st.get_option("client.toolbarMode") != "minimal":
         st.set_option("client.toolbarMode", "minimal")
         await asyncio.sleep(0.1)
@@ -538,8 +525,10 @@ async def draw_messages(
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
                                     block_indices = tool_output['block_indices']
+                                    debug_viewer = tool_output.get('debug', False)
                                     if tool_output.get('debug', False):
                                         annotations = rag_system.debug_blocks(pdf_file=pdf_name)
+                                        print(f"Debugging blocks for {pdf_name}: {len(annotations)} blocks")
                                     else:
                                         annotations = rag_system.get_annotations_by_indices(
                                             pdf_file=pdf_name,
@@ -547,7 +536,7 @@ async def draw_messages(
                                         )            
                                     st.session_state.pdf_documents[pdf_name] = annotations                                    
                                     if st.button(f"View PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
-                                        view_pdf(pdf_name, annotations)
+                                        view_pdf(pdf_name, annotations, debug_viewer=debug_viewer)
                                         
                                     status.update(state="complete", label=f"PDF ready: {pdf_name}")
                                 except Exception as e:

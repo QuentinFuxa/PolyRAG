@@ -52,12 +52,11 @@ def get_pdf_content(document_name: str) -> Optional[bytes]:
     print(f"Successfully retrieved PDF content for: {document_name}")
     return pdf_content
 
-def display_pdf(document_name: str, annotations: Optional[List[Dict[str, Any]]] = None):
+def display_pdf(document_name: str, annotations: Optional[List[Dict[str, Any]]] = None, debug_viewer: bool = False) -> None:
     pdf_content = get_pdf_content(document_name)
 
     if pdf_content:
         try:
-            print(annotations)
             pdf_viewer(input=pdf_content, annotations=annotations, render_text=True, annotation_outline_size=2)
             print(f"Successfully rendered PDF display for: {document_name}")
         except Exception as e:
