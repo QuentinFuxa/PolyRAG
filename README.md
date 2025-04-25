@@ -14,7 +14,7 @@ PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC2
 
 - **Advanced RAG Agent:** Handles complex interactions involving database querying, document analysis, and visualization
 
-![Example](src/example.png)
+![Example](media/example.png)
 
 - **Database RAG:** 
   - Dynamically discovers PostgreSQL database schemas
