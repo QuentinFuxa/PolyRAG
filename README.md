@@ -82,12 +82,51 @@ Create a `.env` file with the following options:
 
 - `src/agents/pg_rag_assistant.py`: Main RAG agent definition
 - `src/db_manager.py`: PostgreSQL connection and schema discovery
-- `src/prompt_generator.py`: Dynamic system prompt generation
+- `scripts/prompt_generator.py`: Dynamic system prompt generation
 - `src/rag_system.py`: PDF processing and search logic
-- `src/index-folder-script.py`: Script to index local PDFs
-- `src/index-urls-script.py`: Script to index PDFs from URLs
+- `scripts/index-folder-script.py`: Script to index local PDFs
+- `scripts/index-urls-script.py`: Script to index PDFs from URLs
 - `src/streamlit_app.py`: Chat interface
 - `docker/`: Dockerfiles and `compose.yaml`
+
+## Utility Scripts
+
+These scripts help with indexing data and generating prompts. Ensure your environment is activated (`source .venv/bin/activate`) and necessary environment variables (like `DATABASE_URL`, `OPENAI_API_KEY`) are set in your `.env` file before running them.
+
+### Indexing PDFs from a Folder (`scripts/index-folder-script.py`)
+
+Indexes PDF documents from a local directory into the database and RAG system.
+
+```sh
+python scripts/index-folder-script.py --dir /path/to/your/pdf/folder [--embeddings]
+```
+
+- `--dir`: (Required) Path to the directory containing PDF files.
+- `--pdf`: (Optional) Path to a single PDF file to index instead of a directory.
+- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
+
+### Indexing PDFs from URLs (`scripts/index-urls-script.py`)
+
+Fetches PDF URLs from a specified database table, downloads them, and indexes their content.
+
+```sh
+python scripts/index-urls-script.py [--schema SCHEMA_NAME] [--table TABLE_NAME] [--column COLUMN_NAME] [--embeddings]
+```
+
+- `--schema`: (Optional) Database schema containing the table with URLs (default: `public`).
+- `--table`: (Optional) Database table name containing the URLs (default: `arxiv_qbio_metadata_2025`).
+- `--column`: (Optional) Column name within the table that holds the PDF URLs (default: `pdf_url`).
+- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
+
+### Generating the Database RAG Prompt (`scripts/prompt_generator.py`)
+
+Inspects the database schema and generates a detailed system prompt for the RAG agent, saving it to `system_prompt.txt`.
+
+```sh
+python scripts/prompt_generator.py
+```
+
+This script reads database connection details from the environment and currently inspects the `public` schema by default. You can modify the script (`if __name__ == '__main__':` block) to target different schemas or tables if needed.
 
 ## Customization
 
