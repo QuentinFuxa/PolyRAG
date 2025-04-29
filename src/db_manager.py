@@ -11,12 +11,11 @@ from psycopg2 import pool
 from psycopg2.extras import DictCursor, Json, register_uuid
 from sqlalchemy import create_engine, text
 import pandas as pd
-from get_config import load_config
 from urllib.parse import urlparse
-
+import os 
 logger = logging.getLogger(__name__)
-db_config = load_config()['database']
-schema_app_data = db_config['schema_app_data']
+
+schema_app_data = os.environ.get("SCHEMA_APP_DATA", "document_data")
 
 class DatabaseManager:
     """Manager for PostgreSQL database operations."""
@@ -33,7 +32,9 @@ class DatabaseManager:
     def _initialize(self):
         """Initialize connection, tables, connection pool and embedding capabilities."""
         # Regular connection setup
-        self.connection_string = db_config['connection_string']
+        self.connection_string = os.getenv("DATABASE_URL")
+        if not self.connection_string:
+            raise ValueError("DATABASE_URL environment variable not set.")
         self.engine = create_engine(self.connection_string)        
         self.connection = psycopg2.connect(self.connection_string)
         register_uuid()
@@ -81,15 +82,6 @@ class DatabaseManager:
                 text_content TEXT,
                 metadata JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-            
-            # For the memory
-            cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema_app_data}.memory (
-                thread_id UUID PRIMARY KEY,
-                state JSONB,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
@@ -145,7 +137,35 @@ class DatabaseManager:
                 UNIQUE(name, block_idx)
             );
             """)
-    
+
+            # For document sources (path or URL)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.document_sources (
+                id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                path TEXT,                 -- File path if source is local file
+                url TEXT,                  -- URL if source is web resource
+                is_indexed BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+
+            # Add an index for faster lookups on name
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_document_sources_name ON {schema_app_data}.document_sources(name);
+            """)
+
+            # Add an index for faster lookups on path
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_document_sources_path ON {schema_app_data}.document_sources(path);
+            """)
+
+            # Add an index for faster lookups on url
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_document_sources_url ON {schema_app_data}.document_sources(url);
+            """)
+            
     def close(self):
         """Close database connection and connection pool."""
         if hasattr(self, 'connection') and self.connection:
@@ -241,37 +261,7 @@ class DatabaseManager:
             if result:
                 return result[0]
             return None
-    
-    # Memory operations
-    def save_memory(self, thread_id: UUID, state: Dict[str, Any]) -> None:
-        """Save the agent's state/memory for a thread."""
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                INSERT INTO {schema_app_data}.memory (thread_id, state)
-                VALUES (%s, %s)
-                ON CONFLICT (thread_id) 
-                DO UPDATE SET state = %s, updated_at = CURRENT_TIMESTAMP
-                """,
-                (thread_id, Json(state), Json(state))
-            )
-    
-    def get_memory(self, thread_id: UUID) -> Optional[Dict[str, Any]]:
-        """Retrieve the agent's state/memory for a thread."""
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT state
-                FROM {schema_app_data}.memory
-                WHERE thread_id = %s
-                """,
-                (thread_id,)
-            )
-            result = cursor.fetchone()
-            if result:
-                return result[0]
-            return None
-    
+
     def execute_query(self, query: str, params=None) -> List[tuple]:
         """
         Execute a SQL query with optional parameters and return the results.
@@ -482,15 +472,6 @@ class DatabaseManager:
             )
             result = cursor.fetchone()
             
-            # Also delete related memory and files
-            cursor.execute(
-                f"""
-                DELETE FROM {schema_app_data}.memory
-                WHERE thread_id = %s
-                """,
-                (thread_id,)
-            )
-            
             cursor.execute(
                 f"""
                 DELETE FROM {schema_app_data}.files
@@ -500,6 +481,86 @@ class DatabaseManager:
             )
             
             return result is not None
+
+    def add_document_source(self, name: str, path: Optional[str] = None, url: Optional[str] = None) -> int:
+        """
+        Add a new document source (file path or URL) to the database.
+        If a source with the same name already exists, it returns the existing ID without inserting.
+
+        Args:
+            name: Unique identifier for the source (e.g., file path or URL).
+            path: File path if the source is a local file.
+            url: URL if the source is a web resource.
+
+        Returns:
+            The ID of the inserted or existing document source record.
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.document_sources (name, path, url, is_indexed)
+                VALUES (%s, %s, %s, FALSE)
+                ON CONFLICT (name) DO NOTHING;
+                """,
+                (name, path, url)
+            )
+            cursor.execute(
+                f"""
+                SELECT id FROM {schema_app_data}.document_sources WHERE name = %s;
+                """,
+                (name,)
+            )
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                raise Exception(f"Failed to add or find document source for name: {name}")
+
+
+    def set_document_indexed(self, name: str, indexed: bool = True) -> bool:
+        """
+        Update the indexing status of a document source.
+
+        Args:
+            name: The unique identifier (name) of the document source.
+            indexed: The new indexing status (True or False).
+
+        Returns:
+            True if the record was updated, False otherwise (e.g., if the name doesn't exist).
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE {schema_app_data}.document_sources
+                SET is_indexed = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE name = %s
+                RETURNING id;
+                """,
+                (indexed, name)
+            )
+            return cursor.fetchone() is not None
+
+    def get_document_source_status(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the status of a document source by its name.
+
+        Args:
+            name: The unique identifier (name) of the document source.
+
+        Returns:
+            A dictionary with source details (id, name, path, url, is_indexed) or None if not found.
+        """
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            query = f"""
+                SELECT id, name, path, url, is_indexed, created_at, updated_at
+                FROM {schema_app_data}.document_sources
+                WHERE name LIKE %s
+            """
+            cursor.execute(query, (f"%{name}%",))
+            result = cursor.fetchone()
+            if result:
+                return dict(result)
+            return None
 
     def list_schemas(self) -> List[str]:
         """List all non-system schemas in the database."""

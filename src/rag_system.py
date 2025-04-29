@@ -90,13 +90,14 @@ class SherpaDocumentProcessor:
     
     def process_pdf(self, pdf_path):
         """Process a PDF file and return structured content"""
-        doc = self.pdf_reader.read_pdf(pdf_path)
-        return doc.json
-    
-    def process_sherpa_data(self, sherpa_data):
-        """Process raw llmsherpa output and convert to DocumentBlock objects"""
+        """Process a PDF file using llmsherpa and return DocumentBlock objects"""
+        sherpa_data = self.pdf_reader.read_pdf(pdf_path).json
+        return self._process_sherpa_data(sherpa_data) # Call internal processing method
+
+    def _process_sherpa_data(self, sherpa_data):
+        """Process raw llmsherpa output (JSON) and convert to DocumentBlock objects"""
         blocks = []
-        
+
         # Convert string to JSON if necessary
         if isinstance(sherpa_data, str):
             try:
@@ -116,6 +117,12 @@ class SherpaDocumentProcessor:
                         content = " ".join(s["text"] for s in sentences)
                     elif sentences and isinstance(sentences[0], str):
                         content = " ".join(sentences)
+            elif "table_rows" in block_data:
+                # Handle table rows if present
+                for row in block_data["table_rows"]:
+                        content += " | ".join(str(cell['cell_value']) for cell in row['cells']) + "\n"
+            else:
+                raise ValueError("Invalid block data format")
             
             # Create metadata
             metadata = BlockMetadata(
@@ -164,13 +171,94 @@ class SherpaDocumentProcessor:
             # Add current block to stack
             hierarchy_stack.append(block)
 
+
+class PyMuPDFDocumentProcessor:
+    """Processor for documents using PyMuPDF"""
+
+    def process_pdf(self, pdf_path):
+        import pymupdf
+        """Process a PDF file using PyMuPDF and return DocumentBlock objects"""
+        blocks = []
+        try:
+            doc = pymupdf.open(pdf_path)
+        except Exception as e:
+            print(f"Error opening PDF with PyMuPDF: {e}")
+            return []
+
+        block_counter = 0
+        for page_num, page in enumerate(doc):
+            page_dict = page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT) # Get detailed block info
+            page_width = page.rect.width
+            page_height = page.rect.height
+
+            for block_data in page_dict.get("blocks", []):
+                # We are interested in text blocks ('type' == 0)
+                if block_data.get("type") == 0:
+                    block_text = ""
+                    # Consolidate lines within the block
+                    for line in block_data.get("lines", []):
+                        for span in line.get("spans", []):
+                            block_text += span.get("text", "") + " "
+                        block_text += "\n" # Add newline after each line like llmsherpa might
+
+                    block_text = block_text.strip()
+                    if not block_text:
+                        continue
+
+                    bbox = block_data.get("bbox", [0, 0, 0, 0])
+
+                    # Basic heuristic for tag (can be improved)
+                    # Assuming larger fonts might be headers, but default to 'para'
+                    tag = 'para'
+                    if block_data.get("lines"):
+                         first_line = block_data["lines"][0]
+                         if first_line.get("spans"):
+                             first_span = first_line["spans"][0]
+                             if first_span.get("size", 10) > 14: # Arbitrary threshold for header
+                                 tag = 'header'
+
+                    metadata = BlockMetadata(
+                        block_idx=block_counter,
+                        level=0,  # PyMuPDF doesn't provide semantic levels easily
+                        page_idx=page_num,
+                        tag=tag, # Default tag, could add heuristics
+                        block_class="", # PyMuPDF doesn't provide this
+                        bbox=list(bbox)
+                    )
+
+                    block = DocumentBlock(
+                        block_idx=block_counter,
+                        content=block_text,
+                        metadata=metadata,
+                        parent_idx=None # PyMuPDF doesn't provide hierarchy easily
+                    )
+                    blocks.append(block)
+                    block_counter += 1
+        
+        doc.close()
+        # Note: PyMuPDF doesn't inherently provide hierarchy like llmsherpa.
+        # The _establish_hierarchy method is specific to llmsherpa's output structure.
+        return blocks
+
+
 class RAGSystem:
-    """RAG system with flexible search strategies"""
-    
+    """RAG system with flexible search strategies and PDF backends"""
+
     def __init__(self, use_embeddings=False):
         self.db_manager = DatabaseManager()
-        self.sherpa_processor = SherpaDocumentProcessor()
-        
+
+        # Determine PDF parsing backend
+        pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
+        if pdf_parser_backend == "pymupdf":
+            print("Using PyMuPDF backend for PDF processing.")
+            self.processor = PyMuPDFDocumentProcessor()
+        elif pdf_parser_backend == "nlm-ingestor":
+            print("Using NLM Ingestor (llmsherpa) backend for PDF processing.")
+            self.processor = SherpaDocumentProcessor()
+        else:
+            print(f"Warning: Unknown PDF_PARSER '{pdf_parser_backend}'. Defaulting to nlm-ingestor.")
+            self.processor = SherpaDocumentProcessor()
+
         # Initialize embedding manager if enabled
         self.use_embeddings = use_embeddings
         if use_embeddings:
@@ -201,12 +289,13 @@ class RAGSystem:
             x1 FLOAT,
             y1 FLOAT,
             parent_idx INTEGER,  -- Changed from parent_id to parent_idx
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED, -- Added generated TSVECTOR column
             UNIQUE(name, block_idx)  -- Changed unique constraint
         );
         
-        -- Text search index
-        CREATE INDEX IF NOT EXISTS idx_document_blocks_content ON {schema_app_data}.rag_document_blocks 
-        USING gin(to_tsvector('english', content));
+        -- Text search index on the generated column
+        CREATE INDEX IF NOT EXISTS idx_document_blocks_content_tsv ON {schema_app_data}.rag_document_blocks 
+        USING gin(content_tsv);
         """
         
         self.db_manager.execute_query(schema)
@@ -244,31 +333,47 @@ class RAGSystem:
                 print("Falling back to text search only.")
                 self.use_embeddings = False
     
-    def index_document(self, pdf_path, title=None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
-        """Index a PDF document with optional pre-processed sherpa data"""
-        # Generate a title if not provided
-        if title is None:
-            title = os.path.basename(pdf_path).split(".")[0]
-        
-        # Process the document with llmsherpa if data not provided
-        if existing_sherpa_data is None:
-            sherpa_data = self.sherpa_processor.process_pdf(pdf_path)
-        else:
-            sherpa_data = existing_sherpa_data
-        
-        # Convert to structured blocks
-        blocks = self.sherpa_processor.process_sherpa_data(sherpa_data)
-                
+    def index_document(self, pdf_path, document_name_override: Optional[str] = None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
+        """
+        Index a PDF document from a given path.
+        Uses pdf_path as the unique identifier (name) by default, but can be overridden.
+        Optionally accepts pre-processed sherpa data.
+
+        Args:
+            pdf_path: Path to the PDF file to process.
+            document_name_override: If provided, use this string as the unique 'name' identifier
+                                     when storing blocks, instead of pdf_path. Useful for URLs
+                                     where the path is temporary.
+            existing_sherpa_data: Pre-processed data from llmsherpa (optional).
+            table_name: The database table to insert blocks into.
+        """
+        document_name = document_name_override if document_name_override is not None else pdf_path
+
+        # Process the document using the selected processor
+        # existing_sherpa_data is specific to llmsherpa, so we ignore it if using pymupdf
+        pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
+        if pdf_parser_backend == "pymupdf":
+             blocks = self.processor.process_pdf(pdf_path)
+        elif pdf_parser_backend == "nlm-ingestor":
+             if existing_sherpa_data is None:
+                 # Sherpa processor's process_pdf now returns blocks directly
+                 blocks = self.processor.process_pdf(pdf_path)
+             else:
+                 # If sherpa data is provided, process it (specific to sherpa)
+                 blocks = self.processor._process_sherpa_data(existing_sherpa_data) # Use renamed internal method
+        else: # Default case
+             blocks = self.processor.process_pdf(pdf_path)
+
         # Compute embeddings if enabled
         if self.use_embeddings:
             for block in blocks:
                 if block.content:
                     block.embedding = self.embedding_manager.compute_embedding(block.content)
         
-        # Insert blocks
-        self._insert_blocks(title, blocks, table_name)
+        # Insert blocks using the document_name (pdf_path)
+        self._insert_blocks(document_name, blocks, table_name)
         
-        return title
+        return document_name # Return the name used for indexing
     
     def _insert_blocks(self, name, blocks, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Insert blocks into database"""
@@ -381,64 +486,99 @@ class RAGSystem:
         else:
             raise ValueError(f"Unknown search strategy: {strategy}")
         
-    def _text_search(self, query, source_names, limit=5):
-        """Search using PostgreSQL full-text search"""
+    def _text_search(self, query: List[str], source_names: Optional[List[str]], limit: int = 5):
+        """
+        Search using PostgreSQL full-text search with AND/OR fallback logic.
+        First tries to find results where all terms match (AND), 
+        then falls back to results where any term matches (OR) if AND yields nothing.
+        """
         
-        # For each element in the list, replace spaces with & and surround with parentheses
+        # Helper function to build the base query and common parts
+        def build_search_query(ts_query_str: str, source_names: Optional[List[str]]) -> Tuple[str, List[Any]]:
+            base_query = f"""
+            SELECT 
+                name, 
+                block_idx,
+                content, 
+                page_idx, 
+                level,
+                tag,
+                block_class,
+                x0, 
+                y0, 
+                x1, 
+                y1,
+                parent_idx,
+                ts_rank_cd(content_tsv, to_tsquery('english', %s)) AS score -- Use 'english' to match index
+            FROM 
+                {schema_app_data}.rag_document_blocks
+            WHERE 
+                content_tsv @@ to_tsquery('english', %s) -- Use 'english' to match index
+            """
+            params = [ts_query_str, ts_query_str]
+
+            # Add source filter if specified
+            if source_names and len(source_names) > 0:
+                placeholders = ', '.join(['%s'] * len(source_names))
+                base_query += f" AND name IN ({placeholders})"
+                params.extend(source_names)
+            
+            # Add order by and limit
+            base_query += """
+            ORDER BY 
+                score DESC
+            LIMIT %s
+            """
+            params.append(limit)
+            return base_query, params
+
+        # 1. Prepare base formatted elements (handle spaces within terms)
         formatted_elements = []
         for element in query:
-            if ' ' in element:
-                # Replace spaces with & operator
-                formatted_element = ' & '.join(element.split())
+            # Sanitize element: remove potential tsquery operators to avoid injection
+            sanitized_element = element.replace('&', '').replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
+            if not sanitized_element:
+                continue
+            if ' ' in sanitized_element:
+                # If element contains spaces, treat it as a phrase search within the term
+                formatted_element = ' & '.join(sanitized_element.split())
                 formatted_elements.append(f"({formatted_element})")
             else:
-                formatted_elements.append(element)
-        ts_query = " | ".join(formatted_elements)
+                formatted_elements.append(sanitized_element)
         
-        search_query = f"""
-        SELECT 
-            name, 
-            block_idx,
-            content, 
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx,
-            ts_rank_cd(content_tsv, to_tsquery('french', %s)) AS score
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            content_tsv @@ to_tsquery('french', %s)
-        """
+        if not formatted_elements:
+            print("Warning: No valid query terms after sanitization.")
+            return []
+
+        # 2. Try AND search first
+        ts_query_and = " & ".join(formatted_elements)
+        print(f"Attempting AND search with ts_query: {ts_query_and}")
+        search_query_and, params_and = build_search_query(ts_query_and, source_names)
+        results = self.db_manager.execute_query(search_query_and, params_and)
+
+        # 3. If AND search yields results, return them
+        if results:
+            print("AND search successful.")
+            return self._format_results(results)
         
-        params = [ts_query, ts_query]
-        
-        # Add source filter if specified
-        if source_names and len(source_names) > 0:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            search_query += f" AND name IN ({placeholders})"
-            params.extend(source_names)
-        
-        # Add order by and limit
-        search_query += """
-        ORDER BY 
-            score DESC
-        LIMIT %s
-        """
-        params.append(limit)
-        
-        results = self.db_manager.execute_query(search_query, params)
+        # 4. If AND search yields no results, try OR search
+        print("AND search yielded no results. Falling back to OR search.")
+        ts_query_or = " | ".join(formatted_elements)
+        print(f"Attempting OR search with ts_query: {ts_query_or}")
+        search_query_or, params_or = build_search_query(ts_query_or, source_names)
+        results = self.db_manager.execute_query(search_query_or, params_or)
+
+        # 5. Return results from OR search (might still be empty)
+        if results:
+            print("OR search successful.")
+        else:
+            print("OR search also yielded no results.")
         return self._format_results(results)
-    
+
     def _embedding_search(self, query, source_names, limit=5):
         """Search using vector embeddings"""
         if not self.use_embeddings:
-            return []
+            return [] # Correctly return empty list if embeddings are not used
             
         embedding = self.embedding_manager.compute_embedding(query)
         
@@ -770,7 +910,7 @@ class RAGSystem:
                 "y": block["y0"],
                 "height": block["y1"] - block["y0"],
                 "width": block["x1"] - block["x0"],
-                "color": "red"
+                "color": "red",
             }
             
             annotations.append(annotation)
@@ -808,12 +948,45 @@ class RAGSystem:
             strategy=strategy, 
             limit=max(num_results * 2, 5)  # Get more results than needed to ensure diversity
         )
-        
+
+        warning_message = None
+
+        if not search_results and source_names:
+            placeholders = ', '.join(['%s'] * len(source_names))
+            check_query = f"""
+            SELECT DISTINCT name 
+            FROM {schema_app_data}.rag_document_blocks 
+            WHERE name IN ({placeholders})
+            """
+            existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
+            existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
+            requested_sources_set = set(source_names)
+            missing_sources = sorted(list(requested_sources_set - existing_sources_set))
+
+            if not missing_sources:
+                # All requested sources exist, but the query yielded no results within them.
+                return {
+                    "success": False,
+                    "message": "No relevant information found for the query in the specified document(s)."
+                }
+            else:
+                print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
+                warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
+                
+                search_results = self.search(
+                    user_query, 
+                    source_names=None, # Search all documents
+                    get_children=get_children,
+                    get_parents=get_parents,
+                    strategy=strategy, 
+                    limit=max(num_results * 2, 5) 
+                )
+
         if not search_results:
-            return {
-                "success": False,
-                "message": "No relevant information found in the documents."
-            }
+             return {
+                 "success": False,
+                 "message": "No relevant information found in the documents."
+             }
         
         # Process multiple top results to get better coverage
         top_results = search_results[:num_results]
@@ -850,15 +1023,20 @@ class RAGSystem:
             else:
                 context_text += f"{block['content']}\n\n"
         
-        return {
+        final_result = {
             "success": True,
             "context": context_text,
             "all_results": search_results[:num_results],  # Return multiple results instead of just the top one
             "top_result": search_results[0],  # Keep the top result for backward compatibility
             "context_blocks": context_blocks,
-            "annotations": annotations
+            "annotations": annotations,
         }
-        
+
+        if warning_message:
+            final_result["warning"] = warning_message
+            
+        return final_result
+    
     def get_blocks_by_idx(self, block_indices, source_name=None, get_children=False):
         """
         Get blocks by their block_idx values

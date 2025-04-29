@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: SecretStr | None = None
     GOOGLE_API_KEY: SecretStr | None = None
     GROQ_API_KEY: SecretStr | None = None
-    ALBERT_API_KEY: SecretStr | None = "Autoritedesuretenucleaireetderadioprotection-f48bc054da3d00f62b0a7e85c31a788c0ec5f6b67d4aee3e0e371d0d5e9e81a1a96dbb56b4266cf76564c058302d689900e783c176c4f9ca98994a1d3c609226"
+    ALBERT_API_KEY: SecretStr | None
     USE_AWS_BEDROCK: bool = False
     OLLAMA_MODEL: str | None = None
     OLLAMA_BASE_URL: str | None = None
@@ -97,13 +97,6 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str | None = None
     POSTGRES_PORT: int | None = None
     POSTGRES_DB: str | None = None
-    POSTGRES_POOL_SIZE: int = Field(
-        default=10, description="Maximum number of connections in the pool"
-    )
-    POSTGRES_MIN_SIZE: int = Field(
-        default=3, description="Minimum number of connections in the pool"
-    )
-    POSTGRES_MAX_IDLE: int = Field(default=5, description="Maximum number of idle connections")
 
     # Azure OpenAI Settings
     AZURE_OPENAI_API_KEY: SecretStr | None = None
@@ -203,7 +196,7 @@ class Settings(BaseSettings):
                 case _:
                     raise ValueError(f"Unknown provider: {provider}")
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def BASE_URL(self) -> str:
         return f"http://{self.HOST}:{self.PORT}"

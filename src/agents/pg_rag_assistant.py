@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Literal
 
@@ -35,7 +36,8 @@ tools = [execute_sql, display_graph, query_rag, query_rag_from_idx, highlight_pd
 
 current_date = datetime.now().strftime("%B %d, %Y")
 
-with open("asnr/instructions.txt", "r") as f:
+system_prompt = os.getenv("SYTEM_PROMPT_PATH")
+with open(system_prompt, "r") as f:
     instructions = f.read()
 
 instructions = instructions.format(current_date=current_date)

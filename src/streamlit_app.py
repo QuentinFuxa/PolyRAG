@@ -1,129 +1,66 @@
 import asyncio
 import os
 import urllib.parse
+import uuid
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
-from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 import json
-from streamlit_pdf_viewer import pdf_viewer
+from pdf_viewer_with_annotations import display_pdf
 from rag_system import RAGSystem
-from get_config import load_config
 from db_manager import DatabaseManager
 
 db_manager = DatabaseManager()
 rag_system = RAGSystem()
-config = load_config()
+
 
 APP_TITLE = "Siance Chat"
-APP_ICON = "🧪"
+APP_ICON = ":material/experiment:"
+AI_ICON = ":material/flare:"
+USER_ICON = ":material/person:"
 
-# Initialize session state for PDF viewing
-if "pdf_to_view" not in st.session_state:
-    st.session_state.pdf_to_view = None 
-if "annotations" not in st.session_state:
-    st.session_state.annotations = None
-if "confirming_delete_thread_id" not in st.session_state:
-    st.session_state.confirming_delete_thread_id = None
-if "graphs" not in st.session_state:
-    st.session_state.graphs = {}
 
-# Function to set which PDF should be displayed
-def view_pdf(pdf_to_view, annotations=None):
+st.session_state.pdf_to_view = st.session_state.get("pdf_to_view", None)
+st.session_state.annotations = st.session_state.get("annotations", None)
+st.session_state.debug_viewer = st.session_state.get("debug_viewer", False)
+st.session_state.confirming_delete_thread_id = st.session_state.get("confirming_delete_thread_id", None)
+st.session_state.graphs = st.session_state.get("graphs", {})
+
+
+def view_pdf(pdf_to_view, annotations=None, debug_viewer=False):
     st.session_state.pdf_to_view = pdf_to_view
     st.session_state.annotations = annotations
+    st.session_state.debug_viewer = debug_viewer
     if not st.session_state.get("in_pdf_dialog", False):
         st.session_state.in_pdf_dialog = True
         st.rerun()
 
-
-@st.dialog("Document", width="large")
+dialog_title = "Document" if not st.session_state.debug_viewer else "/debug" + ' ' + str(st.session_state.pdf_to_view)
+@st.dialog(dialog_title, width="large")
 def pdf_dialog():
-    try:
-        st.session_state.in_pdf_dialog = True
+    """Displays the selected PDF using the new display_pdf function."""
+    st.session_state.in_pdf_dialog = True
+    
+    pdf_name = st.session_state.pdf_to_view
+    annotations = st.session_state.annotations
+    debug_viewer = st.session_state.get("debug_viewer", False)
+    if pdf_name:
+        display_pdf(document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer)
+    else:
+        st.error("No PDF selected for viewing.")
         
-        # First, try the default PDF path
-        default_pdf_path = config['pdf_folder'] + st.session_state.pdf_to_view + '.pdf'
-        pdf_path = default_pdf_path
-        
-        # Check if the file exists in the default location
-        if not os.path.exists(default_pdf_path):
-            # If not found, query the database to look for uploaded PDF
-            try:
-                # Get thread_id from session state
-                thread_id = st.session_state.thread_id
-                
-                # Query the database to find the file
-                query = """
-                SELECT metadata 
-                FROM files 
-                WHERE thread_id = %s AND metadata->>'original_name' LIKE %s
-                ORDER BY created_at DESC 
-                LIMIT 1
-                """
-                
-                # Use the document name to find matches
-                filename_pattern = f"%{st.session_state.pdf_to_view}%"
-                results = db_manager.execute_query(query, (thread_id, filename_pattern))
-                
-                if results and len(results) > 0:
-                    # Extract the storage path from metadata
-                    metadata = results[0][0]  # First row, first column (metadata JSON)
-                    if isinstance(metadata, str):
-                        metadata = json.loads(metadata)
-                    
-                    if 'storage_path' in metadata:
-                        pdf_path = metadata['storage_path']
-                    else:
-                        # Fall back to checking the uploaded folder directly
-                        uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
-                        if os.path.exists(uploaded_pdf_path):
-                            pdf_path = uploaded_pdf_path
-                else:
-                    # Try the direct path without DB lookup
-                    uploaded_pdf_path = f"uploaded/{thread_id}/{st.session_state.pdf_to_view}.pdf"
-                    if os.path.exists(uploaded_pdf_path):
-                        pdf_path = uploaded_pdf_path
-            except Exception as e:
-                # Continue with default path if database query fails
-                pass
-        
-        # Display status message showing which path is being used
-        if pdf_path != default_pdf_path:
-            st.info(f"Affichage du document téléchargé : {os.path.basename(pdf_path)}")
-        
-        # Display the PDF with the determined path
-        pdf_viewer(
-            pdf_path, 
-            render_text=True,
-            pages_vertical_spacing=0,
-            annotations=st.session_state.annotations,
-            annotation_outline_size=3,
-            scroll_to_annotation=True,
-        )
-        
-        if st.button("Fermer"):
-            st.session_state.pdf_to_view = None
-            st.session_state.in_pdf_dialog = False
-            st.rerun()
-        
-        # Reset state after closing
-        st.session_state.pdf_to_view = None
-        st.session_state.in_pdf_dialog = False
-        
-    except Exception as e:
-        st.error(f"Erreur lors de l'affichage du PDF : {e}")
-        st.write(f"Impossible de trouver le PDF : {st.session_state.pdf_to_view}")
-        
-        if st.button("Fermer l'erreur"):
-            st.session_state.pdf_to_view = None
+    st.session_state.pdf_to_view = None
+    st.session_state.annotations = None
+    st.session_state.in_pdf_dialog = False
 
+    if st.button("Close"):
+        st.rerun()
 
 async def main() -> None:
     st.set_page_config(
@@ -139,18 +76,6 @@ async def main() -> None:
         st.session_state.suggested_command = None
     user_text = None
 
-    # Hide the streamlit upper-right chrome
-    st.html(
-        """
-        <style>
-        [data-testid="stStatusWidget"] {
-                visibility: hidden;
-                height: 0%;
-                position: fixed;
-            }
-        </style>
-        """,
-    )
     if st.get_option("client.toolbarMode") != "minimal":
         st.set_option("client.toolbarMode", "minimal")
         await asyncio.sleep(0.1)
@@ -192,7 +117,7 @@ async def main() -> None:
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
-            thread_id = get_script_run_ctx().session_id
+            thread_id = str(uuid.uuid4())
             messages = []
         else:
             try:
@@ -206,6 +131,7 @@ async def main() -> None:
     # Config options
     with st.sidebar:
         st.header(f"{APP_ICON} {APP_TITLE}")
+
         ""
         "Interrogation des lettres de suite et tendances"
                 
@@ -318,7 +244,7 @@ async def main() -> None:
                 WELCOME = "Bonjour ! Je suis un assistant virtuel conçu pour vous aider avec des informations et des questions concernant les Lettres de suite de l'ASNR. Je peux vous fournir des données, des analyses et des insights sur les inspections et les rapports associés. Comment puis-je vous aider aujourd'hui ?"
             case _:
                 WELCOME = "Bonjour ! Je suis un agent IA. Posez-moi n'importe quelle question !"
-        with st.chat_message("ai"):
+        with st.chat_message("ai", avatar=AI_ICON):
             st.write(WELCOME)
 
 
@@ -335,7 +261,6 @@ async def main() -> None:
                 if st.button("/debug INSSN-OLS-2025-0875", key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:", disabled=bool(st.session_state.suggested_command)):
                     st.session_state.suggested_command = "/debug INSSN-OLS-2025-0875.pdf"
                     st.rerun()
-        
         col3, col4 = st.columns(2, gap="medium")
         
         with col3:
@@ -380,7 +305,7 @@ async def main() -> None:
             for file in files:
                 additional_markdown += f""":violet-badge[:material/description: {file.name}] """
 
-        st.chat_message("human").write(user_text + additional_markdown)
+        st.chat_message("human", avatar=USER_ICON).write(user_text + additional_markdown)
         
         if files:
             upload_status = st.status("Fichier en cours de téléchargement...", state="running")
@@ -423,7 +348,7 @@ async def main() -> None:
                     file_ids=uploaded_file_ids if files else None,
                 )
                 messages.append(response)
-                st.chat_message("ai").write(response.content)
+                st.chat_message("ai", avatar=AI_ICON).write(response.content)
 
             if len(messages) > 1 and st.session_state.conversation_title == "Nouvelle conversation":
                 try:
@@ -491,7 +416,7 @@ async def draw_messages(
             if not streaming_placeholder:
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
                 with st.session_state.last_message:
                     streaming_placeholder = st.empty()
 
@@ -515,7 +440,7 @@ async def draw_messages(
                     for file in msg.attached_files:
                         additional_markdown += f""":violet-badge[:material/description: {file}] """
 
-                st.chat_message("human").write(msg.content + additional_markdown)
+                st.chat_message("human", avatar=USER_ICON).write(msg.content + additional_markdown)
 
             # A message from the agent is the most complex case, since we need to
             # handle streaming tokens and tool calls.
@@ -527,7 +452,7 @@ async def draw_messages(
                 # If the last message type was not AI, create a new chat message
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
 
                 with st.session_state.last_message:
                     # If the message has content, write it out.
@@ -598,16 +523,18 @@ async def draw_messages(
                                     tool_output = json.loads(tool_result.content)
                                     pdf_name = tool_output['pdf_file']
                                     block_indices = tool_output['block_indices']
+                                    debug_viewer = tool_output.get('debug', False)
                                     if tool_output.get('debug', False):
                                         annotations = rag_system.debug_blocks(pdf_file=pdf_name)
+                                        print(f"Debugging blocks for {pdf_name}: {len(annotations)} blocks")
                                     else:
                                         annotations = rag_system.get_annotations_by_indices(
                                             pdf_file=pdf_name,
                                             block_indices=block_indices,
                                         )            
                                     st.session_state.pdf_documents[pdf_name] = annotations                                    
-                                    if st.button(f"Voir le PDF : {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
-                                        view_pdf(pdf_name, annotations)
+                                    if st.button(f"Voir PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
+                                        view_pdf(pdf_name, annotations, debug_viewer=debug_viewer)
                                         
                                     status.update(state="complete", label=f"PDF prêt : {pdf_name}")
                                 except Exception as e:

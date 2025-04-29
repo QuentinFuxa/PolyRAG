@@ -23,7 +23,7 @@ dependencies = [
     "jiter ~=0.8.2",
     "langchain-core ~=0.3.33",
     "langchain-community ~=0.3.16",
-    "langchain-openai ~=0.2.9",
+    "langchain-openai ~=0.3.0",
     "langchain-anthropic ~= 0.3.0",
     "langchain-google-genai ~=2.0.11",
     "langchain-groq ~=0.2.1",
@@ -73,6 +73,7 @@ dev = [
     "pytest-env",
     "pytest-asyncio",
     "ruff",
+    "mypy",
 ]
 
 # Group for the minimal dependencies to run just the client and Streamlit app.
@@ -98,3 +99,11 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 OPENAI_API_KEY = "sk-fake-openai-key"
+
+[tool.mypy]
+plugins = "pydantic.mypy"
+exclude = "src/streamlit_app.py"
+
+[[tool.mypy.overrides]]
+module = ["numexpr.*"]
+follow_untyped_imports = true

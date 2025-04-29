@@ -1,8 +1,10 @@
 import psycopg2
 from langchain_core.tools import BaseTool, tool
-connection_string="postgresql://postgres@localhost:5432/lds"
+import os
 
-connection = psycopg2.connect(connection_string)
+db_url = os.getenv("DATABASE_URL")
+
+connection = psycopg2.connect(db_url)
 cursor = connection.cursor()   
 
 def execute_sql_func(sql_query: str) -> str:

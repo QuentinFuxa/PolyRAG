@@ -132,6 +132,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env*
 .python-version
 .venv
 env/

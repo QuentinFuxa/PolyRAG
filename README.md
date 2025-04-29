@@ -1,255 +1,165 @@
-# 🧪 AI & RAG Service Toolkit
+# PolyRAG
 
-This repository provides a comprehensive toolkit for building and running AI agent services using LangGraph, FastAPI, and Streamlit. It extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating advanced capabilities for **RAG (Retrieval-Augmented Generation) over both structured databases and unstructured PDF documents**.
-
-The toolkit includes:
-- **Database RAG:** Dynamically discovers PostgreSQL database schemas, generates tailored prompts for the LLM, and allows the agent to query the database via SQL.
-- **Document RAG:** Processes PDFs using llmsherpa, indexes content for vector and text search in PostgreSQL, and enables searching within documents.
-- **Interactive Visualization:** Features an advanced PDF viewer that highlights relevant sections found via RAG, and supports Plotly graph generation.
-- **Core Agent Framework:** Built on LangGraph with support for tools, human-in-the-loop interruptions, and supervision.
-- **Web Services:** A FastAPI backend serves the agent, and a Streamlit frontend provides a user-friendly chat interface.
-- **Supporting Features:** File uploads, content moderation (LlamaGuard), feedback mechanism (LangSmith), Docker support, and testing.
-
-It includes a [LangGraph](https://langchain-ai.github.io/langgraph/) agent, a [FastAPI](https://fastapi.tiangolo.com/) service to serve it, a client to interact with the service, and a [Streamlit](https://streamlit.io/) app that uses the client to provide a chat interface. Data structures and settings are built with [Pydantic](https://github.com/pydantic/pydantic).
-
-This project offers a template for you to easily build and run your own agents using the LangGraph framework. It demonstrates a complete setup from agent definition to user interface, making it easier to get started with LangGraph-based projects by providing a full, robust toolkit.
+A comprehensive toolkit for building and running advanced AI agent services with RAG capabilities over both **PostgreSQL databases** and **PDF documents**.
 
 ## Overview
 
-### [Try the app!](https://agent-service-toolkit.streamlit.app/)
+PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating sophisticated capabilities for Retrieval-Augmented Generation across structured and unstructured data sources. Built on LangGraph, FastAPI, and Streamlit, it provides a complete framework from agent definition to user interface.
 
-<a href="https://agent-service-toolkit.streamlit.app/"><img src="media/app_screenshot.png" width="600"></a>
+![Application Screenshot](media/demo_1.png)
+![Application Screenshot](media/demo_2.png)
+![Application Screenshot](media/demo_3.png)
 
-### Quickstart
+## Features
 
-Run directly in python
+- **Advanced RAG Agent:** Handles complex interactions involving database querying, document analysis, and visualization
+
+![Example](media/example.png)
+
+- **Database RAG:** 
+  - Dynamically discovers PostgreSQL database schemas
+  - Generates tailored prompts for the LLM
+  - Enables secure SQL querying via the `execute_sql` tool
+  
+- **Document RAG:** Two configurable backends:
+  - **`nlm-ingestor` (Recommended):** Preserves document hierarchy for better context understanding
+  - **`pymupdf`:** Faster alternative with simpler text extraction
+  
+- **Document Processing:**
+  - Indexing scripts for local folders and URLs
+  - Vector and text search in PostgreSQL
+  - Interactive PDF viewer with relevant section highlighting
+  
+- **Visualization:** Interactive Plotly graph generation
+- **File Uploads:** Upload PDFs directly through the chat interface
+- **Conversation History:** Stored in PostgreSQL with auto-generated titles, accessible via sidebar
+- **Supporting Features:** Content moderation, feedback mechanism, Docker support, and testing
+
+## Quick Start
+
+### Run with Python
 
 ```sh
-# At least one LLM API key is required
+# Set required environment variables
 echo 'OPENAI_API_KEY=your_openai_api_key' >> .env
+echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
 
-# uv is recommended but "pip install ." also works
+# Install dependencies (uv recommended)
 pip install uv
 uv sync --frozen
-# "uv sync" creates .venv automatically
 source .venv/bin/activate
+
+# Run the service
 python src/run_service.py
 
-# In another shell
+# In another terminal
 source .venv/bin/activate
 streamlit run src/streamlit_app.py
 ```
 
-Run with docker
+### Run with Docker
 
 ```sh
+# Set required environment variables in .env
 echo 'OPENAI_API_KEY=your_openai_api_key' >> .env
+echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
+
+# Run with Docker Compose
 docker compose watch
 ```
 
-### Architecture Diagram
+## Configuration
 
-<img src="media/agent_architecture.png" width="600">
+Create a `.env` file with the following options:
 
-### Key Features
+- `OPENAI_API_KEY`: Required for LLM and embeddings
+- `DATABASE_URL`: PostgreSQL connection string
+- `PDF_PARSER`: `nlm-ingestor` (default) or `pymupdf`
+- `LLMSHERPA_API_URL`: URL for nlm-ingestor service if not using default
+- Additional options in `src/core/settings.py`
 
-**1. Database RAG & Interaction (PostgreSQL):**
-   - **Dynamic Schema Discovery:** Automatically inspects specified database schemas, tables, columns, and data types.
-   - **Intelligent Prompt Generation:** Creates tailored system prompts describing the discovered DB schema, guiding the LLM on how to query effectively.
-   - **SQL Execution Tool:** Provides an `execute_sql` tool allowing the agent to directly query the database.
-   - **Sample Data Fetching:** Optionally includes example values from columns in the prompt for better context.
-   - **Special Column Identification:** Detects `vector` and `tsvector` columns, enabling guidance for semantic and full-text searches.
+## Key Files
 
-**2. Document RAG & Visualization (PDFs):**
-   - **PDF Processing (llmsherpa):** Extracts structured content, text, and layout information from PDF documents.
-   - **Vector & Text Search:** Indexes document chunks in PostgreSQL for efficient semantic (embedding) and keyword (full-text) search.
-   - **Interactive PDF Viewer:** Displays source PDFs with relevant sections highlighted based on RAG results, using tools like `Query_RAG`, `Query_RAG_From_ID`, and `PDF_Viewer`.
-   - **Dependency:** Requires the [nlm-ingestor](https://github.com/nlmatics/nlm-ingestor) service for PDF processing (see setup note below).
+- `src/agents/pg_rag_assistant.py`: Main RAG agent definition
+- `src/db_manager.py`: PostgreSQL connection and schema discovery
+- `scripts/prompt_generator.py`: Dynamic system prompt generation
+- `src/rag_system.py`: PDF processing and search logic
+- `scripts/index-folder-script.py`: Script to index local PDFs
+- `scripts/index-urls-script.py`: Script to index PDFs from URLs
+- `src/streamlit_app.py`: Chat interface
+- `docker/`: Dockerfiles and `compose.yaml`
 
-**3. Data Visualization:**
-   - **Plotly Graph Generation:** The agent can generate and display interactive Plotly charts based on data analysis or user requests.
+## Utility Scripts
 
-**4. Core Agent & Service Framework:**
-   - **LangGraph Agent:** Customizable agent architecture using LangGraph v0.3+ features (interruptions, commands, supervision).
-   - **FastAPI Service:** Asynchronous backend serving the agent via REST API with streaming support.
-   - **Streamlit Interface:** User-friendly chat UI for interacting with the agent.
-   - **Multiple Agent Support:** Easily extendable to host multiple distinct agents.
+These scripts help with indexing data and generating prompts. Ensure your environment is activated (`source .venv/bin/activate`) and necessary environment variables (like `DATABASE_URL`, `OPENAI_API_KEY`) are set in your `.env` file before running them.
 
-**5. Supporting Features:**
-   - **File Upload & Processing:** Allows users to upload files for the agent to potentially process or index.
-   - **Content Moderation:** Optional integration with LlamaGuard (requires Groq API key).
-   - **Feedback Mechanism:** Star-based feedback system integrated with LangSmith tracing.
-   - **Docker Support:** Comprehensive Dockerfiles and `compose.yaml` for development and deployment.
-   - **Testing:** Unit and integration tests covering various components.
+### Indexing PDFs from a Folder (`scripts/index-folder-script.py`)
 
-### Key Files
+Indexes PDF documents from a local directory into the database and RAG system.
 
-- `src/agents/`: Agent definitions (e.g., combining tools and logic). Includes `tools.py` where tools like `execute_sql` are defined.
-- `src/db_manager.py`: Manages PostgreSQL connections and includes schema discovery logic for Database RAG.
-- `src/prompt_generator.py`: Contains the function to generate dynamic system prompts for the agent based on discovered DB schema and available tools.
-- `src/rag_system.py`: Handles PDF processing (via llmsherpa), indexing document chunks, and searching logic for Document RAG.
-- `src/schema/`: Defines Pydantic models for data structures and API communication.
-- `src/core/`: Core modules like LLM configuration and application settings.
-- `src/service/service.py`: The FastAPI application serving the agent(s).
-- `src/client/client.py`: A client library for interacting with the agent service.
-- `src/streamlit_app.py`: The Streamlit chat interface application.
-- `tests/`: Unit and integration tests.
-- `docker/`: Dockerfiles for the services.
-- `compose.yaml`: Docker Compose configuration.
+```sh
+python scripts/index-folder-script.py --dir /path/to/your/pdf/folder [--embeddings]
+```
 
-## Setup and Usage
+- `--dir`: (Required) Path to the directory containing PDF files.
+- `--pdf`: (Optional) Path to a single PDF file to index instead of a directory.
+- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
 
-1. Clone the repository:
+### Indexing PDFs from URLs (`scripts/index-urls-script.py`)
 
-   ```sh
-   git clone https://github.com/JoshuaC215/agent-service-toolkit.git
-   cd agent-service-toolkit
-   ```
+Fetches PDF URLs from a specified database table, downloads them, and indexes their content.
 
-2. Set up environment variables:
-   Create a `.env` file in the root directory.
-   - **LLM Configuration:** At least one LLM API key (e.g., `OPENAI_API_KEY`) is required.
-   - **Database Connection:** Set the `DATABASE_URL` variable to your PostgreSQL connection string (e.g., `DATABASE_URL=postgresql://user:password@host:port/dbname`). This is crucial for both agent memory and the RAG features.
-   - **Other Options:** See the [`.env.example` file](./.env.example) for a full list of available environment variables (other model providers, LangSmith tracing, LlamaGuard, etc.).
+```sh
+python scripts/index-urls-script.py [--schema SCHEMA_NAME] [--table TABLE_NAME] [--column COLUMN_NAME] [--embeddings]
+```
 
-3. You can now run the agent service and the Streamlit app locally, either with Docker or just using Python. The Docker setup is recommended for simpler environment setup and immediate reloading of the services when you make changes to your code.
+- `--schema`: (Optional) Database schema containing the table with URLs (default: `public`).
+- `--table`: (Optional) Database table name containing the URLs (default: `arxiv_qbio_metadata_2025`).
+- `--column`: (Optional) Column name within the table that holds the PDF URLs (default: `pdf_url`).
+- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
 
-### Building or customizing your own agent
+### Generating the Database RAG Prompt (`scripts/prompt_generator.py`)
 
-To customize the agent for your own use case:
+Inspects the database schema and generates a detailed system prompt for the RAG agent, saving it to `system_prompt.txt`.
 
-1. Add your new agent to the `src/agents` directory. You can copy `research_assistant.py` or `chatbot.py` and modify it to change the agent's behavior and tools.
-1. Import and add your new agent to the `agents` dictionary in `src/agents/agents.py`. Your agent can be called by `/<your_agent_name>/invoke` or `/<your_agent_name>/stream`.
-1. Adjust the Streamlit interface in `src/streamlit_app.py` to match your agent's capabilities.
+```sh
+python scripts/prompt_generator.py
+```
 
-### Docker Setup
+This script reads database connection details from the environment and currently inspects the `public` schema by default. You can modify the script (`if __name__ == '__main__':` block) to target different schemas or tables if needed.
 
-This project includes a Docker setup for easy development and deployment. The `compose.yaml` file defines two services: `agent_service` and `streamlit_app`. The `Dockerfile` for each is in their respective directories.
+## Customization
 
-For local development, we recommend using [docker compose watch](https://docs.docker.com/compose/file-watch/). This feature allows for a smoother development experience by automatically updating your containers when changes are detected in your source code.
+To build your own agent:
 
-1. Make sure you have Docker and Docker Compose (>=[2.23.0](https://docs.docker.com/compose/release-notes/#2230)) installed on your system.
+1. Modify `src/agents/pg_rag_assistant.py` or add new agents
+2. Add agents to the `agents` dictionary in `src/agents/agents.py`
+3. Adjust the Streamlit interface as needed
 
-2. Build and launch the services in watch mode:
-
-   ```sh
-   docker compose watch
-   ```
-
-3. The services will now automatically update when you make changes to your code:
-   - Changes in the relevant python files and directories will trigger updates for the relevantservices.
-   - NOTE: If you make changes to the `pyproject.toml` or `uv.lock` files, you will need to rebuild the services by running `docker compose up --build`.
-
-4. Access the Streamlit app by navigating to `http://localhost:8501` in your web browser.
-
-5. The agent service API will be available at `http://0.0.0.0:8080`. You can also use the OpenAPI docs at `http://0.0.0.0:8080/redoc`.
-
-6. Use `docker compose down` to stop the services.
-
-This setup allows you to develop and test your changes in real-time without manually restarting the services.
-
-### Building other apps on the AgentClient
-
-The repo includes a generic `src/client/client.AgentClient` that can be used to interact with the agent service. This client is designed to be flexible and can be used to build other apps on top of the agent. It supports both synchronous and asynchronous invocations, and streaming and non-streaming requests.
-
-See the `src/run_client.py` file for full examples of how to use the `AgentClient`. A quick example:
+## Client Usage
 
 ```python
 from client import AgentClient
-client = AgentClient()
+client = AgentClient() # Assumes service running locally
 
-response = client.invoke("Tell me a brief joke?")
+# Ask the RAG agent a question
+response = client.invoke(
+    "What are the main risks mentioned in document 2503_01910 v1?",
+    agent="pg_rag_assistant"
+)
 response.pretty_print()
-# ================================== Ai Message ==================================
-#
-# A man walked into a library and asked the librarian, "Do you have any books on Pavlov's dogs and Schrödinger's cat?"
-# The librarian replied, "It rings a bell, but I'm not sure if it's here or not."
-
 ```
 
-### Development with LangGraph Studio
+## Development
 
-The agent supports [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio), a new IDE for developing agents in LangGraph.
-
-You can simply install LangGraph Studio, add your `.env` file to the root directory as described above, and then launch LangGraph studio pointed at the root directory. Customize `langgraph.json` as needed.
-
-### Using Ollama
-
-⚠️ _**Note:** Ollama support in agent-service-toolkit is experimental and may not work as expected. The instructions below have been tested using Docker Desktop on a MacBook Pro. Please file an issue for any challenges you encounter._
-
-You can also use [Ollama](https://ollama.com) to run the LLM powering the agent service.
-
-1. Install Ollama using instructions from https://github.com/ollama/ollama
-1. Install any model you want to use, e.g. `ollama pull llama3.2` and set the `OLLAMA_MODEL` environment variable to the model you want to use, e.g. `OLLAMA_MODEL=llama3.2`
-
-If you are running the service locally (e.g. `python src/run_service.py`), you should be all set!
-
-If you are running the service in Docker, you will also need to:
-
-1. [Configure the Ollama server as described here](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-do-i-configure-ollama-server), e.g. by running `launchctl setenv OLLAMA_HOST "0.0.0.0"` on MacOS and restart Ollama.
-1. Set the `OLLAMA_BASE_URL` environment variable to the base URL of the Ollama server, e.g. `OLLAMA_BASE_URL=http://host.docker.internal:11434`
-1. Alternatively, you can run `ollama/ollama` image in Docker and use a similar configuration (however it may be slower in some cases).
-
-### Local development without Docker
-
-You can also run the agent service and the Streamlit app locally without Docker, just using a Python virtual environment.
-
-1. Create a virtual environment and install dependencies:
-
-   ```sh
-   pip install uv
-   uv sync --frozen
-   source .venv/bin/activate
-   ```
-
-2. Run the FastAPI server:
-
-   ```sh
-   python src/run_service.py
-   ```
-
-3. In a separate terminal, run the Streamlit app:
-
-   ```sh
-   streamlit run src/streamlit_app.py
-   ```
-
-4. Open your browser and navigate to the URL provided by Streamlit (usually `http://localhost:8501`).
-
-## Projects built with or inspired by agent-service-toolkit
-
-The following are a few of the public projects that drew code or inspiration from this repo.
-
-- **[alexrisch/agent-web-kit](https://github.com/alexrisch/agent-web-kit)** A Next.JS frontend for agent-service-toolkit
-- **[raushan-in/dapa](https://github.com/raushan-in/dapa)** - Digital Arrest Protection App (DAPA) enables users to report financial scams and frauds efficiently via a user-friendly platform.
-
-**Please create a pull request editing the README or open a discussion with any new ones to be added!** Would love to include more projects.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. Currently the tests need to be run using the local development without Docker setup. To run the tests for the agent service:
-
-1. Ensure you're in the project root directory and have activated your virtual environment.
-
-2. Install the development dependencies and pre-commit hooks:
-
-   ```sh
-   pip install uv
-   uv sync --frozen
-   pre-commit install
-   ```
-
-3. Run the tests using pytest:
-
-   ```sh
-   pytest
-   ```
+```sh
+# Install dev dependencies
+pip install uv
+uv sync --frozen --dev
+pre-commit install
+pytest
+```
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-**Note on PDF Processing Dependency:**
-The Document RAG features rely on processing PDFs via the [nlm-ingestor](https://github.com/nlmatics/nlm-ingestor) service, which uses llmsherpa. You will need to run this service separately (e.g., using its Docker image) and potentially configure its URL in the environment variables (`LLMSHERPA_API_URL`) if it's not running on the default localhost address expected by `src/rag_system.py`.

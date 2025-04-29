@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import cast
+from typing import Any
 
 from langchain.prompts import SystemMessagePromptTemplate
+from langchain_core.language_models.base import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig, RunnableLambda, RunnableSerializable
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.runnables import Runnable, RunnableConfig, RunnableLambda, RunnableSerializable
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.types import interrupt
@@ -23,8 +24,8 @@ class AgentState(MessagesState, total=False):
 
 
 def wrap_model(
-    model: BaseChatModel, system_prompt: SystemMessage
-) -> RunnableSerializable[AgentState, AIMessage]:
+    model: BaseChatModel | Runnable[LanguageModelInput, Any], system_prompt: BaseMessage
+) -> RunnableSerializable[AgentState, Any]:
     preprocessor = RunnableLambda(
         lambda state: [system_prompt] + state["messages"],
         name="StateModifier",
@@ -61,8 +62,8 @@ Rules for extraction:
 
 
 class BirthdateExtraction(BaseModel):
-    birthdate: datetime | None = Field(
-        description="The extracted birthdate. If no birthdate is found, this should be None."
+    birthdate: str | None = Field(
+        description="The extracted birthdate in YYYY-MM-DD format. If no birthdate is found, this should be None."
     )
     reasoning: str = Field(
         description="Explanation of how the birthdate was extracted or why no birthdate was found"
@@ -74,20 +75,31 @@ async def determine_birthdate(state: AgentState, config: RunnableConfig) -> Agen
     m = get_model(config["configurable"].get("model", settings.DEFAULT_MODEL))
     model_runnable = wrap_model(
         m.with_structured_output(BirthdateExtraction), birthdate_extraction_prompt.format()
-    )
-    response = await model_runnable.ainvoke(state, config)
-    response = cast(BirthdateExtraction, response)
+    ).with_config(tags=["skip_stream"])
+    response: BirthdateExtraction = await model_runnable.ainvoke(state, config)
 
     # If no birthdate found, interrupt
     if response.birthdate is None:
-        birthdate_input = interrupt(f"{response.reasoning}\n" "Please tell me your birthdate?")
+        birthdate_input = interrupt(f"{response.reasoning}\nPlease tell me your birthdate?")
         # Re-run extraction with the new input
+        state["messages"].append(HumanMessage(birthdate_input))
+        return await determine_birthdate(state, config)
+
+    # Birthdate found - convert string to datetime
+    try:
+        birthdate = datetime.fromisoformat(response.birthdate)
+    except ValueError:
+        # If parsing fails, ask for clarification
+        birthdate_input = interrupt(
+            "I couldn't understand the date format. Please provide your birthdate in YYYY-MM-DD format."
+        )
         state["messages"].append(HumanMessage(birthdate_input))
         return await determine_birthdate(state, config)
 
     # Birthdate found
     return {
-        "birthdate": response.birthdate,
+        "messages": [],
+        "birthdate": birthdate,
     }
 
 
@@ -104,7 +116,8 @@ async def determine_sign(state: AgentState, config: RunnableConfig) -> AgentStat
 
     m = get_model(config["configurable"].get("model", settings.DEFAULT_MODEL))
     model_runnable = wrap_model(
-        m, sign_prompt.format(birthdate=state["birthdate"].strftime("%Y-%m-%d"))
+        m,
+        sign_prompt.format(birthdate=state["birthdate"].strftime("%Y-%m-%d")),  # type: ignore[union-attr]
     )
     response = await model_runnable.ainvoke(state, config)
 

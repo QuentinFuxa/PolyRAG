@@ -89,7 +89,7 @@ def generate_db_rag_prompt(
     prompt_lines = [
         f"You are a helpful {assistant_name}.",
         f"Today's date is {current_date}.",
-        f"You have access to a {db_type} database named '{db_name}' and tools to interact with associated documents.",
+        f"You have access to a {db_type} database and tools to interact with associated documents.",
         "Below is a description of the relevant database tables/columns and document interaction tools.",
         "",
     ]
@@ -223,6 +223,7 @@ def generate_db_rag_prompt(
         "  - If the question is about structured data, summaries, counts, or specific records identifiable via database columns -> Use the `execute_sql` tool with appropriate SQL queries based on the schema.",
         "  - If the question is about the *content* of specific documents (e.g., details within a report mentioned in the database) -> Use `Query_RAG` to search the document, potentially followed by `Query_RAG_From_ID` to navigate, and ALWAYS conclude with `PDF_Viewer` to show the highlighted document.",
         "  - You might need to use `execute_sql` first to find document identifiers (like names or links) before using `Query_RAG`.",
+        "- **SQL Fallback:** If an `execute_sql` query fails (e.g., table not found, syntax error) or returns no relevant results, consider if the information might exist within the documents. If so, try using `Query_RAG` with relevant keywords and potentially document names (if known) as a fallback.",
         "- When using `execute_sql`:",
         "  - Formulate queries based on the user's request and the database schema provided above.",
         "  - Analyze the results returned by the tool to formulate your answer.",
