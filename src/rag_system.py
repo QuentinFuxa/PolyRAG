@@ -13,6 +13,7 @@ from db_manager import DatabaseManager, schema_app_data
 # Load environment variables
 load_dotenv()
 
+TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
 
 class SearchStrategy(Enum):
     TEXT = "text"
@@ -289,7 +290,7 @@ class RAGSystem:
             x1 FLOAT,
             y1 FLOAT,
             parent_idx INTEGER,  -- Changed from parent_id to parent_idx
-            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED, -- Added generated TSVECTOR column
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED, -- Added generated TSVECTOR column
             UNIQUE(name, block_idx)  -- Changed unique constraint
         );
         
@@ -509,11 +510,11 @@ class RAGSystem:
                 x1, 
                 y1,
                 parent_idx,
-                ts_rank_cd(content_tsv, to_tsquery('english', %s)) AS score -- Use 'english' to match index
+                ts_rank_cd(content_tsv, to_tsquery('{TS_QUERY_LANGUAGE}', %s)) AS score
             FROM 
                 {schema_app_data}.rag_document_blocks
             WHERE 
-                content_tsv @@ to_tsquery('english', %s) -- Use 'english' to match index
+                content_tsv @@ to_tsquery('{TS_QUERY_LANGUAGE}', %s)
             """
             params = [ts_query_str, ts_query_str]
 

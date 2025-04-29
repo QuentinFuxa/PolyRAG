@@ -74,8 +74,13 @@ Create a `.env` file with the following options:
 
 - `OPENAI_API_KEY`: Required for LLM and embeddings
 - `DATABASE_URL`: PostgreSQL connection string
+- `SCHEMA_APP_DATA`: Database schema for application data. Default: `document_data`
 - `PDF_PARSER`: `nlm-ingestor` (default) or `pymupdf`
-- `LLMSHERPA_API_URL`: URL for nlm-ingestor service if not using default
+- `UPLOADED_PDF_PARSER`: Parser used for the chat uploaded documents. `nlm-ingestor` (default) or `pymupdf`
+- `LLMSHERPA_API_URL`: URL for nlm-ingestor service if `nlm-ingestor` is used
+- `SYSTEM_PROMPT_PATH`: Path to a system prompt file that you can generate using `scripts/prompt_generator.py`
+- `TS_QUERY_LANGUAGE`: Language used for text search queries. Default: `english`
+
 - Additional options in `src/core/settings.py`
 
 ## Key Files
