@@ -36,7 +36,7 @@ tools = [execute_sql, display_graph, query_rag, query_rag_from_idx, highlight_pd
 
 current_date = datetime.now().strftime("%B %d, %Y")
 
-system_prompt = os.getenv("SYTEM_PROMPT_PATH")
+system_prompt = os.getenv("SYSTEM_PROMPT_PATH")
 with open(system_prompt, "r") as f:
     instructions = f.read()
 
