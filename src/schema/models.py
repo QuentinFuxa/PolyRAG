@@ -81,9 +81,9 @@ class OpenAICompatibleName(StrEnum):
 class AlbertModelName(StrEnum):
     """https://huggingface.co/models?search=albert"""
 
-    LLAMA_3_70B = "llama-3-70b"
-    MISTRAL_SMALL_24B = "mistral-small-24b"
-
+    LLAMA_3_70B = "Albert llama-3-70b"
+    Albert_Small = "Albert small"
+    Albert_Large = "Albert large"
 
 class FakeModelName(StrEnum):
     """Fake model for testing."""

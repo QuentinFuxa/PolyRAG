@@ -165,7 +165,7 @@ class Settings(BaseSettings):
                     self.AVAILABLE_MODELS.update(set(FakeModelName))
                 case Provider.ALBERT:
                     if self.DEFAULT_MODEL is None:
-                        self.DEFAULT_MODEL = AlbertModelName.LLAMA_3_70B
+                        self.DEFAULT_MODEL = AlbertModelName.Albert_Large
                     self.AVAILABLE_MODELS.update(set(AlbertModelName))
                 case Provider.AZURE_OPENAI:
                     if self.DEFAULT_MODEL is None:
@@ -178,7 +178,6 @@ class Settings(BaseSettings):
                         raise ValueError("AZURE_OPENAI_ENDPOINT must be set")
                     if not self.AZURE_OPENAI_DEPLOYMENT_MAP:
                         raise ValueError("AZURE_OPENAI_DEPLOYMENT_MAP must be set")
-
                     # Parse deployment map if it's a string
                     if isinstance(self.AZURE_OPENAI_DEPLOYMENT_MAP, str):
                         try:
