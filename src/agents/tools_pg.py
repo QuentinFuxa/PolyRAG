@@ -29,7 +29,7 @@ def execute_sql_func(sql_query: str) -> str:
         results = cursor.fetchall()
         return str(results)
     except Exception as e:
-        return f"Error executing query: Invalid query syntax or permissions"
+        return f"Error executing query: {e}"
 
 execute_sql: BaseTool = tool(execute_sql_func)
 execute_sql.name = "SQL_Executor"
