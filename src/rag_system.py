@@ -121,7 +121,16 @@ class SherpaDocumentProcessor:
             elif "table_rows" in block_data:
                 # Handle table rows if present
                 for row in block_data["table_rows"]:
-                        content += " | ".join(str(cell['cell_value']) for cell in row['cells']) + "\n"
+                    try:
+                        cells = row.get("cells", [])
+                        if cells:
+                            content += " | ".join(str(cell['cell_value']) for cell in cells) + "\n"
+                        elif row.get("cell_value"):
+                            content += str(row["cell_value"]) + "\n"
+                    except KeyError:
+                        raise ValueError("Invalid table row format")
+            elif "name" in block_data:
+                content = block_data["name"]
             else:
                 raise ValueError("Invalid block data format")
             
