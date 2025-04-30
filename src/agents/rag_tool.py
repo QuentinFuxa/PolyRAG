@@ -5,6 +5,7 @@ import os
 from langchain_core.tools import BaseTool, tool
 
 from rag_system import RAGSystem, SearchStrategy
+from db_manager import schema_app_data # Import schema_app_data
 
 # Initialize the RAG system
 # Check if embeddings should be used based on environment variable
@@ -157,10 +158,10 @@ def query_rag_from_idx_func(
 def highlight_pdf_func(
         pdf_file: str,
         block_indices: Optional[List[int]] = None,  # List of block indices to highlight
-        debug: Optional[bool] = False 
-        ) -> str:
+        debug: Optional[bool] = False
+        ) -> Union[str, Dict[str, Any]]: 
     """
-    Prepare information for highlighting a PDF by block indices.
+    Prepare information for highlighting a PDF by block indices. Checks if the PDF exists in the RAG system first.
     
     Args:
         pdf_file: Name of the PDF file (without path or extension)
@@ -168,18 +169,38 @@ def highlight_pdf_func(
         debug: Display all the blocks in the PDF for debugging (optional). Overwrite the parameter block_indices.
     
     Returns:
-        JSON string containing PDF name and block indices for highlighting
+        JSON string containing PDF name and block indices for highlighting, or an error dictionary if the PDF is not found or multiple similar PDFs are found.
     """
-    # Create response for display in streamlit frontend
-    result = {
-        "pdf_file": pdf_file,
-        "block_indices": block_indices,
-        "debug": debug
-    }
-    return result
+    check_query = f"SELECT DISTINCT name FROM {schema_app_data}.rag_document_blocks WHERE name = %s LIMIT 1"
+    exact_match = rag_system.db_manager.execute_query(check_query, (pdf_file,))
 
+    found_pdf_name = None
+    if exact_match:
+        found_pdf_name = exact_match[0][0]
+    else:
+        cleaned_pdf_file = pdf_file.strip().replace(",", "")
+        like_query = f"SELECT DISTINCT name FROM {schema_app_data}.rag_document_blocks WHERE name ILIKE %s"
+        similar_matches = rag_system.db_manager.execute_query(like_query, (f"%{cleaned_pdf_file}%",))
 
-# Create tools
+        if not similar_matches:
+            return {"error": f"PDF '{pdf_file}' not found in the RAG system (no exact or similar matches)."}
+        elif len(similar_matches) == 1:
+            found_pdf_name = similar_matches[0][0]
+            print(f"Exact match for '{pdf_file}' not found. Using similar match: '{found_pdf_name}'")
+        else:
+            possible_names = [match[0] for match in similar_matches]
+            return {"error": f"PDF '{pdf_file}' not found. Multiple similar documents exist: {', '.join(possible_names)}"}
+
+    if found_pdf_name:
+        result = {
+            "pdf_file": found_pdf_name,
+            "block_indices": block_indices,
+            "debug": debug
+        }
+        return result
+    else:
+        return {"error": f"An unexpected error occurred while searching for PDF '{pdf_file}'."}
+
 query_rag: BaseTool = tool(query_rag_func)
 query_rag.name = "Query_RAG"
 query_rag.description = """
