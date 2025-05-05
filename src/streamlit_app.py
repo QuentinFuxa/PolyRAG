@@ -521,6 +521,8 @@ async def draw_messages(
                             elif tool_name == "PDF_Viewer":
                                 try:
                                     tool_output = json.loads(tool_result.content)
+                                    if tool_output.get('error'):
+                                        continue
                                     pdf_name = tool_output['pdf_file']
                                     block_indices = tool_output['block_indices']
                                     debug_viewer = tool_output.get('debug', False)
@@ -541,10 +543,19 @@ async def draw_messages(
                                     status.error(f"Erreur lors du traitement du PDF : {e}")
                                     st.write(f"Sortie brute : {tool_result.content}")                                  
                             
+                            with status as status:
                             # Update the status
-                            status.write("Sortie :")
-                            status.write(tool_result.content)
-                            status.update(state="complete")
+                                st.write("Sortie :")
+                                json_response = None
+                                try:
+                                    json_response = json.loads(tool_result.content)
+                                except:
+                                    pass 
+                                if json_response:
+                                    st.json(json_response)
+                                else:
+                                    st.write(tool_result.content)
+                                status.update(state="complete")
                             
 
             case "custom":

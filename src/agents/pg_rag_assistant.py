@@ -16,7 +16,7 @@ from agents.llama_guard import LlamaGuard, LlamaGuardOutput, SafetyAssessment
 from agents.tools import calculator
 from agents.tools_pg import execute_sql
 from agents.tools_plotly import display_graph
-from agents.rag_tool import query_rag, query_rag_from_idx, highlight_pdf
+from agents.rag_tool import query_rag, query_rag_from_id, highlight_pdf
 
 from core import get_model, settings
 
@@ -32,7 +32,7 @@ class AgentState(MessagesState, total=False):
     remaining_steps: RemainingSteps
 
 
-tools = [execute_sql, display_graph, query_rag, query_rag_from_idx, highlight_pdf]
+tools = [execute_sql, display_graph, query_rag, query_rag_from_id, highlight_pdf]
 
 current_date = datetime.now().strftime("%B %d, %Y")
 
