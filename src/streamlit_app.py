@@ -228,9 +228,10 @@ async def main() -> None:
             use_streaming = st.toggle(dt.STREAMING_TOGGLE_LABEL, value=True)
 
 
-        # st.caption(
-        #     "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
-        # )
+        st.caption(
+            dt.CAPTION
+        )
+
 
     # Draw existing messages
     messages: list[ChatMessage] = st.session_state.messages
@@ -298,7 +299,6 @@ async def main() -> None:
         elif user_input:
             user_text = user_input.text
             files = user_input.files
-        
         messages.append(ChatMessage(type="human", content=user_text, attached_files=[f.name for f in files]))
         additional_markdown = ""
         if files: 
@@ -333,7 +333,7 @@ async def main() -> None:
                 except Exception as e:
                     upload_status.error(dt.FILE_UPLOAD_ERROR_STATUS.format(file_name=file_name, e=e))
             
-            upload_status.update(state="complete", label=dt.FILES_UPLOADED_COMPLETE_STATUS.format(count=len(uploaded_file_ids)))                
+            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
         try:
             if use_streaming:
                 stream = agent_client.astream(
@@ -367,7 +367,7 @@ async def main() -> None:
                 except Exception as e:
                     pass
                     
-                    st.rerun()
+            st.rerun()
         except AgentClientError as e:
             st.error(dt.RESPONSE_GENERATION_ERROR.format(e=e))
             st.stop()
@@ -398,7 +398,6 @@ async def draw_messages(
         messages_aiter: An async iterator over messages to draw.
         is_new: Whether the messages are new or not.
     """
-
     if "pdf_documents" not in st.session_state:
         st.session_state.pdf_documents = {}
 
@@ -409,7 +408,7 @@ async def draw_messages(
     # Placeholder for intermediate streaming tokens
     streaming_content = ""
     streaming_placeholder = None
-
+    
     # Iterate over the messages and draw them
     while msg := await anext(messages_agen, None):
         # str message represents an intermediate token being streamed
@@ -559,7 +558,6 @@ async def draw_messages(
                                 else:
                                     st.write(tool_result.content)
                                 status.update(state="complete")
-                            
 
             case "custom":
                 # CustomData example used by the bg-task-agent

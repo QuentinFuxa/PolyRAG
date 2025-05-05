@@ -5,6 +5,7 @@ APP_TITLE = "PolyRAG"
 APP_ICON = ":material/experiment:"
 AI_ICON = ":material/flare:"
 USER_ICON = ":material/person:"
+CAPTION = "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: ."
 
 # PDF Dialog
 PDF_DIALOG_TITLE = "Document"
