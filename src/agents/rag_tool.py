@@ -1,7 +1,8 @@
 import json
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union, Tuple, Union
 from enum import Enum
 import os
+import psycopg2 # Import psycopg2 for error handling
 from langchain_core.tools import BaseTool, tool
 
 from rag_system import RAGSystem, SearchStrategy
@@ -19,23 +20,21 @@ class SearchStrategyEnum(str, Enum):
 
 
 def query_rag_func(
-    query: List[str], # Words to search for in the documents. Example: ["ion", "circuit", "feu"]
-    source_names: List[str], # Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461", "INSNP-LYO-2016-0614"]
-    get_children: bool = True, # Whether to retrieve child text blocks
-    get_parents: bool = False, # Whether to retrieve parent text blocks
-    search_strategy: SearchStrategyEnum = SearchStrategyEnum.TEXT
+    query: List[str], # Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
+    source_names: Union[List[str], str] # List of document names OR a SQL query returning a single column of document names. Examples: ["report_campaign", "biology_report"] OR "SELECT doc_name FROM metadata WHERE year = 2025"
     ) -> str:
     """
     Query the RAG system to find relevant information in documents.
-    
+
     Args:
-        query: Words to search for in the documents. Example: ["ion", "circuit", "feu"]
-        source_names: Name of the letter(s) to search in. Example: ["INSSN-LYO-2023-0461", "INSNP-LYO-2016-0614"]
-        get_children: Whether to retrieve child text blocks
-        get_parents: Whether to retrieve parent text blocks
-        
+        query: Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
+        source_names: Can be either:
+                      1. A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]
+                      2. A SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025"
+                      The query MUST start with SELECT and return only one column.
+
     Returns:
-        JSON string with, for each block:
+        List of dictionaries, with for each block:
             - document name
             - id of the block
             - text content of the block
@@ -43,30 +42,59 @@ def query_rag_func(
             - parent block id
             - level of the block
             - tag of the block (header, list_item, etc.)
-
+        Or an error dictionary if something goes wrong.
     """
-    # Convert string enum to SearchStrategy
-    strategy = SearchStrategy[search_strategy.upper()]
-    
-    # clean source_names to remove any leading/trailing whitespace or commas
-    source_names = [name.strip().replace(",", "") for name in source_names if name.strip()]
-    
+    final_source_names = []
+
+    if isinstance(source_names, str):
+        # Treat as SQL query
+        sql_query = source_names.strip()
+        if not sql_query.lower().startswith('select'):
+            return {"error": "Invalid source_names query: Must start with SELECT."}
+        
+        try:
+            # Execute the query using the RAG system's db_manager
+            query_results = rag_system.db_manager.execute_query(sql_query)
+
+            if not query_results:
+                return {"error": f"Source names query returned no results: {sql_query}"}
+
+            # Check if the result has exactly one column
+            if query_results and len(query_results[0]) != 1:
+                 return {"error": f"Source names query must return exactly one column. Query: {sql_query}"}
+
+            # Extract the single column results
+            final_source_names = [row[0] for row in query_results if row and row[0]]
+
+            if not final_source_names:
+                 return {"error": f"Source names query returned no valid names: {sql_query}"}
+
+        except (psycopg2.Error, Exception) as e:
+            # Handle potential database errors
+             return {"error": f"Error executing source_names query '{sql_query}': {str(e)}"}
+
+    elif isinstance(source_names, list):
+        # Treat as a list of names, clean them
+        final_source_names = [name.strip().replace(",", "") for name in source_names if name and name.strip()]
+    else:
+        return {"error": "Invalid type for source_names. Must be a list of strings or a SQL query string."}
+
+    if not final_source_names:
+        return {"error": "No valid source names provided or found."}
+
     # Query the RAG system
     result = rag_system.query(
         query,
-        source_names=source_names,
-        get_children=get_children,
-        get_parents=get_parents,
-        strategy=strategy,
+        source_names=final_source_names,
         num_results = 15
         )
     
     if not result["success"]:
         return {"error": result["message"]}
     
-    # Return text blocks instead of annotations
-    return (
-            [{  
+    # Return text blocks
+    return [
+            {  
                 "document_name": block["name"],
                 "idx": block["block_idx"],  # Using block_idx instead of block_id
                 "content": block["content"],
@@ -75,11 +103,11 @@ def query_rag_func(
                 "level": block["level"],
                 "tag": block["tag"]
             }
-            for block in result["context_blocks"]]
-        )
+            for block in result["blocks"]
+        ]
 
 
-def query_rag_from_idx_func(
+def query_rag_from_id_func(
     block_indices: Union[int, List[int]],  # Block indices to retrieve
     source_name: Optional[str] = None,  # Document name (optional)
     get_children: bool = False,  # Whether to retrieve child blocks
@@ -216,9 +244,9 @@ The tool returns list of objects containing:
     - tag of the block (header, list_item, etc.)
 """
 
-query_rag_from_idx: BaseTool = tool(query_rag_from_idx_func)
-query_rag_from_idx.name = "Query_RAG_From_Idx"
-query_rag_from_idx.description = """
+query_rag_from_id: BaseTool = tool(query_rag_from_id_func)
+query_rag_from_id.name = "Query_RAG_From_Id"
+query_rag_from_id.description = """
 Use this tool to retrieve specific document blocks by their indices.
 Input is a block index or list of block indices, and optionally a document name and whether to get children.
 Use this to navigate through a document when you need to see additional blocks beyond the initial search results.

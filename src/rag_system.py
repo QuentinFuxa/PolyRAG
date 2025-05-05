@@ -455,27 +455,23 @@ class RAGSystem:
             """
         
         self.db_manager.execute_many(query, params_list)
-    
+
     def search(
             self,
             query,
             source_names=None,
-            get_children=False,
-            get_parents=False,
             strategy=SearchStrategy.TEXT,
             limit=5
             ):
         """
         Search rag_documents using specified strategy
-        
+
         Args:
             query: The search query
             source_names: List of document names to search in
-            get_children: Whether to include children of matching blocks
-            get_parents: Whether to include parents of matching blocks
             strategy: SearchStrategy (TEXT, EMBEDDING, or HYBRID)
             limit: Maximum number of results to return
-            
+
         Returns:
             List of relevant blocks with metadata
         """
@@ -519,7 +515,8 @@ class RAGSystem:
                 x1, 
                 y1,
                 parent_idx,
-                ts_rank_cd(content_tsv, to_tsquery('{TS_QUERY_LANGUAGE}', %s)) AS score
+                ts_rank_cd(content_tsv, to_tsquery('{TS_QUERY_LANGUAGE}', %s)) AS score,
+                CASE WHEN tag = 'header' THEN 1 ELSE 0 END AS is_header
             FROM 
                 {schema_app_data}.rag_document_blocks
             WHERE 
@@ -535,7 +532,9 @@ class RAGSystem:
             
             # Add order by and limit
             base_query += """
-            ORDER BY 
+            ORDER BY
+                is_header DESC,
+                level DESC,
                 score DESC
             LIMIT %s
             """
@@ -546,12 +545,12 @@ class RAGSystem:
         formatted_elements = []
         for element in query:
             # Sanitize element: remove potential tsquery operators to avoid injection
-            sanitized_element = element.replace('&', '').replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
+            sanitized_element = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
             if not sanitized_element:
                 continue
             if ' ' in sanitized_element:
                 # If element contains spaces, treat it as a phrase search within the term
-                formatted_element = ' & '.join(sanitized_element.split())
+                formatted_element = ' | '.join(sanitized_element.split())
                 formatted_elements.append(f"({formatted_element})")
             else:
                 formatted_elements.append(sanitized_element)
@@ -561,7 +560,7 @@ class RAGSystem:
             return []
 
         # 2. Try AND search first
-        ts_query_and = " & ".join(formatted_elements)
+        ts_query_and = " | ".join(formatted_elements)
         print(f"Attempting AND search with ts_query: {ts_query_and}")
         search_query_and, params_and = build_search_query(ts_query_and, source_names)
         results = self.db_manager.execute_query(search_query_and, params_and)
@@ -927,35 +926,28 @@ class RAGSystem:
         
         return annotations
     
-    def query(self, 
-              user_query,              
+    def query(self,
+              user_query,
               source_names=None,
-              get_children=False,
-              get_parents=False,
-              strategy=SearchStrategy.TEXT,
               num_results=3
               ):
         """
-        Process a user query and return relevant information with PDF highlights
-        
+        Process a user query and return relevant search results directly.
+
         Args:
             user_query: The user's question
             source_names: List of document names to search in
-            get_children: Whether to include children of matching blocks
-            get_parents: Whether to include parents of matching blocks
-            strategy: Search strategy to use
-            num_results: Number of top results to process
-            
+            num_results: Number of top results to return
+
         Returns:
-            Dictionary with query results and highlight annotations
+            Dictionary containing success status and the list of context blocks found.
         """
         # Search for relevant blocks
+        strategy = SearchStrategy.TEXT # Using default text strategy
         search_results = self.search(
-            user_query, 
-            source_names, 
-            get_children=get_children,
-            get_parents=get_parents,
-            strategy=strategy, 
+            user_query,
+            source_names,
+            strategy=strategy,
             limit=max(num_results * 2, 5)  # Get more results than needed to ensure diversity
         )
 
@@ -983,13 +975,12 @@ class RAGSystem:
                 print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
                 warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
                 
+                strategy = SearchStrategy.TEXT
                 search_results = self.search(
-                    user_query, 
+                    user_query,
                     source_names=None, # Search all documents
-                    get_children=get_children,
-                    get_parents=get_parents,
-                    strategy=strategy, 
-                    limit=max(num_results * 2, 5) 
+                    strategy=strategy,
+                    limit=max(num_results * 2, 5)
                 )
 
         if not search_results:
@@ -997,54 +988,14 @@ class RAGSystem:
                  "success": False,
                  "message": "No relevant information found in the documents."
              }
-        
-        # Process multiple top results to get better coverage
-        top_results = search_results[:num_results]
-        
-        # Get context for each result
-        all_context_blocks = []
-        for result in top_results:
-            context_blocks = self.get_context(result)
-            all_context_blocks.extend(context_blocks)
-        
-        # Deduplicate context blocks by block_idx
-        unique_blocks = {}
-        for block in all_context_blocks:
-            key = f"{block['name']}:{block['block_idx']}"
-            if key not in unique_blocks or block.get('score', 0) > unique_blocks[key].get('score', 0):
-                unique_blocks[key] = block
-        
-        # Convert back to list
-        context_blocks = list(unique_blocks.values())
-        
-        # Sort by page and position
-        context_blocks.sort(key=lambda x: (x["page_idx"], x["level"], x.get("y0", 0) or 0))
-        
-        # Prepare PDF highlighting annotations
-        annotations = self.get_pdf_highlights(context_blocks)
-        
-        # Extract text from context blocks
-        context_text = ""
-        for block in context_blocks:
-            if block["tag"] == "header":
-                context_text += f"\n## {block['content']}\n"
-            elif block["tag"] == "list_item":
-                context_text += f"- {block['content']}\n"
-            else:
-                context_text += f"{block['content']}\n\n"
-        
         final_result = {
             "success": True,
-            "context": context_text,
-            "all_results": search_results[:num_results],  # Return multiple results instead of just the top one
-            "top_result": search_results[0],  # Keep the top result for backward compatibility
-            "context_blocks": context_blocks,
-            "annotations": annotations,
+            "blocks": search_results[:num_results] 
         }
 
         if warning_message:
             final_result["warning"] = warning_message
-            
+
         return final_result
     
     def get_blocks_by_idx(self, block_indices, source_name=None, get_children=False):
