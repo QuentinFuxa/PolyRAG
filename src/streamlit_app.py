@@ -15,14 +15,16 @@ import json
 from pdf_viewer_with_annotations import display_pdf
 from rag_system import RAGSystem
 from db_manager import DatabaseManager
+import display_texts as dt
 
 db_manager = DatabaseManager()
 rag_system = RAGSystem()
 
-APP_TITLE = "PolyRAG"
-APP_ICON = ":material/experiment:"
-AI_ICON = ":material/flare:"
-USER_ICON = ":material/person:"
+
+APP_TITLE = dt.APP_TITLE
+APP_ICON = dt.APP_ICON
+AI_ICON = dt.AI_ICON
+USER_ICON = dt.USER_ICON
 
 
 st.session_state.pdf_to_view = st.session_state.get("pdf_to_view", None)
@@ -40,7 +42,7 @@ def view_pdf(pdf_to_view, annotations=None, debug_viewer=False):
         st.session_state.in_pdf_dialog = True
         st.rerun()
 
-dialog_title = "Document" if not st.session_state.debug_viewer else "/debug" + ' ' + str(st.session_state.pdf_to_view)
+dialog_title = dt.PDF_DIALOG_TITLE if not st.session_state.debug_viewer else dt.PDF_DIALOG_DEBUG_PREFIX + ' ' + str(st.session_state.pdf_to_view)
 @st.dialog(dialog_title, width="large")
 def pdf_dialog():
     """Displays the selected PDF using the new display_pdf function."""
@@ -52,13 +54,13 @@ def pdf_dialog():
     if pdf_name:
         display_pdf(document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer)
     else:
-        st.error("No PDF selected for viewing.")
+        st.error(dt.PDF_DIALOG_NO_PDF_ERROR)
         
     st.session_state.pdf_to_view = None
     st.session_state.annotations = None
     st.session_state.in_pdf_dialog = False
 
-    if st.button("Close"):
+    if st.button(dt.PDF_DIALOG_CLOSE_BUTTON):
         st.rerun()
 
 async def main() -> None:
@@ -88,11 +90,11 @@ async def main() -> None:
             port = os.getenv("PORT", 8080)
             agent_url = f"http://{host}:{port}"
         try:
-            with st.spinner("Connecting to agent service..."):
+            with st.spinner(dt.AGENT_CONNECTING_SPINNER):
                 st.session_state.agent_client = AgentClient(base_url=agent_url)
         except AgentClientError as e:
-            st.error(f"Error connecting to agent service at {agent_url}: {e}")
-            st.markdown("The service might be booting up. Try again in a few seconds.")
+            st.error(dt.AGENT_CONNECTION_ERROR.format(agent_url=agent_url, e=e))
+            st.markdown(dt.AGENT_CONNECTION_RETRY_MSG)
             st.stop()
     agent_client: AgentClient = st.session_state.agent_client
 
@@ -100,7 +102,7 @@ async def main() -> None:
     if query_thread_id and "thread_id" in st.session_state and query_thread_id != st.session_state.thread_id:
         # Thread ID has changed, reload the conversation
         try:
-            with st.spinner("Loading conversation..."):
+            with st.spinner(dt.CONVERSATION_LOADING_SPINNER):
                 messages: ChatHistory = agent_client.get_history(thread_id=query_thread_id).messages
                 st.session_state.messages = messages
                 st.session_state.thread_id = query_thread_id
@@ -109,9 +111,9 @@ async def main() -> None:
                     title = agent_client.get_conversation_title(query_thread_id)
                     st.session_state.conversation_title = title
                 except:
-                    st.session_state.conversation_title = "Conversation"
+                    st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
         except AgentClientError as e:
-            st.error(f"Error loading conversation: {e}")
+            st.error(dt.CONVERSATION_LOAD_ERROR.format(e=e))
 
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
@@ -122,23 +124,21 @@ async def main() -> None:
             try:
                 messages: ChatHistory = agent_client.get_history(thread_id=thread_id).messages
             except AgentClientError:
-                st.error("No message history found for this Thread ID.")
+                st.error(dt.CONVERSATION_NOT_FOUND_ERROR)
                 messages = []
         st.session_state.messages = messages
         st.session_state.thread_id = thread_id
 
     # Config options
     with st.sidebar:
-        st.header(f"{APP_ICON} {APP_TITLE}")
+        st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
 
-        ""
-        """Platform for database and PDF document RAG, with visualization capabilities.
-        Powered by LangGraph, PostgreSQL, Plotly and PDF processors. Built with FastAPI and Streamlit."""
+        st.markdown(dt.SIDEBAR_HEADER)
                 
-        if st.button("**New conversation**", use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
+        if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
             st.query_params.clear()
             st.session_state.messages = []
-            st.session_state.conversation_title = "New conversation"
+            st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
             st.session_state.thread_id = str(uuid4())
             st.rerun()
 
@@ -147,30 +147,30 @@ async def main() -> None:
                 title = agent_client.get_conversation_title(st.session_state.thread_id)
                 st.session_state.conversation_title = title
             except:
-                st.session_state.conversation_title = "New conversation"
+                st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
                  
         if st.session_state.get("editing_title", False):
             new_title = st.text_input(
-                "Conversation title", 
+                dt.EDIT_TITLE_INPUT_LABEL, 
                 value=st.session_state.conversation_title,
                 key="new_title_input"
             )
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Save", key="save_title"):
+                if st.button(dt.SAVE_TITLE_BUTTON, key="save_title"):
                     agent_client.set_conversation_title(st.session_state.thread_id, new_title)
                     st.session_state.conversation_title = new_title
                     st.session_state.editing_title = False
                     st.rerun()
             with col2:
-                if st.button("Cancel", key="cancel_title"):
+                if st.button(dt.CANCEL_TITLE_BUTTON, key="cancel_title"):
                     st.session_state.editing_title = False
                     st.rerun()
         
         try:
             conversations = agent_client.get_conversations(limit=20)
             if conversations:
-                st.subheader("Recent")
+                st.subheader(dt.RECENT_SUBHEADER)
                 for conv in conversations:
                     thread_id = conv["thread_id"]
                     title = conv["title"]
@@ -188,51 +188,46 @@ async def main() -> None:
                         if st.button(
                             f"{title}",
                             key=f"conv_{thread_id}",
-                            help=f"Last updated: {date_str}",
+                            help=dt.CONVERSATION_LAST_UPDATED_HELP.format(date_str=date_str),
                             type='tertiary',
                         ):
                             st.query_params["thread_id"] = thread_id
                             st.rerun()
                     with col2:
-                        if st.button(":material/edit:", key=f"edit_{thread_id}", help="Edit conversation title", type='tertiary'):
+                        if st.button(":material/edit:", key=f"edit_{thread_id}", help=dt.EDIT_CONVERSATION_TITLE_HELP, type='tertiary'):
                             # Navigate to the conversation and enable title editing mode
                             st.query_params["thread_id"] = thread_id
                             st.session_state.editing_title = True
                             st.rerun()
                     with col3:
-                        if st.button(":material/delete:", key=f"delete_{thread_id}", help="Delete this conversation", type='tertiary'):
+                        if st.button(":material/delete:", key=f"delete_{thread_id}", help=dt.DELETE_CONVERSATION_HELP, type='tertiary'):
                             if agent_client.delete_conversation(thread_id):
                                 if thread_id == st.session_state.thread_id:
                                     st.query_params.clear()
                                 st.rerun()
                 
         except Exception as e:
-            st.error(f"Error loading conversations: {e}")
+            st.error(dt.LOAD_CONVERSATIONS_ERROR.format(e=e))
         
         st.divider()
         
         # Settings section
-        with st.popover(":material/settings: Settings", use_container_width=True):
+        with st.popover(dt.SETTINGS_POPOVER_LABEL, use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
-            model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
+            model = st.selectbox(dt.SELECT_LLM_LABEL, options=agent_client.info.models, index=model_idx)
             agent_list = [a.key for a in agent_client.info.agents]
             agent_idx = agent_list.index(agent_client.info.default_agent)
             agent_client.agent = st.selectbox(
-                "Agent to use",
+                dt.SELECT_AGENT_LABEL,
                 options=agent_list,
                 index=agent_idx,
             )
-            use_streaming = st.toggle("Stream results", value=True)
+            use_streaming = st.toggle(dt.STREAMING_TOGGLE_LABEL, value=True)
 
-        with st.popover(":material/policy: Privacy", use_container_width=True):
-            st.write(
-                "Prompts, responses and feedback in this app are anonymously recorded and saved to LangSmith for product evaluation and improvement purposes only."
-            )
 
-        "[View the source code](https://github.com/QuentinFuxa/PolyRAG)"
-        st.caption(
-            "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: .  "
-        )
+        # st.caption(
+        #     "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland"
+        # )
 
     # Draw existing messages
     messages: list[ChatMessage] = st.session_state.messages
@@ -240,15 +235,15 @@ async def main() -> None:
     if len(messages) == 0 and user_text is None:
         match agent_client.agent:
             case "chatbot":
-                WELCOME = "Hello! I'm a simple chatbot. Ask me anything!"
+                WELCOME = dt.WELCOME_CHATBOT
             case "interrupt-agent":
-                WELCOME = "Hello! I'm an interrupt agent. Tell me your birthday and I will predict your personality!"
+                WELCOME = dt.WELCOME_INTERRUPT
             case "research-assistant":
-                WELCOME = "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!"
+                WELCOME = dt.WELCOME_RESEARCH
             case "pg_rag_assistant":
-                WELCOME = "Hello! I'm an AI-powered research assistant with Postgres database access, PDF analysis, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!"
+                WELCOME = dt.WELCOME_PG_RAG
             case _:
-                WELCOME = "Hello! I'm an AI agent. Ask me anything!"
+                WELCOME = dt.WELCOME_DEFAULT
         with st.chat_message("ai", avatar=AI_ICON):
             st.write(WELCOME)
 
@@ -257,27 +252,27 @@ async def main() -> None:
         
         with col1:
             with st.container():
-                if st.button("How many preprints in the q-bio.PE category since the beginning of the year?", key="btn_db_query", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "How many preprints in the q-bio.PE category since the beginning of the year?"
+                if st.button(dt.PROMPT_BUTTON_DB_QUERY, key="btn_db_query", use_container_width=True, icon=":material/description:", type="secondary", disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DB_QUERY
                     st.rerun()
         
         with col2:
             with st.container():
-                if st.button("Plot a graph of anemia distribution by condition and age for the year 2012", key="btn_create_graph", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "Plot a graph of anemia distribution by condition and age for the year 2012"
+                if st.button(dt.PROMPT_BUTTON_DEBUG_PDF, key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:", disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DEBUG_PDF
                     st.rerun()
         col3, col4 = st.columns(2, gap="medium")
         
         with col3:
             with st.container():
-                if st.button("/debug 2504.12888v1", key="btn_debug_pdf", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "/debug 2504.12888v1"
+                if st.button(dt.PROMPT_BUTTON_CREATE_GRAPH, key="btn_create_graph", use_container_width=True, icon=":material/monitoring:", disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_CREATE_GRAPH
                     st.rerun()
         
         with col4:
             with st.container():
-                if st.button("Summarize the most recent preprint", key="btn_document_summary", use_container_width=True, disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = "Summarize the most recent preprint"
+                if st.button(dt.PROMPT_BUTTON_DOCUMENT_SUMMARY, key="btn_document_summary", use_container_width=True, icon=":material/list:", disabled=bool(st.session_state.suggested_command)):
+                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DOCUMENT_SUMMARY
                     st.rerun()
 
 
@@ -292,8 +287,7 @@ async def main() -> None:
         for graph_id, plot_data in st.session_state.graphs.items():
             st.plotly_chart(plot_data)
 
-
-    if user_input := st.chat_input('Your message', accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+    if user_input := st.chat_input(dt.CHAT_INPUT_PLACEHOLDER, accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         if st.session_state.suggested_command:
             user_text = st.session_state.suggested_command
             files = []
@@ -309,12 +303,12 @@ async def main() -> None:
                 additional_markdown = """  
                 """                   
             for file in files:
-                additional_markdown += f""":violet-badge[:material/description: {file.name}] """
+                additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file.name)
 
         st.chat_message("human", avatar=USER_ICON).write(user_text + additional_markdown)
         
         if files:
-            upload_status = st.status("File being uploaded...", state="running")
+            upload_status = st.status(dt.FILE_UPLOADING_STATUS, state="running")
             
             uploaded_file_ids = []
             
@@ -332,11 +326,11 @@ async def main() -> None:
                     )
                     
                     uploaded_file_ids.append(file_id)
-                    upload_status.update(label=f"File {file_name} uploaded successfully!")
+                    upload_status.update(label=dt.FILE_UPLOAD_SUCCESS_STATUS.format(file_name=file_name))
                 except Exception as e:
-                    upload_status.error(f"Error uploading {file_name}: {e}")
+                    upload_status.error(dt.FILE_UPLOAD_ERROR_STATUS.format(file_name=file_name, e=e))
             
-            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
+            upload_status.update(state="complete", label=dt.FILES_UPLOADED_COMPLETE_STATUS.format(count=len(uploaded_file_ids)))                
         try:
             if use_streaming:
                 stream = agent_client.astream(
@@ -356,9 +350,9 @@ async def main() -> None:
                 messages.append(response)
                 st.chat_message("ai", avatar=AI_ICON).write(response.content)
 
-            if len(messages) > 1 and st.session_state.conversation_title == "New conversation":
+            if len(messages) > 1 and st.session_state.conversation_title == dt.DEFAULT_CONVERSATION_TITLE:
                 try:
-                    title_prompt = f"Generate a short title (< 50 chars) summarizing this conversation. First user message: {user_text}"
+                    title_prompt = dt.TITLE_GENERATION_PROMPT.format(user_text=user_text)
                     title_response = await agent_client.ainvoke(
                         message=title_prompt,
                         model=model
@@ -370,9 +364,9 @@ async def main() -> None:
                 except Exception as e:
                     pass
                     
-            st.rerun()
+                    st.rerun()
         except AgentClientError as e:
-            st.error(f"Error generating response: {e}")
+            st.error(dt.RESPONSE_GENERATION_ERROR.format(e=e))
             st.stop()
     if len(messages) > 0 and st.session_state.last_message:
         with st.session_state.last_message:
@@ -430,7 +424,7 @@ async def draw_messages(
             streaming_placeholder.write(streaming_content)
             continue
         if not isinstance(msg, ChatMessage):
-            st.error(f"Unexpected message type: {type(msg)}")
+            st.error(dt.UNEXPECTED_MESSAGE_TYPE_ERROR.format(msg_type=type(msg)))
             st.write(msg)
             st.stop()
 
@@ -444,7 +438,7 @@ async def draw_messages(
                         additional_markdown = """  
                         """                   
                     for file in msg.attached_files:
-                        additional_markdown += f""":violet-badge[:material/description: {file}] """
+                        additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file)
 
                 st.chat_message("human", avatar=USER_ICON).write(msg.content + additional_markdown)
 
@@ -479,19 +473,19 @@ async def draw_messages(
                         tool_names = {}  
                         for tool_call in msg.tool_calls:
                             status = st.status(
-                                f"""Tool Call: {tool_call["name"]}""",
+                                dt.TOOL_CALL_STATUS.format(tool_name=tool_call["name"]),
                                 state="running" if is_new else "complete",
                             )
                             call_results[tool_call["id"]] = status
                             tool_names[tool_call["id"]] = tool_call["name"]
-                            status.write("Input:")
+                            status.write(dt.TOOL_CALL_INPUT_LABEL)
                             status.write(tool_call["args"])
                         for idx in range(len(call_results)):
                             tool_result: ChatMessage = await anext(messages_agen)
                             tool_name = tool_names.get(tool_result.tool_call_id)
 
                             if tool_result.type != "tool":
-                                st.error(f"Unexpected ChatMessage type: {tool_result.type}")
+                                st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=tool_result.type))
                                 st.write(tool_result)
                                 st.stop()
 
@@ -506,21 +500,24 @@ async def draw_messages(
                             if tool_name == "Graph_Viewer" and agent_client:
                                 try:
                                     graph_id = tool_result.content
-                                    status.write(f"Retrieving graph with ID: {graph_id}")                                    
+                                    status.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
+                                    
+                                    # Call the retrieve_graph function to get the graph data
                                     graph_data = agent_client.retrieve_graph(graph_id)
                                     
                                     if graph_data:
                                         try:
                                             plot_data = json.loads(graph_data)
-                                            status.write("Graph retrieved successfully")                                            
+                                            status.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)                                            
                                             st.session_state.graphs[graph_id] = plot_data                                            
                                         except json.JSONDecodeError:
-                                            status.write("Retrieved non-JSON graph data")
+                                            # If not JSON, display as text
+                                            status.write(dt.GRAPH_NON_JSON_DATA)
                                             st.code(graph_data)
                                     else:
-                                        status.write("No graph data returned")
+                                        status.write(dt.GRAPH_NO_DATA_RETURNED)
                                 except Exception as e:
-                                    status.error(f"Error retrieving graph: {e}")
+                                    status.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e))
                             elif tool_name == "PDF_Viewer":
                                 try:
                                     tool_output = json.loads(tool_result.content)
@@ -538,17 +535,17 @@ async def draw_messages(
                                             block_indices=block_indices,
                                         )            
                                     st.session_state.pdf_documents[pdf_name] = annotations                                    
-                                    if st.button(f"View PDF: {pdf_name}", key=f"pdf_button_{tool_result.tool_call_id}"):
+                                    if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name), key=f"pdf_button_{tool_result.tool_call_id}"):
                                         view_pdf(pdf_name, annotations, debug_viewer=debug_viewer)
                                         
-                                    status.update(state="complete", label=f"PDF ready: {pdf_name}")
+                                    status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name))
                                 except Exception as e:
-                                    status.error(f"Error processing PDF: {e}")
-                                    st.write(f"Raw output: {tool_result.content}")                                  
+                                    status.error(dt.PDF_PROCESSING_ERROR.format(e=e))
+                                    st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))                                  
                             
                             with status as status:
                             # Update the status
-                                st.write("Output :")
+                                st.write(dt.TOOL_CALL_OUTPUT_LABEL)
                                 json_response = None
                                 try:
                                     json_response = json.loads(tool_result.content)
@@ -569,7 +566,7 @@ async def draw_messages(
                 try:
                     task_data: TaskData = TaskData.model_validate(msg.custom_data)
                 except ValidationError:
-                    st.error("Unexpected CustomData message received from agent")
+                    st.error(dt.UNEXPECTED_CUSTOMDATA_ERROR)
                     st.write(msg.custom_data)
                     st.stop()
 
@@ -588,7 +585,7 @@ async def draw_messages(
 
             # In case of an unexpected message type, log an error and stop
             case _:
-                st.error(f"Unexpected ChatMessage type: {msg.type}")
+                st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=msg.type))
                 st.write(msg)
                 st.stop()
 
@@ -605,7 +602,7 @@ async def handle_feedback() -> None:
         st.session_state.text_feedback_runs = set()
     
     latest_run_id = st.session_state.messages[-1].run_id
-    feedback_stars = st.feedback("stars", key=latest_run_id)
+    feedback_stars = st.feedback(dt.FEEDBACK_STARS_KEY, key=latest_run_id)
     
     # Auto-submit star feedback when it changes (original behavior)
     if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
@@ -618,27 +615,27 @@ async def handle_feedback() -> None:
                 run_id=latest_run_id,
                 key="human-feedback-stars",
                 score=normalized_score,
-                kwargs={"comment": "In-line human feedback"},
+                kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT},
             )
         except AgentClientError as e:
-            st.error(f"Error recording feedback: {e}")
+            st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
             st.stop()
         
         st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
-        st.toast("Feedback recorded", icon=":material/reviews:")
+        st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
     
     # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
     if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
         # Text input field with submit button
         text_feedback = st.text_area(
-            "Additional feedback (optional)",
+            dt.FEEDBACK_TEXT_AREA_LABEL,
             key=f"text_{latest_run_id}",
             height=100,
-            placeholder="Please provide any additional comments or suggestions..."
+            placeholder=dt.FEEDBACK_TEXT_AREA_PLACEHOLDER
         )
         
         if text_feedback:  # Only show submit button if there's text
-            if st.button("Submit Feedback", key=f"submit_{latest_run_id}"):
+            if st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"):
                 # Normalize the star rating again for consistency
                 normalized_score = (feedback_stars + 1) / 5.0
                 
@@ -652,12 +649,12 @@ async def handle_feedback() -> None:
                         kwargs={"comment": text_feedback},
                     )
                 except AgentClientError as e:
-                    st.error(f"Error recording text feedback: {e}")
+                    st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
                     st.stop()
                 
                 # Mark this run as having received text feedback
                 st.session_state.text_feedback_runs.add(latest_run_id)
-                st.toast("Detailed feedback submitted. Thank you!", icon=":material/reviews:")
+                st.toast(dt.FEEDBACK_SUBMITTED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
                 st.rerun()  # Rerun to hide the input after submission
 
 if __name__ == "__main__":
