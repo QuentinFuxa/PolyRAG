@@ -165,6 +165,18 @@ class DatabaseManager:
             cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_document_sources_url ON {schema_app_data}.document_sources(url);
             """)
+
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {schema_app_data}.graphs (
+                graph_id UUID PRIMARY KEY,
+                graph_json JSONB NOT NULL,
+                expiry_time TIMESTAMP NOT NULL
+            )
+            """)
+
+            cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_graphs_expiry_time ON {schema_app_data}.graphs(expiry_time);
+            """)
             
     def close(self):
         """Close database connection and connection pool."""
@@ -481,6 +493,52 @@ class DatabaseManager:
             )
             
             return result is not None
+
+    def save_graph(self, graph_id: UUID, graph_json: Dict[str, Any], expiry_time: float) -> None:
+        """Save or update graph JSON data in the database."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {schema_app_data}.graphs (graph_id, graph_json, expiry_time)
+                VALUES (%s, %s, TO_TIMESTAMP(%s))
+                ON CONFLICT (graph_id) 
+                DO UPDATE SET graph_json = EXCLUDED.graph_json, expiry_time = EXCLUDED.expiry_time
+                """,
+                (graph_id, Json(graph_json), expiry_time)
+            )
+
+    def get_graph(self, graph_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get graph JSON data if it exists and hasn't expired."""
+        with self.connection.cursor(cursor_factory=DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT graph_json
+                FROM {schema_app_data}.graphs
+                WHERE graph_id = %s AND expiry_time > CURRENT_TIMESTAMP
+                """,
+                (graph_id,)
+            )
+            result = cursor.fetchone()
+            if result:
+                return result['graph_json']
+            # Clean up the potentially expired entry if found but expired
+            # cursor.execute(f"DELETE FROM {schema_app_data}.graphs WHERE graph_id = %s", (graph_id,))
+            return None
+
+    def delete_expired_graphs(self) -> int:
+        """Delete expired graph entries from the database."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                DELETE FROM {schema_app_data}.graphs
+                WHERE expiry_time <= CURRENT_TIMESTAMP
+                RETURNING graph_id
+                """
+            )
+            # cursor.rowcount gives the number of deleted rows in psycopg2
+            deleted_count = cursor.rowcount 
+            logger.info(f"Deleted {deleted_count} expired graphs from the database.")
+            return deleted_count
 
     def add_document_source(self, name: str, path: Optional[str] = None, url: Optional[str] = None) -> int:
         """

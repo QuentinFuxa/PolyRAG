@@ -1,6 +1,9 @@
 import time
 import uuid
 from threading import Timer
+from uuid import UUID
+
+from db_manager import DatabaseManager
 
 class GraphStore:
     _instance = None
@@ -14,38 +17,32 @@ class GraphStore:
     def __init__(self, expiry_seconds=3600):
         if self._initialized:
             return
-            
-        self.graphs = {}
-        self.expiry_seconds = expiry_seconds
+        
+        self.db_manager = DatabaseManager()
+        self.default_expiry_seconds = expiry_seconds
         self._initialized = True
         
         self._start_cleanup_timer()
     
-    def store_graph(self, fig_json):
-        graph_id = str(uuid.uuid4())
-        expiry_time = time.time() + self.expiry_seconds
-        self.graphs[graph_id] = (fig_json, expiry_time)
-        return graph_id
+    def store_graph(self, fig_json, expiry_seconds=None):
+        """Stores graph JSON, returns its ID."""
+        graph_id = uuid.uuid4()
+        expiry = expiry_seconds if expiry_seconds is not None else self.default_expiry_seconds
+        expiry_time = time.time() + expiry
+        self.db_manager.save_graph(graph_id, fig_json, expiry_time)
+        return str(graph_id)
     
-    def get_graph(self, graph_id):
-        if graph_id not in self.graphs:
+    def get_graph(self, graph_id_str: str):
+        """Retrieves graph JSON by ID if not expired."""
+        try:
+            graph_id_uuid = UUID(graph_id_str)
+        except ValueError:
             return None
-            
-        fig_json, expiry_time = self.graphs[graph_id]
-        
-        if time.time() > expiry_time:
-            del self.graphs[graph_id]
-            return None
-            
-        return fig_json
+        return self.db_manager.get_graph(graph_id_uuid)
     
     def _cleanup_expired(self):
-        current_time = time.time()
-        expired_ids = [gid for gid, (_, exp_time) in self.graphs.items() 
-                       if current_time > exp_time]
-        
-        for gid in expired_ids:
-            del self.graphs[gid]
+        """Calls the database manager to delete expired graphs."""
+        self.db_manager.delete_expired_graphs()
     
     def _start_cleanup_timer(self):
         self._cleanup_expired()

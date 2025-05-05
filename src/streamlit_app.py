@@ -285,11 +285,8 @@ async def main() -> None:
         for m in messages:
             yield m
 
-    await draw_messages(amessage_iter())
+    await draw_messages(amessage_iter(), agent_client=agent_client)
 
-    if hasattr(st.session_state, "graphs") and st.session_state.graphs:
-        for graph_id, plot_data in st.session_state.graphs.items():
-            st.plotly_chart(plot_data)
 
     if user_input := st.chat_input(dt.CHAT_INPUT_PLACEHOLDER, accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         if st.session_state.suggested_command:
@@ -472,7 +469,9 @@ async def draw_messages(
                         # status container by ID to ensure results are mapped to the
                         # correct status container.
                         call_results = {}
-                        tool_names = {}  
+                        tool_names = {}
+                        graph_viewer_call_ids = set() # Keep track of Graph_Viewer call IDs
+
                         for tool_call in msg.tool_calls:
                             status = st.status(
                                 dt.TOOL_CALL_STATUS.format(tool_name=tool_call["name"]),
@@ -480,6 +479,8 @@ async def draw_messages(
                             )
                             call_results[tool_call["id"]] = status
                             tool_names[tool_call["id"]] = tool_call["name"]
+                            if tool_call["name"] == "Graph_Viewer":
+                                graph_viewer_call_ids.add(tool_call["id"]) # Store the ID
                             status.write(dt.TOOL_CALL_INPUT_LABEL)
                             status.write(tool_call["args"])
                         for idx in range(len(call_results)):
@@ -491,31 +492,29 @@ async def draw_messages(
                                 st.write(tool_result)
                                 st.stop()
 
-                            # Record the message if it's new, and update the correct
-                            # status container with the result
+                            # Record the message if it's new
                             if is_new:
                                 st.session_state.messages.append(tool_result)
-                            
+
+                            plot_data_for_this_tool = None
+
                             if tool_result.tool_call_id:
                                 status = call_results[tool_result.tool_call_id]
-                            
-                            if tool_name == "Graph_Viewer" and agent_client:
+
+                            # --- Start of Tool Specific Logic ---
+                            if tool_result.tool_call_id in graph_viewer_call_ids and agent_client:
                                 try:
                                     graph_id = tool_result.content
                                     status.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
-                                    
-                                    # Call the retrieve_graph function to get the graph data
                                     graph_data = agent_client.retrieve_graph(graph_id)
-                                    
                                     if graph_data:
                                         try:
                                             plot_data = json.loads(graph_data)
-                                            status.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)                                            
-                                            st.session_state.graphs[graph_id] = plot_data                                            
+                                            status.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)
+                                            plot_data_for_this_tool = plot_data # Store for display immediately after status
                                         except json.JSONDecodeError:
-                                            # If not JSON, display as text
                                             status.write(dt.GRAPH_NON_JSON_DATA)
-                                            st.code(graph_data)
+                                            with status: st.code(graph_data)
                                     else:
                                         status.write(dt.GRAPH_NO_DATA_RETURNED)
                                 except Exception as e:
@@ -543,21 +542,23 @@ async def draw_messages(
                                     status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name))
                                 except Exception as e:
                                     status.error(dt.PDF_PROCESSING_ERROR.format(e=e))
-                                    st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))                                  
-                            
-                            with status as status:
-                            # Update the status
+                                    st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))
+                            with status:
                                 st.write(dt.TOOL_CALL_OUTPUT_LABEL)
                                 json_response = None
                                 try:
-                                    json_response = json.loads(tool_result.content)
+                                    if not plot_data_for_this_tool:
+                                        json_response = json.loads(tool_result.content)
                                 except:
-                                    pass 
+                                    pass
                                 if json_response:
                                     st.json(json_response)
-                                else:
+                                elif not plot_data_for_this_tool:
                                     st.write(tool_result.content)
                                 status.update(state="complete")
+
+                            if plot_data_for_this_tool:
+                                st.plotly_chart(plot_data_for_this_tool)
 
             case "custom":
                 # CustomData example used by the bg-task-agent
