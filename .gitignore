@@ -177,3 +177,4 @@ asnr/*
 *.pdf
 
 system_prompt.txt
+display_texts_custom.py

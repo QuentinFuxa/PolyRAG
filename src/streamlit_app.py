@@ -15,7 +15,10 @@ import json
 from pdf_viewer_with_annotations import display_pdf
 from rag_system import RAGSystem
 from db_manager import DatabaseManager
-import display_texts as dt
+try:
+    import display_texts_custom as dt
+except ImportError:
+    import display_texts as dt
 
 db_manager = DatabaseManager()
 rag_system = RAGSystem()
