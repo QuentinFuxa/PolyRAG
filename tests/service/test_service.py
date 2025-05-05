@@ -347,7 +347,7 @@ def test_info(test_client, mock_settings) -> None:
         assert response.status_code == 200
         output = ServiceMetadata.model_validate(response.json())
 
-    assert output.default_agent == "pg_rag_assistant"
+    assert output.default_agent == "research-assistant"
     assert len(output.agents) == 1
     assert output.agents[0].key == "base-agent"
     assert output.agents[0].description == "A base agent."

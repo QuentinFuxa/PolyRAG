@@ -333,7 +333,7 @@ async def main() -> None:
                 except Exception as e:
                     upload_status.error(dt.FILE_UPLOAD_ERROR_STATUS.format(file_name=file_name, e=e))
             
-            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} fichiers téléchargés")                
+            upload_status.update(state="complete", label=f"{len(uploaded_file_ids)} files uploaded")                
         try:
             if use_streaming:
                 stream = agent_client.astream(

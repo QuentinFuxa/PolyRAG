@@ -122,7 +122,6 @@ class Settings(BaseSettings):
 
         }
         active_keys = [k for k, v in api_keys.items() if v]
-        print(active_keys)
         if not active_keys:
             raise ValueError("At least one LLM API key must be provided.")
         for provider in active_keys:

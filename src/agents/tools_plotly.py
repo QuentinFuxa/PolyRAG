@@ -24,7 +24,7 @@ def create_graph(
     height: int=600,            # chart height
     orientation:str='v',       # orientation 'v' or 'h' for bar charts
     labels: dict=None,           # dictionary for renaming axis labels or legend labels
-    template: int='plotly_white' # chart style template
+    template: str='plotly_white' # chart style template
 ):
     """
     Generates a Plotly chart as JSON from either a SQL query or directly provided data.

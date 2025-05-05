@@ -79,7 +79,6 @@ class OpenAICompatibleName(StrEnum):
     OPENAI_COMPATIBLE = "openai-compatible"
 
 class AlbertModelName(StrEnum):
-    """https://huggingface.co/models?search=albert"""
 
     LLAMA_3_70B = "Albert llama-3-70b"
     Albert_Small = "Albert small"
