@@ -6,6 +6,7 @@ from agents.bg_task_agent.bg_task_agent import bg_task_agent
 from agents.chatbot import chatbot
 from agents.command_agent import command_agent
 from agents.interrupt_agent import interrupt_agent
+from agents.knowledge_base_agent import kb_agent
 from agents.langgraph_supervisor_agent import langgraph_supervisor_agent
 from agents.research_assistant import research_assistant
 from agents.pg_rag_assistant import pg_rag_assistant
@@ -34,6 +35,10 @@ agents: dict[str, Agent] = {
         description="A langgraph supervisor agent", graph=langgraph_supervisor_agent
     ),
     "interrupt-agent": Agent(description="An agent the uses interrupts.", graph=interrupt_agent),
+    "knowledge-base-agent": Agent(
+        description="A retrieval-augmented generation agent using Amazon Bedrock Knowledge Base",
+        graph=kb_agent,
+    ),
 }
 
 
