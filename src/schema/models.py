@@ -13,6 +13,7 @@ class Provider(StrEnum):
     AWS = auto()
     OLLAMA = auto()
     FAKE = auto()
+    ALBERT = auto()
 
 
 class OpenAIModelName(StrEnum):
@@ -77,6 +78,11 @@ class OpenAICompatibleName(StrEnum):
 
     OPENAI_COMPATIBLE = "openai-compatible"
 
+class AlbertModelName(StrEnum):
+
+    LLAMA_3_70B = "Albert llama-3-70b"
+    Albert_Small = "Albert small"
+    Albert_Large = "Albert large"
 
 class FakeModelName(StrEnum):
     """Fake model for testing."""
@@ -95,4 +101,5 @@ AllModelEnum: TypeAlias = (
     | AWSModelName
     | OllamaModelName
     | FakeModelName
+    | AlbertModelName
 )
