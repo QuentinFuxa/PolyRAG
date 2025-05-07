@@ -550,7 +550,7 @@ class RAGSystem:
                 continue
             if ' ' in sanitized_element:
                 # If element contains spaces, treat it as a phrase search within the term
-                formatted_element = ' | '.join(sanitized_element.split())
+                formatted_element = ' & '.join(sanitized_element.split())
                 formatted_elements.append(f"({formatted_element})")
             else:
                 formatted_elements.append(sanitized_element)
@@ -560,7 +560,7 @@ class RAGSystem:
             return []
 
         # 2. Try AND search first
-        ts_query_and = " | ".join(formatted_elements)
+        ts_query_and = " & ".join(formatted_elements)
         print(f"Attempting AND search with ts_query: {ts_query_and}")
         search_query_and, params_and = build_search_query(ts_query_and, source_names)
         results = self.db_manager.execute_query(search_query_and, params_and)
@@ -927,32 +927,54 @@ class RAGSystem:
         return annotations
     
     def query(self,
-              user_query,
-              source_names=None,
-              num_results=3
-              ):
+              user_query: Union[str, List[str]], # Accept string or list for query
+              source_names: Optional[List[str]] = None,
+              max_results_per_source: int = 3,
+              get_children: bool = True,
+              strategy: SearchStrategy = SearchStrategy.TEXT # Allow specifying strategy
+              ) -> Dict[str, Any]:
         """
-        Process a user query and return relevant search results directly.
+        Process a user query, group results by document, limit results per document,
+        and optionally fetch children.
 
         Args:
-            user_query: The user's question
-            source_names: List of document names to search in
-            num_results: Number of top results to return
+            user_query: The user's question (string or list of keywords).
+            source_names: List of document names to search within (optional).
+            max_results_per_source: Max number of top results per document (default: 3).
+            get_children: Whether to fetch child blocks for the results (default: True).
+            strategy: Search strategy to use (TEXT, EMBEDDING, HYBRID).
 
         Returns:
-            Dictionary containing success status and the list of context blocks found.
+            Dictionary containing:
+                - success (bool): True if results were found.
+                - results (list): List of dictionaries, one per document, containing:
+                    - document_name (str)
+                    - results (list): Top N results for the document.
+                    - other_result_idx (list): Indices of remaining results for the document.
+                - message (str, optional): Error or warning message.
         """
-        # Search for relevant blocks
-        strategy = SearchStrategy.TEXT # Using default text strategy
+        # Ensure user_query is a list for internal processing consistency
+        if isinstance(user_query, str):
+            # Basic split, might need refinement depending on expected query format
+            processed_query = user_query.split() 
+        else:
+            processed_query = user_query
+
+        # Determine the overall limit for the initial search.
+        # Fetch more initially to allow for better distribution across documents.
+        initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
+
         search_results = self.search(
-            user_query,
+            processed_query, # Use processed query list
             source_names,
             strategy=strategy,
-            limit=max(num_results * 2, 5)  # Get more results than needed to ensure diversity
+            limit=initial_limit
         )
 
         warning_message = None
+        final_results_by_doc = {}
 
+        # Handle case where specific sources were requested but yielded no results
         if not search_results and source_names:
             placeholders = ', '.join(['%s'] * len(source_names))
             check_query = f"""
@@ -965,36 +987,116 @@ class RAGSystem:
             requested_sources_set = set(source_names)
             missing_sources = sorted(list(requested_sources_set - existing_sources_set))
 
-            if not missing_sources:
-                # All requested sources exist, but the query yielded no results within them.
-                return {
-                    "success": False,
-                    "message": "No relevant information found for the query in the specified document(s)."
-                }
-            else:
-                print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
-                warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
-                
-                strategy = SearchStrategy.TEXT
-                search_results = self.search(
-                    user_query,
-                    source_names=None, # Search all documents
-                    strategy=strategy,
-                    limit=max(num_results * 2, 5)
-                )
+            # Check if the requested source documents actually exist in the DB
+            placeholders = ', '.join(['%s'] * len(source_names))
+            check_query = f"""
+            SELECT DISTINCT name
+            FROM {schema_app_data}.rag_document_blocks
+            WHERE name IN ({placeholders})
+            """
+            try:
+                existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
+                existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
+                requested_sources_set = set(source_names)
+                missing_sources = sorted(list(requested_sources_set - existing_sources_set))
 
+                if not missing_sources:
+                    # All requested sources exist, but the query yielded no results within them.
+                    return {
+                        "success": False,
+                        "message": "No relevant information found for the query in the specified document(s)."
+                    }
+                else:
+                    # Some requested sources don't exist
+                    print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
+                    warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
+
+                    # Retry search across all documents
+                    search_results = self.search(
+                        processed_query,
+                        source_names=None, # Search all documents
+                        strategy=strategy,
+                        limit=initial_limit
+                    )
+            except Exception as e:
+                 return {"success": False, "message": f"Database error checking sources: {e}"}
+
+
+        # If still no results after potential retry, return failure
         if not search_results:
              return {
                  "success": False,
-                 "message": "No relevant information found in the documents."
+                 "message": warning_message or "No relevant information found in the documents."
              }
+
+        # Group results by document name
+        grouped_results = {}
+        for block in search_results:
+            doc_name = block["name"]
+            if doc_name not in grouped_results:
+                grouped_results[doc_name] = []
+            grouped_results[doc_name].append(block)
+
+        # Process each document's results
+        final_output_list = []
+        for doc_name, blocks in grouped_results.items():
+            # Sort blocks within the document (assuming higher score is better)
+            blocks.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            # Select top N results
+            top_results = blocks[:max_results_per_source]
+            other_results = blocks[max_results_per_source:]
+            other_result_idx = [b["block_idx"] for b in other_results]
+
+            # Fetch children if requested
+            processed_top_results = []
+            for block in top_results:
+                 # Format the block according to the desired output structure
+                 formatted_block = {
+                     "idx": block["block_idx"],
+                     "content": block["content"],
+                     "page": block["page_idx"],
+                     "parent_idx": block["parent_idx"],
+                     "level": block["level"],
+                     "tag": block["tag"],
+                     # Add other relevant fields if needed, e.g., score?
+                     # "score": block.get("score")
+                 }
+                 if get_children:
+                     # Fetch children using the internal _get_children method
+                     children = self._get_children(block["block_idx"], doc_name) # Limit can be added here if needed
+                     # Format children similarly or as needed
+                     formatted_children = [
+                         {
+                             "idx": c["block_idx"],
+                             "content": c["content"],
+                             "page": c["page_idx"],
+                             "parent_idx": c["parent_idx"],
+                             "level": c["level"],
+                             "tag": c["tag"],
+                         } for c in children
+                     ]
+                     formatted_block["children"] = formatted_children
+                 else:
+                     formatted_block["children"] = [] # Ensure key exists
+
+                 processed_top_results.append(formatted_block)
+
+
+            # Add to the final list
+            final_output_list.append({
+                "document_name": doc_name,
+                "results": processed_top_results,
+                "other_result_idx": other_result_idx
+            })
+
+        # Construct the final success response
         final_result = {
             "success": True,
-            "blocks": search_results[:num_results] 
+            "results": final_output_list
         }
-
         if warning_message:
-            final_result["warning"] = warning_message
+            final_result["message"] = warning_message # Use 'message' key for warnings/errors
 
         return final_result
     

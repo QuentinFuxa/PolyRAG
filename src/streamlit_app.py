@@ -5,6 +5,8 @@ import uuid
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 import streamlit as st
+import pandas as pd
+from io import StringIO
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
@@ -302,20 +304,20 @@ async def main() -> None:
             if additional_markdown == "":
                 additional_markdown = """  
                 """                   
-            for file in files:
-                additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file.name)
+            for file_name_obj in files:
+                additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file_name_obj.name)
+
 
         st.chat_message("human", avatar=USER_ICON).write(user_text + additional_markdown)
         
+        uploaded_file_ids = []
         if files:
             upload_status = st.status(dt.FILE_UPLOADING_STATUS, state="running")
             
-            uploaded_file_ids = []
-            
-            for file in files:
-                file_content = file.getvalue()
-                file_name = file.name
-                file_type = file.type
+            for file_obj in files:
+                file_content = file_obj.getvalue()
+                file_name = file_obj.name
+                file_type = file_obj.type
                 
                 try:
                     file_id = agent_client.upload_file(
@@ -350,6 +352,7 @@ async def main() -> None:
                 messages.append(response)
                 st.chat_message("ai", avatar=AI_ICON).write(response.content)
 
+
             if len(messages) > 1 and st.session_state.conversation_title == dt.DEFAULT_CONVERSATION_TITLE:
                 try:
                     title_prompt = dt.TITLE_GENERATION_PROMPT.format(user_text=user_text)
@@ -381,81 +384,50 @@ async def draw_messages(
     """
     Draws a set of chat messages - either replaying existing messages
     or streaming new ones.
-
-    This function has additional logic to handle streaming tokens and tool calls.
-    - Use a placeholder container to render streaming tokens as they arrive.
-    - Use a status container to render tool calls. Track the tool inputs and outputs
-      and update the status container accordingly.
-
-    The function also needs to track the last message container in session state
-    since later messages can draw to the same container. This is also used for
-    drawing the feedback widget in the latest chat message.
-
-    Args:
-        messages_aiter: An async iterator over messages to draw.
-        is_new: Whether the messages are new or not.
     """
     if "pdf_documents" not in st.session_state:
         st.session_state.pdf_documents = {}
 
-    # Keep track of the last message container
     last_message_type = None
     st.session_state.last_message = None
-
-    # Placeholder for intermediate streaming tokens
     streaming_content = ""
     streaming_placeholder = None
     
-    # Iterate over the messages and draw them
     while msg := await anext(messages_agen, None):
-        # str message represents an intermediate token being streamed
         if isinstance(msg, str):
-            # If placeholder is empty, this is the first token of a new message
-            # being streamed. We need to do setup.
             if not streaming_placeholder:
                 if last_message_type != "ai":
                     last_message_type = "ai"
                     st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
                 with st.session_state.last_message:
                     streaming_placeholder = st.empty()
-
             streaming_content += msg
             streaming_placeholder.write(streaming_content)
             continue
+
         if not isinstance(msg, ChatMessage):
             st.error(dt.UNEXPECTED_MESSAGE_TYPE_ERROR.format(msg_type=type(msg)))
             st.write(msg)
             st.stop()
 
         match msg.type:
-            # A message from the user, the easiest case
             case "human":
                 last_message_type = "human"
                 additional_markdown = ""
                 if hasattr(msg, 'attached_files') and msg.attached_files: 
-                    if additional_markdown == "":
-                        additional_markdown = """  
-                        """                   
-                    for file in msg.attached_files:
-                        additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file)
-
+                    additional_markdown = "  \n"                   
+                    for file_name in msg.attached_files: # Iterate over file names
+                        additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file_name)
                 st.chat_message("human", avatar=USER_ICON).write(msg.content + additional_markdown)
 
-            # A message from the agent is the most complex case, since we need to
-            # handle streaming tokens and tool calls.
             case "ai":
-                # If we're rendering new messages, store the message in session state
                 if is_new:
                     st.session_state.messages.append(msg)
-
-                # If the last message type was not AI, create a new chat message
                 if last_message_type != "ai":
                     last_message_type = "ai"
                     st.session_state.last_message = st.chat_message("ai", avatar=AI_ICON)
 
                 with st.session_state.last_message:
-                    # If the message has content, write it out.
-                    # Reset the streaming variables to prepare for the next message.
                     if msg.content:
                         if streaming_placeholder:
                             streaming_placeholder.write(msg.content)
@@ -465,152 +437,177 @@ async def draw_messages(
                             st.write(msg.content)
 
                     if msg.tool_calls:
-                        # Create a status container for each tool call and store the
-                        # status container by ID to ensure results are mapped to the
-                        # correct status container.
                         call_results = {}
                         tool_names = {}
-                        graph_viewer_call_ids = set() # Keep track of Graph_Viewer call IDs
+                        graph_viewer_call_ids = set()
 
                         for tool_call in msg.tool_calls:
-                            status = st.status(
+                            status_container = st.status(
                                 dt.TOOL_CALL_STATUS.format(tool_name=tool_call["name"]),
                                 state="running" if is_new else "complete",
                             )
-                            call_results[tool_call["id"]] = status
+                            call_results[tool_call["id"]] = status_container
                             tool_names[tool_call["id"]] = tool_call["name"]
                             if tool_call["name"] == "Graph_Viewer":
-                                graph_viewer_call_ids.add(tool_call["id"]) # Store the ID
-                            status.write(dt.TOOL_CALL_INPUT_LABEL)
-                            status.write(tool_call["args"])
-                        for idx in range(len(call_results)):
+                                graph_viewer_call_ids.add(tool_call["id"])
+                            with status_container: # Write input args inside status
+                                st.write(dt.TOOL_CALL_INPUT_LABEL)
+                                st.write(tool_call["args"])
+                        
+                        for _ in range(len(call_results)): # Iterate based on expected tool results
                             tool_result: ChatMessage = await anext(messages_agen)
-                            tool_name = tool_names.get(tool_result.tool_call_id)
-
+                            
                             if tool_result.type != "tool":
                                 st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=tool_result.type))
                                 st.write(tool_result)
                                 st.stop()
-
-                            # Record the message if it's new
                             if is_new:
                                 st.session_state.messages.append(tool_result)
 
+                            current_tool_name = tool_names.get(tool_result.tool_call_id)
+                            status = call_results.get(tool_result.tool_call_id)
                             plot_data_for_this_tool = None
 
-                            if tool_result.tool_call_id:
-                                status = call_results[tool_result.tool_call_id]
-
-                            # --- Start of Tool Specific Logic ---
+                            if not status:
+                                st.error(f"Could not find status container for tool_call_id: {tool_result.tool_call_id}")
+                                continue
+                            
                             if tool_result.tool_call_id in graph_viewer_call_ids and agent_client:
-                                try:
-                                    graph_id = tool_result.content
-                                    status.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
-                                    graph_data = agent_client.retrieve_graph(graph_id)
-                                    if graph_data:
-                                        try:
-                                            plot_data = json.loads(graph_data)
-                                            status.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)
-                                            plot_data_for_this_tool = plot_data # Store for display immediately after status
-                                        except json.JSONDecodeError:
-                                            status.write(dt.GRAPH_NON_JSON_DATA)
-                                            with status: st.code(graph_data)
-                                    else:
-                                        status.write(dt.GRAPH_NO_DATA_RETURNED)
-                                except Exception as e:
-                                    status.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e))
-                            elif tool_name == "PDF_Viewer":
-                                try:
-                                    tool_output = json.loads(tool_result.content)
-                                    if tool_output.get('error'):
-                                        continue
-                                    pdf_name = tool_output['pdf_file']
-                                    block_indices = tool_output['block_indices']
-                                    debug_viewer = tool_output.get('debug', False)
-                                    if tool_output.get('debug', False):
-                                        annotations = rag_system.debug_blocks(pdf_file=pdf_name)
-                                        print(f"Debugging blocks for {pdf_name}: {len(annotations)} blocks")
-                                    else:
-                                        annotations = rag_system.get_annotations_by_indices(
-                                            pdf_file=pdf_name,
-                                            block_indices=block_indices,
-                                        )            
-                                    st.session_state.pdf_documents[pdf_name] = annotations                                    
-                                    if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name), key=f"pdf_button_{tool_result.tool_call_id}"):
-                                        view_pdf(pdf_name, annotations, debug_viewer=debug_viewer)
+                                with status:
+                                    try:
+                                        graph_id = tool_result.content
+                                        st.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
+                                        graph_data = agent_client.retrieve_graph(graph_id)
+                                        if graph_data:
+                                            try:
+                                                plot_data = json.loads(graph_data)
+                                                st.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)
+                                                plot_data_for_this_tool = plot_data
+                                            except json.JSONDecodeError:
+                                                st.write(dt.GRAPH_NON_JSON_DATA)
+                                                st.code(graph_data)
+                                        else:
+                                            st.write(dt.GRAPH_NO_DATA_RETURNED)
+                                        status.update(state="complete")
+                                    except Exception as e:
+                                        st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e))
+                                        status.update(state="complete")
+                            
+                            elif current_tool_name == "PDF_Viewer":
+                                with status:
+                                    try:
+                                        tool_output = json.loads(tool_result.content)
+                                        if tool_output.get('error'):
+                                            st.error(tool_output['error']) # Display error inside status
+                                        else:
+                                            pdf_name = tool_output['pdf_file']
+                                            st.write(dt.PDF_VIEWER_OUTPUT_LABEL.format(pdf_name=pdf_name)) # Info inside status
+                                        status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name if not tool_output.get('error') else "Error"))
+                                    except Exception as e:
+                                        st.error(dt.PDF_PROCESSING_ERROR.format(e=e))
+                                        st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))
+                                        status.update(state="complete")
+                                if current_tool_name == "PDF_Viewer" and not json.loads(tool_result.content).get('error'):
+                                    tool_output_btn = json.loads(tool_result.content)
+                                    pdf_name_btn = tool_output_btn['pdf_file']
+                                    block_indices_btn = tool_output_btn['block_indices']
+                                    debug_viewer_btn = tool_output_btn.get('debug', False)
+                                    annotations_btn = rag_system.get_annotations_by_indices(
+                                            pdf_file=pdf_name_btn,
+                                            block_indices=block_indices_btn,
+                                        ) if not debug_viewer_btn else rag_system.debug_blocks(pdf_file=pdf_name_btn)
+                                    st.session_state.pdf_documents[pdf_name_btn] = annotations_btn
+                                    if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name_btn), key=f"pdf_button_{tool_result.tool_call_id}"):
+                                        view_pdf(pdf_name_btn, annotations_btn, debug_viewer=debug_viewer_btn)
+
+
+                            else: # catches SQL_Executor and default cases not handled above
+                                with status: 
+                                    st.write(dt.TOOL_CALL_OUTPUT_LABEL) 
+
+                                    if current_tool_name == "SQL_Executor":
+                                        csv_string = tool_result.content
+                                        data_lines = []
+                                        comment_lines = []
+                                        for line in csv_string.strip().split('\n'):
+                                            if line.startswith("#"):
+                                                comment_lines.append(line)
+                                            else:
+                                                data_lines.append(line)
                                         
-                                    status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name))
-                                except Exception as e:
-                                    status.error(dt.PDF_PROCESSING_ERROR.format(e=e))
-                                    st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))
-                            with status:
-                                st.write(dt.TOOL_CALL_OUTPUT_LABEL)
-                                json_response = None
-                                try:
-                                    if not plot_data_for_this_tool:
-                                        json_response = json.loads(tool_result.content)
-                                except:
-                                    pass
-                                if json_response:
-                                    st.json(json_response)
-                                elif not plot_data_for_this_tool:
-                                    st.write(tool_result.content)
-                                status.update(state="complete")
+                                        if data_lines:
+                                            try:
+                                                data_csv_string = "\n".join(data_lines)
+                                                df = pd.read_csv(StringIO(data_csv_string), sep=';')
+                                                st.table(df) 
+                                            except Exception as e:
+                                                st.error(f"Error parsing CSV data for SQL_Executor: {e}")
+                                                st.text("Raw CSV data:")
+                                                st.code(csv_string, language="csv")
+                                        else:
+                                            st.info("No data returned by the SQL query.") 
+
+                                        for comment in comment_lines: 
+                                            if "warning" in comment.lower():
+                                                st.warning(comment)
+                                            elif "error" in comment.lower():
+                                                st.error(comment)
+                                            else:
+                                                st.text(comment)
+                                    
+                                    elif not plot_data_for_this_tool: 
+                                        json_response = None
+                                        try:
+                                            json_response = json.loads(tool_result.content)
+                                        except: 
+                                            pass 
+                                        if json_response is not None:
+                                            st.json(json_response) 
+                                        else: 
+                                            st.write(tool_result.content if tool_result.content else dt.TOOL_OUTPUT_EMPTY)
+                                    
+                                    status.update(state="complete") 
 
                             if plot_data_for_this_tool:
                                 st.plotly_chart(plot_data_for_this_tool)
-
             case "custom":
-                # CustomData example used by the bg-task-agent
-                # See:
-                # - src/agents/utils.py CustomData
-                # - src/agents/bg_task_agent/task.py
                 try:
                     task_data: TaskData = TaskData.model_validate(msg.custom_data)
                 except ValidationError:
                     st.error(dt.UNEXPECTED_CUSTOMDATA_ERROR)
                     st.write(msg.custom_data)
                     st.stop()
-
                 if is_new:
                     st.session_state.messages.append(msg)
-
                 if last_message_type != "task":
                     last_message_type = "task"
                     st.session_state.last_message = st.chat_message(
                         name="task", avatar=":material/manufacturing:"
                     )
                     with st.session_state.last_message:
-                        status = TaskDataStatus()
-
-                status.add_and_draw_task_data(task_data)
-
-            # In case of an unexpected message type, log an error and stop
+                        status_widget = TaskDataStatus()
+                status_widget.add_and_draw_task_data(task_data)
             case _:
                 st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=msg.type))
                 st.write(msg)
                 st.stop()
 
-
 async def handle_feedback() -> None:
-    """Draws a feedback widget and records feedback from the user."""
-
-    # Keep track of last star feedback sent to avoid duplicates
     if "last_star_feedback" not in st.session_state:
-        st.session_state.last_star_feedback = (None, None)  # (run_id, stars)
-    
-    # Keep track of runs with text feedback submitted
+        st.session_state.last_star_feedback = (None, None)
     if "text_feedback_runs" not in st.session_state:
         st.session_state.text_feedback_runs = set()
     
+    if not st.session_state.messages or not hasattr(st.session_state.messages[-1], 'run_id'):
+        return
+
     latest_run_id = st.session_state.messages[-1].run_id
-    feedback_stars = st.feedback(dt.FEEDBACK_STARS_KEY, key=latest_run_id)
+    if not latest_run_id: return
+
+    feedback_stars = st.feedback(dt.FEEDBACK_STARS_KEY, key=f"stars_{latest_run_id}")
     
-    # Auto-submit star feedback when it changes (original behavior)
     if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
-        # Normalize the feedback value (an index) to a score between 0 and 1
         normalized_score = (feedback_stars + 1) / 5.0
-        
         agent_client: AgentClient = st.session_state.agent_client
         try:
             await agent_client.acreate_feedback(
@@ -619,29 +616,21 @@ async def handle_feedback() -> None:
                 score=normalized_score,
                 kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT},
             )
+            st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
+            st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
         except AgentClientError as e:
             st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
-            st.stop()
-        
-        st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
-        st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
-    
-    # Allow text feedback submission if stars have been selected and text feedback hasn't been submitted yet
+
     if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
-        # Text input field with submit button
         text_feedback = st.text_area(
             dt.FEEDBACK_TEXT_AREA_LABEL,
             key=f"text_{latest_run_id}",
             height=100,
             placeholder=dt.FEEDBACK_TEXT_AREA_PLACEHOLDER
         )
-        
-        if text_feedback:  # Only show submit button if there's text
-            if st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"):
-                # Normalize the star rating again for consistency
+        if text_feedback:
+            if st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"): # Unique key for button
                 normalized_score = (feedback_stars + 1) / 5.0
-                
-                # Submit the text feedback
                 agent_client: AgentClient = st.session_state.agent_client
                 try:
                     await agent_client.acreate_feedback(
@@ -650,14 +639,11 @@ async def handle_feedback() -> None:
                         score=normalized_score,
                         kwargs={"comment": text_feedback},
                     )
+                    st.session_state.text_feedback_runs.add(latest_run_id)
+                    st.toast(dt.FEEDBACK_SUBMITTED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
+                    st.rerun()
                 except AgentClientError as e:
                     st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
-                    st.stop()
-                
-                # Mark this run as having received text feedback
-                st.session_state.text_feedback_runs.add(latest_run_id)
-                st.toast(dt.FEEDBACK_SUBMITTED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
-                st.rerun()  # Rerun to hide the input after submission
 
 if __name__ == "__main__":
     asyncio.run(main())

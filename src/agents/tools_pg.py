@@ -1,76 +1,105 @@
 import psycopg2
 from langchain_core.tools import BaseTool, tool
 import os
-import json
+import csv
+import io 
 from datetime import date, datetime
-
+from decimal import Decimal
 db_url = os.getenv("DATABASE_URL")
 
 connection = psycopg2.connect(db_url)
 cursor = connection.cursor()
 
-def json_serial(obj):
-    """JSON serializer for objects not serializable by default json code"""
+
+def to_csv_string_value(obj):
+    """Converts Python objects to string representations suitable for CSV cells."""
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
-    raise TypeError ("Type %s not serializable" % type(obj))
+    if isinstance(obj, Decimal):
+        return str(float(obj))
+    if obj is None:
+        return ""
+    return str(obj)
 
 def execute_sql_func(sql_query: str) -> str:
-    """Execute a read-only SQL query with safety checks
+    """Execute a read-only SQL query with safety checks and returns results as CSV.
 
     Args:
         sql_query (str): A valid SQL query
 
     Returns:
-        str: The result of the SQL query
+        str: The result of the SQL query as a CSV string (semicolon separated),
+             or an error message if the query fails or is disallowed.
     """
     sql_lower = sql_query.lower().strip()
     if not sql_lower.startswith('select'):
-        return json.dumps({"error": "Only SELECT queries are allowed for security reasons."})
+        return "Error: Only SELECT queries are allowed for security reasons."
     
     dangerous_keywords = ['drop', 'delete', 'update', 'insert', 'alter', 'truncate', 'create']
     if any(keyword in sql_lower for keyword in dangerous_keywords):
-        return json.dumps({"error": "Query contains potentially harmful operations."})
+        return "Error: Query contains potentially harmful operations."
     
     try:
         cursor.execute(sql_query)
         results = cursor.fetchall()
+        
+        if not cursor.description:
+            if results:
+                output_io = io.StringIO()
+                csv_writer = csv.writer(output_io, delimiter=';')
+                if len(results[0]) == 1:
+                    csv_writer.writerow(["result"])
+                else:
+                    csv_writer.writerow([f"col_{i+1}" for i in range(len(results[0]))])
+                for row_data in results:
+                    csv_writer.writerow([to_csv_string_value(item) for item in row_data])
+                return output_io.getvalue()
+            return ""
+
         colnames = [desc[0] for desc in cursor.description]
         
-        results_as_dict = []
-        current_char_count = 2 # Start with 2 for initial '[]' or '{}' structure
-        max_chars = 500
-        warning_message = None
+        output_io = io.StringIO()
+        csv_writer = csv.writer(output_io, delimiter=';')
+        
+        csv_writer.writerow(colnames)
+        
+        max_rows = 500
+        warning_message_str = None
         original_row_count = len(results)
 
-        for i, row in enumerate(results):
-            row_dict = dict(zip(colnames, row))
-            # Estimate the length added by this row's JSON representation
-            # Add 1 for comma if not the first element
-            row_json_len = len(json.dumps(row_dict, default=json_serial)) + (1 if i > 0 else 0) 
+        for i, row_data in enumerate(results):
+            if i >= max_rows:
+                warning_message_str = f"# Warning: Query returned {original_row_count} rows, but the output was truncated to {max_rows} rows."
+                break
             
-            if current_char_count + row_json_len > max_chars:
-                warning_message = f"Result truncated: Query returned {original_row_count} rows, but the output was truncated to approximately {max_chars} characters ({len(results_as_dict)} rows shown)."
-                break # Stop adding rows
+            processed_row = [to_csv_string_value(item) for item in row_data]
+            csv_writer.writerow(processed_row)
 
-            results_as_dict.append(row_dict)
-            current_char_count += row_json_len
-
-        # Prepare final output structure
-        output_data = {"results": results_as_dict}
-        if warning_message:
-            output_data["warning"] = warning_message
+        csv_output_string = output_io.getvalue()
+        
+        if warning_message_str:
+            csv_output_string += warning_message_str + "\n"
             
-        # Final check: if even the structure with warning is too long, return only error/warning
-        final_json_output = json.dumps(output_data, default=json_serial)
-        if len(final_json_output) > max_chars + 500: # Add some buffer for the warning itself
-             return json.dumps({"warning": warning_message, "error": "Truncated result still exceeds character limit. Please refine your query."})
+        max_chars_overall = 15000
+        if len(csv_output_string) > max_chars_overall:
+            truncated_csv_string = csv_output_string[:max_chars_overall - 100]
+            last_newline = truncated_csv_string.rfind('\n')
+            if last_newline != -1:
+                truncated_csv_string = truncated_csv_string[:last_newline+1]
+            
+            truncation_error_msg = f"# Error: Result too large. Output truncated to approx {max_chars_overall} chars.\n"
+            if warning_message_str and warning_message_str in truncated_csv_string:
+                 return truncated_csv_string + truncation_error_msg
+            elif warning_message_str:
+                return truncated_csv_string + warning_message_str + "\n" + truncation_error_msg
+            else:
+                return truncated_csv_string + truncation_error_msg
 
-        return final_json_output
+        return csv_output_string
     except Exception as e:
-        connection.rollback()  # Rollback the transaction on error
-        error_message = str(e)
-        return json.dumps({"error": f"Error executing query: {error_message}"})
+        connection.rollback()
+        error_message = str(e).replace('\n', ' ').strip()
+        return f"Error executing query: {error_message}"
 
 execute_sql: BaseTool = tool(execute_sql_func)
 execute_sql.name = "SQL_Executor"

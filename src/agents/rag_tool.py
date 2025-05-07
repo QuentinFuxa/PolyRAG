@@ -21,20 +21,23 @@ class SearchStrategyEnum(str, Enum):
 
 def query_rag_func(
     query: List[str], # Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
-    source_names: Union[List[str], str] # List of document names OR a SQL query returning a single column of document names. Examples: ["report_campaign", "biology_report"] OR "SELECT doc_name FROM metadata WHERE year = 2025"
+    source_query: Optional[str] = None, # SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025"
+    source_names: Optional[List[str]] = None, # List of document names to search within. Example: ["report_campaign", "biology_comparison_report"]
+    get_children: bool = True, # Whether to retrieve child blocks for each found block.
+    max_results_per_source: Optional[int] = None # Maximum number of results to return per source document. Defaults to 3 in the RAG system.
     ) -> str:
     """
-    Query the RAG system to find relevant information in documents.
+    Query the RAG system to find relevant information in documents. Provide EITHER source_names OR source_query.
 
     Args:
         query: Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
-        source_names: Can be either:
-                      1. A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]
-                      2. A SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025"
-                      The query MUST start with SELECT and return only one column.
+        source_query: A SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025". The query MUST start with SELECT and return only one column. Use this OR source_names.
+        source_names: A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]. Use this OR source_query.
+        get_children: Whether to retrieve child blocks for each found block. Defaults to True.
+        max_results_per_source: Maximum number of results to return per source document. If None, defaults to 3.
 
     Returns:
-        List of dictionaries, with for each block:
+        The structured result from the RAG system, typically a dictionary containing 'success' status and 'results' list (grouped by document), or an error dictionary.
             - document name
             - id of the block
             - text content of the block
@@ -46,71 +49,68 @@ def query_rag_func(
     """
     final_source_names = []
 
-    if isinstance(source_names, str):
+    # Validate that exactly one of source_names or source_query is provided
+    if (source_names is None and source_query is None) or \
+       (source_names is not None and source_query is not None):
+        return {"error": "Provide either 'source_names' (list of strings) or 'source_query' (SQL string), but not both."}
+
+    if source_query is not None:
         # Treat as SQL query
-        sql_query = source_names.strip()
+        sql_query = source_query.strip()
         if not sql_query.lower().startswith('select'):
-            return {"error": "Invalid source_names query: Must start with SELECT."}
+            return {"error": "Invalid source_query: Must start with SELECT."}
         
         try:
             # Execute the query using the RAG system's db_manager
             query_results = rag_system.db_manager.execute_query(sql_query)
 
             if not query_results:
-                return {"error": f"Source names query returned no results: {sql_query}"}
+                return {"error": f"Source query returned no results: {sql_query}"}
 
             # Check if the result has exactly one column
             if query_results and len(query_results[0]) != 1:
-                 return {"error": f"Source names query must return exactly one column. Query: {sql_query}"}
+                 return {"error": f"Source query must return exactly one column. Query: {sql_query}"}
 
             # Extract the single column results
             final_source_names = [row[0] for row in query_results if row and row[0]]
 
             if not final_source_names:
-                 return {"error": f"Source names query returned no valid names: {sql_query}"}
+                 return {"error": f"Source query returned no valid names: {sql_query}"}
 
         except (psycopg2.Error, Exception) as e:
             # Handle potential database errors
-             return {"error": f"Error executing source_names query '{sql_query}': {str(e)}"}
+             return {"error": f"Error executing source_query '{sql_query}': {str(e)}"}
 
-    elif isinstance(source_names, list):
+    elif source_names is not None:
         # Treat as a list of names, clean them
-        final_source_names = [name.strip().replace(",", "") for name in source_names if name and name.strip()]
-    else:
-        return {"error": "Invalid type for source_names. Must be a list of strings or a SQL query string."}
+        if not isinstance(source_names, list):
+             return {"error": "Invalid type for source_names. Must be a list of strings."}
+        final_source_names = [name.strip().replace(",", "") for name in source_names if isinstance(name, str) and name.strip()]
+    # else case is handled by the initial validation
 
     if not final_source_names:
-        return {"error": "No valid source names provided or found."}
+        return {"error": "No valid source names provided or found from the input."}
 
+    # Prepare arguments for rag_system.query
+    query_args = {
+        "user_query": query,
+        "source_names": final_source_names,
+        "get_children": get_children
+    }
+    if max_results_per_source is not None:
+        query_args["max_results_per_source"] = max_results_per_source
+        
     # Query the RAG system
-    result = rag_system.query(
-        query,
-        source_names=final_source_names,
-        num_results = 15
-        )
-    
-    if not result["success"]:
-        return {"error": result["message"]}
-    
-    # Return text blocks
-    return [
-            {  
-                "document_name": block["name"],
-                "idx": block["block_idx"],  # Using block_idx instead of block_id
-                "content": block["content"],
-                "page": block["page_idx"],
-                "parent_idx": block["parent_idx"],  # Using parent_idx instead of parent_id
-                "level": block["level"],
-                "tag": block["tag"]
-            }
-            for block in result["blocks"]
-        ]
+    result = rag_system.query(**query_args)
+
+    # The RAG system now returns the final structured output or an error message
+    return result
 
 
 def query_rag_from_id_func(
     block_indices: Union[int, List[int]],  # Block indices to retrieve
     source_name: Optional[str] = None,  # Document name (optional)
-    get_children: bool = False,  # Whether to retrieve child blocks
+    get_children: bool = True,  # Whether to retrieve child blocks
     get_surrounding: bool = True  # Whether to retrieve surrounding blocks (2 before, 2 after)
     ) -> str:
     """
