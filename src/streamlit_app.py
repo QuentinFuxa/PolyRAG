@@ -539,7 +539,7 @@ async def draw_messages(
                                             try:
                                                 data_csv_string = "\n".join(data_lines)
                                                 df = pd.read_csv(StringIO(data_csv_string), sep=';')
-                                                st.table(df) 
+                                                st.dataframe(df) 
                                             except Exception as e:
                                                 st.error(f"Error parsing CSV data for SQL_Executor: {e}")
                                                 st.text("Raw CSV data:")

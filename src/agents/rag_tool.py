@@ -20,7 +20,7 @@ class SearchStrategyEnum(str, Enum):
 
 
 def query_rag_func(
-    query: List[str], # Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
+    keywords: List[str], # Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
     source_query: Optional[str] = None, # SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025"
     source_names: Optional[List[str]] = None, # List of document names to search within. Example: ["report_campaign", "biology_comparison_report"]
     get_children: bool = True, # Whether to retrieve child blocks for each found block.
@@ -30,7 +30,7 @@ def query_rag_func(
     Query the RAG system to find relevant information in documents. Provide EITHER source_names OR source_query.
 
     Args:
-        query: Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
+        keywords: Words to search for in the documents. Example: ["isotope & atoms", "molecule", "reaction"]. Use "&" to require to have both words (or more) in the result.
         source_query: A SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025". The query MUST start with SELECT and return only one column. Use this OR source_names.
         source_names: A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]. Use this OR source_query.
         get_children: Whether to retrieve child blocks for each found block. Defaults to True.
@@ -93,7 +93,7 @@ def query_rag_func(
 
     # Prepare arguments for rag_system.query
     query_args = {
-        "user_query": query,
+        "user_query": keywords,
         "source_names": final_source_names,
         "get_children": get_children
     }
