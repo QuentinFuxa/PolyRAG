@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine
 from langchain_core.tools import BaseTool, tool
 from agents._graph_store import GraphStore
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union, Callable
 from db_manager import DatabaseManager
 
 graph_store = GraphStore()
@@ -18,13 +18,15 @@ def create_graph(
     x_col: str = None,            # column name for the X-axis
     y_col: str = None,            # column name for the Y-axis
     color_col: str = None,        # column name for color encoding (categories)
-    size_col: int =None,         # column name for size encoding (e.g., scatter bubble chart)
+    size_col: str = None,         # column name for size encoding (e.g., scatter bubble chart)
     title: str='My Graph',      # chart title
     width: int =800,             # chart width
     height: int=600,            # chart height
     orientation:str='v',       # orientation 'v' or 'h' for bar charts
     labels: dict=None,           # dictionary for renaming axis labels or legend labels
-    template: str='plotly_white' # chart style template
+    template: str='plotly_white', # chart style template
+    markers: bool = False,        # whether to show markers on line charts
+    preprocess: Optional[Dict[str, Union[bool, str, List[str]]]] = None  # preprocessing instructions
 ):
     """
     Generates a Plotly chart as JSON from either a SQL query or directly provided data.
@@ -47,6 +49,15 @@ def create_graph(
         orientation (str): The orientation for bar charts ('v' or 'h')
         labels (dict): Dictionary for renaming axis labels or legend labels
         template (str): The chart style template
+        markers (bool): Whether to show markers on line charts (default: False)
+        preprocess (Optional[Dict]): Preprocessing instructions for data transformation. Supported options:
+            - create_date: Set to 'from_year_month' to create a 'date' column from 'year' and 'month'
+            - use_date_for_x: Set to True to use the created 'date' column as x-axis (default: True)
+            - aggregate: Dict with settings for data aggregation:
+                - group_by: Column to group by
+                - column: Column to aggregate
+                - function: Aggregation function ('sum', 'mean', etc.)
+                - new_column: Name for the aggregated column (default: {column}_{function})
     """
 
     # print('Graph with the following parameters:')
@@ -75,24 +86,109 @@ def create_graph(
     elif query:
         # Execute the SQL query
         cleaned_query = re.sub(r'(?<!%)%(?!%)', '%%', query)
-        df = pd.read_sql(cleaned_query, con=db_manager.engine)
+        try:
+            df = pd.read_sql(cleaned_query, con=db_manager.engine)
+        except Exception as e:
+            # Catch potential SQL execution errors (broadly for now)
+            # and prefix the error message for identification by the agent.
+            raise ValueError(f"SQL Execution Error: Failed to execute query '{cleaned_query}'. Reason: {e}")
     else:
          # This case should not be reached due to validation above, but added for safety
          raise ValueError("No data source provided (neither query nor data).")
 
-    # Verify we have a non-empty DataFrame
-    if df.empty:
-        raise ValueError("The SQL query returned no results or the DataFrame is empty.")
+    if 'df' in locals() and df.empty:
+        
+        if query: # check if the error originated from SQL or just empty direct data
+             raise ValueError("SQL Execution Error: The query executed successfully but returned no results.")
+        else:
+             raise ValueError("Input Data Error: The provided 'data' is empty.")
 
-    # Verify specified columns exist
-    if x_col and x_col not in df.columns:
-        raise ValueError(f"Column '{x_col}' does not exist in the DataFrame.")
-    if y_col and y_col not in df.columns:
-        raise ValueError(f"Column '{y_col}' does not exist in the DataFrame.")
-    if color_col and color_col not in df.columns:
-        raise ValueError(f"Column '{color_col}' does not exist in the DataFrame.")
-    if size_col and size_col not in df.columns:
-        raise ValueError(f"Column '{size_col}' does not exist in the DataFrame.")
+    # preprocessing options before column validation
+    if preprocess:
+        # Create date column from year and month columns
+        if 'create_date' in preprocess:
+            if preprocess['create_date'] == 'from_year_month':
+                if 'year' in df.columns and 'month' in df.columns:
+                    # Create date column using year and month
+                    try:
+                        # Ensure year and month are integers first, then strings
+                        df['year'] = df['year'].astype(int).astype(str)
+                        df['month'] = df['month'].astype(int).astype(str)
+                        
+                        # Pad month with leading zero if needed
+                        df['month'] = df['month'].str.zfill(2)
+                        
+                        # Create the date string in ISO format (YYYY-MM-DD)
+                        df['date'] = pd.to_datetime(df['year'] + '-' + df['month'] + '-01')
+                        
+                        # If x_col is not specified but we're creating a date, assume it's for x-axis
+                        if not x_col and preprocess.get('use_date_for_x', True):
+                            x_col = 'date'
+                        
+                        # Explicitly sort by the new date column for time series plots
+                        df = df.sort_values(by='date')
+
+                    except Exception as e:
+                        raise ValueError(f"Failed to create date column from year and month: {str(e)}")
+                else:
+                    raise ValueError("Cannot create date column: Either 'year' or 'month' column is missing")
+    
+        # Handle additional column transformations or feature engineering
+        if 'aggregate' in preprocess:
+            # Example: Sum values by a grouping column
+            agg_config = preprocess['aggregate']
+            if isinstance(agg_config, dict):
+                group_by = agg_config.get('group_by', None)
+                agg_col = agg_config.get('column', None)
+                agg_func = agg_config.get('function', 'sum')
+                new_col_name = agg_config.get('new_column', f"{agg_col}_{agg_func}")
+                
+                if group_by and agg_col:
+                    if group_by in df.columns and agg_col in df.columns:
+                        try:
+                            # Perform the aggregation
+                            df_agg = df.groupby(group_by)[agg_col].agg(agg_func).reset_index()
+                            df_agg.rename(columns={agg_col: new_col_name}, inplace=True)
+                            
+                            # Replace the DataFrame with the aggregated one
+                            df = df_agg
+                            
+                            # Update column names if they were specified and they correspond to old columns
+                            if x_col == group_by:
+                                x_col = group_by
+                            if y_col == agg_col:
+                                y_col = new_col_name
+                        except Exception as e:
+                            raise ValueError(f"Failed to aggregate data: {str(e)}")
+                    else:
+                        missing_cols = []
+                        if group_by not in df.columns:
+                            missing_cols.append(group_by)
+                        if agg_col not in df.columns:
+                            missing_cols.append(agg_col)
+                        raise ValueError(f"Cannot aggregate data: Missing columns: {', '.join(missing_cols)}")
+    
+    # Verify specified columns exist (after preprocessing, only if df exists and is not empty)
+    if 'df' in locals() and not df.empty:
+        if x_col and x_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{x_col}' for X-axis not found. Available columns: {columns_str}")
+        if y_col and y_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{y_col}' for Y-axis not found. Available columns: {columns_str}")
+        if color_col and color_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{color_col}' for color not found. Available columns: {columns_str}")
+        if size_col and size_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{size_col}' for size not found. Available columns: {columns_str}")
+    elif 'df' not in locals() or df.empty:
+        # This case should ideally be caught earlier, but as a safeguard:
+        # If df doesn't exist or is empty, we can't proceed with plotting.
+        # The specific error (SQL vs Data) should have been raised already.
+        # If somehow we reach here, raise a generic error.
+        raise ValueError("Data Error: Cannot proceed with plotting as data is unavailable or empty.")
+
 
     fig = None
 
@@ -136,8 +232,12 @@ def create_graph(
             title=title,
             template=template,
             width=width,
-            height=height
+            height=height,
+            markers=markers
         )
+        
+        if markers and not hasattr(px.line, 'markers'):
+            fig.update_traces(mode='lines+markers')
     elif chart_type == 'pie':
         # Pie chart
         if not x_col:
@@ -167,12 +267,17 @@ def create_graph(
             height=height
         )
 
-    # 3) Extra customization via fig.update_layout or fig.update_traces if needed
     fig.update_layout(
         showlegend=True,
         legend=dict(title=''),
         margin=dict(l=50, r=50, t=50, b=50),
     )
+
+    if x_col == 'date' and preprocess and 'create_date' in preprocess:
+         fig.update_layout(
+             xaxis_type='date',
+             xaxis_tickformat='%b %Y' # Format as 'Month Year', e.g., 'Jan 2022'
+         )
 
     # 4) Export figure to JSON for frontend rendering
     fig_json = fig.to_json()

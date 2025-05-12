@@ -3,6 +3,7 @@ import os
 import urllib.parse
 import uuid
 from collections.abc import AsyncGenerator
+from typing import List, Union, Dict, Set
 from uuid import uuid4
 import streamlit as st
 import pandas as pd
@@ -448,128 +449,48 @@ async def draw_messages(
                             )
                             call_results[tool_call["id"]] = status_container
                             tool_names[tool_call["id"]] = tool_call["name"]
-                            if tool_call["name"] == "Graph_Viewer":
+                            if tool_call["name"] in ["Graph_Viewer", "graphing_agent"]: #Can be direct call to the tool, or call to the agent
                                 graph_viewer_call_ids.add(tool_call["id"])
                             with status_container: # Write input args inside status
                                 st.write(dt.TOOL_CALL_INPUT_LABEL)
                                 st.write(tool_call["args"])
                         
-                        for _ in range(len(call_results)): # Iterate based on expected tool results
-                            tool_result: ChatMessage = await anext(messages_agen)
-                            
+                        # Process each tool call result - wait for all results
+                        pending_tool_call_ids = set(call_results.keys())
+                        
+                        # Process messages until we've handled all tool results
+                        while pending_tool_call_ids and (tool_result := await anext(messages_agen, None)):
+                            # Skip non-tool messages and continue waiting for tool results
+                            if isinstance(tool_result, str):
+                                if streaming_placeholder:
+                                    streaming_content += tool_result
+                                    streaming_placeholder.write(streaming_content)
+                                continue
+                                
+                            # Check if this is a tool result message
                             if tool_result.type != "tool":
-                                st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=tool_result.type))
-                                st.write(tool_result)
-                                st.stop()
+                                # If we get a non-tool message, save it for later processing
+                                # by pushing it back to the front of our message stream
+                                # This allows us to handle interleaved message types
+                                messages_agen = chain_messages([tool_result], messages_agen)
+                                break
+                                
+                            # Now process the tool result
                             if is_new:
                                 st.session_state.messages.append(tool_result)
+                                
+                            # Remove this tool call from our pending list
+                            if tool_result.tool_call_id in pending_tool_call_ids:
+                                pending_tool_call_ids.remove(tool_result.tool_call_id)
 
-                            current_tool_name = tool_names.get(tool_result.tool_call_id)
-                            status = call_results.get(tool_result.tool_call_id)
-                            plot_data_for_this_tool = None
-
-                            if not status:
-                                st.error(f"Could not find status container for tool_call_id: {tool_result.tool_call_id}")
-                                continue
-                            
-                            if tool_result.tool_call_id in graph_viewer_call_ids and agent_client:
-                                with status:
-                                    try:
-                                        graph_id = tool_result.content
-                                        st.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
-                                        graph_data = agent_client.retrieve_graph(graph_id)
-                                        if graph_data:
-                                            try:
-                                                plot_data = json.loads(graph_data)
-                                                st.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)
-                                                plot_data_for_this_tool = plot_data
-                                            except json.JSONDecodeError:
-                                                st.write(dt.GRAPH_NON_JSON_DATA)
-                                                st.code(graph_data)
-                                        else:
-                                            st.write(dt.GRAPH_NO_DATA_RETURNED)
-                                        status.update(state="complete")
-                                    except Exception as e:
-                                        st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e))
-                                        status.update(state="complete")
-                            
-                            elif current_tool_name == "PDF_Viewer":
-                                with status:
-                                    try:
-                                        tool_output = json.loads(tool_result.content)
-                                        if tool_output.get('error'):
-                                            st.error(tool_output['error']) # Display error inside status
-                                        else:
-                                            pdf_name = tool_output['pdf_file']
-                                            st.write(dt.PDF_VIEWER_OUTPUT_LABEL.format(pdf_name=pdf_name)) # Info inside status
-                                        status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name if not tool_output.get('error') else "Error"))
-                                    except Exception as e:
-                                        st.error(dt.PDF_PROCESSING_ERROR.format(e=e))
-                                        st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))
-                                        status.update(state="complete")
-                                if current_tool_name == "PDF_Viewer" and not json.loads(tool_result.content).get('error'):
-                                    tool_output_btn = json.loads(tool_result.content)
-                                    pdf_name_btn = tool_output_btn['pdf_file']
-                                    block_indices_btn = tool_output_btn['block_indices']
-                                    debug_viewer_btn = tool_output_btn.get('debug', False)
-                                    annotations_btn = rag_system.get_annotations_by_indices(
-                                            pdf_file=pdf_name_btn,
-                                            block_indices=block_indices_btn,
-                                        ) if not debug_viewer_btn else rag_system.debug_blocks(pdf_file=pdf_name_btn)
-                                    st.session_state.pdf_documents[pdf_name_btn] = annotations_btn
-                                    if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name_btn), key=f"pdf_button_{tool_result.tool_call_id}"):
-                                        view_pdf(pdf_name_btn, annotations_btn, debug_viewer=debug_viewer_btn)
-
-
-                            else: # catches SQL_Executor and default cases not handled above
-                                with status: 
-                                    st.write(dt.TOOL_CALL_OUTPUT_LABEL) 
-
-                                    if current_tool_name == "SQL_Executor":
-                                        csv_string = tool_result.content
-                                        data_lines = []
-                                        comment_lines = []
-                                        for line in csv_string.strip().split('\n'):
-                                            if line.startswith("#"):
-                                                comment_lines.append(line)
-                                            else:
-                                                data_lines.append(line)
-                                        
-                                        if data_lines:
-                                            try:
-                                                data_csv_string = "\n".join(data_lines)
-                                                df = pd.read_csv(StringIO(data_csv_string), sep=';')
-                                                st.dataframe(df) 
-                                            except Exception as e:
-                                                st.error(f"Error parsing CSV data for SQL_Executor: {e}")
-                                                st.text("Raw CSV data:")
-                                                st.code(csv_string, language="csv")
-                                        else:
-                                            st.info("No data returned by the SQL query.") 
-
-                                        for comment in comment_lines: 
-                                            if "warning" in comment.lower():
-                                                st.warning(comment)
-                                            elif "error" in comment.lower():
-                                                st.error(comment)
-                                            else:
-                                                st.text(comment)
-                                    
-                                    elif not plot_data_for_this_tool: 
-                                        json_response = None
-                                        try:
-                                            json_response = json.loads(tool_result.content)
-                                        except: 
-                                            pass 
-                                        if json_response is not None:
-                                            st.json(json_response) 
-                                        else: 
-                                            st.write(tool_result.content if tool_result.content else dt.TOOL_OUTPUT_EMPTY)
-                                    
-                                    status.update(state="complete") 
-
-                            if plot_data_for_this_tool:
-                                st.plotly_chart(plot_data_for_this_tool)
+                            # Process the tool result
+                            await process_tool_result(
+                                tool_result=tool_result,
+                                tool_names=tool_names,
+                                call_results=call_results,
+                                graph_viewer_call_ids=graph_viewer_call_ids,
+                                agent_client=agent_client
+                            )
             case "custom":
                 try:
                     task_data: TaskData = TaskData.model_validate(msg.custom_data)
@@ -591,6 +512,144 @@ async def draw_messages(
                 st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=msg.type))
                 st.write(msg)
                 st.stop()
+
+# Helper function to chain multiple message sources into a single async generator
+async def chain_messages(
+    initial_messages: List[ChatMessage], 
+    next_messages: AsyncGenerator[Union[ChatMessage, str], None]
+) -> AsyncGenerator[Union[ChatMessage, str], None]:
+    """
+    Chain multiple message sources into a single async generator.
+    This is useful when we need to insert a message back into a stream
+    for later processing.
+    """
+    for msg in initial_messages:
+        yield msg
+    
+    async for msg in next_messages:
+        yield msg
+
+# Process different types of tool results
+async def process_tool_result(
+    tool_result: ChatMessage,
+    tool_names: Dict[str, str],
+    call_results: Dict[str, object],
+    graph_viewer_call_ids: Set[str],
+    agent_client: AgentClient = None
+):
+    """Process a tool result message based on the tool type."""
+    current_tool_name = tool_names.get(tool_result.tool_call_id)
+    status = call_results.get(tool_result.tool_call_id)
+    plot_data_for_this_tool = None
+
+    if not status:
+        st.error(f"Could not find status container for tool_call_id: {tool_result.tool_call_id}")
+        return
+    
+    # Handle Graph_Viewer tool
+    if tool_result.tool_call_id in graph_viewer_call_ids and agent_client:
+        with status:
+            try:
+                graph_id = tool_result.content
+                st.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
+                graph_data = agent_client.retrieve_graph(graph_id)
+                if graph_data:
+                    try:
+                        plot_data = json.loads(graph_data)
+                        st.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR)
+                        plot_data_for_this_tool = plot_data
+                    except json.JSONDecodeError:
+                        st.write(dt.GRAPH_NON_JSON_DATA)
+                        st.code(graph_data)
+                else:
+                    st.write(dt.GRAPH_NO_DATA_RETURNED)
+                status.update(state="complete")
+            except Exception as e:
+                st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e))
+                status.update(state="complete")
+    
+    # Handle PDF_Viewer tool
+    elif current_tool_name == "PDF_Viewer":
+        with status:
+            try:
+                tool_output = json.loads(tool_result.content)
+                if tool_output.get('error'):
+                    st.error(tool_output['error'])  # Display error inside status
+                else:
+                    pdf_name = tool_output['pdf_file']
+                    st.write(dt.PDF_VIEWER_OUTPUT_LABEL.format(pdf_name=pdf_name))  # Info inside status
+                status.update(state="complete", label=dt.PDF_READY_STATUS.format(
+                    pdf_name=pdf_name if not tool_output.get('error') else "Error"))
+            except Exception as e:
+                st.error(dt.PDF_PROCESSING_ERROR.format(e=e))
+                st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content))
+                status.update(state="complete")
+                
+        # Add PDF view button if no error
+        if current_tool_name == "PDF_Viewer" and not json.loads(tool_result.content).get('error'):
+            tool_output_btn = json.loads(tool_result.content)
+            pdf_name_btn = tool_output_btn['pdf_file']
+            block_indices_btn = tool_output_btn['block_indices']
+            debug_viewer_btn = tool_output_btn.get('debug', False)
+            annotations_btn = rag_system.get_annotations_by_indices(
+                    pdf_file=pdf_name_btn,
+                    block_indices=block_indices_btn,
+                ) if not debug_viewer_btn else rag_system.debug_blocks(pdf_file=pdf_name_btn)
+            st.session_state.pdf_documents[pdf_name_btn] = annotations_btn
+            if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name_btn), key=f"pdf_button_{tool_result.tool_call_id}"):
+                view_pdf(pdf_name_btn, annotations_btn, debug_viewer=debug_viewer_btn)
+
+    # Handle SQL_Executor and other tools
+    else:
+        with status:
+            st.write(dt.TOOL_CALL_OUTPUT_LABEL)
+
+            if current_tool_name == "SQL_Executor":
+                csv_string = tool_result.content
+                data_lines = []
+                comment_lines = []
+                for line in csv_string.strip().split('\n'):
+                    if line.startswith("#"):
+                        comment_lines.append(line)
+                    else:
+                        data_lines.append(line)
+                
+                if data_lines:
+                    try:
+                        data_csv_string = "\n".join(data_lines)
+                        df = pd.read_csv(StringIO(data_csv_string), sep=';')
+                        st.dataframe(df)
+                    except Exception as e:
+                        st.error(f"Error parsing CSV data for SQL_Executor: {e}")
+                        st.text("Raw CSV data:")
+                        st.code(csv_string, language="csv")
+                else:
+                    st.info("No data returned by the SQL query.")
+
+                for comment in comment_lines:
+                    if "warning" in comment.lower():
+                        st.warning(comment)
+                    elif "error" in comment.lower():
+                        st.error(comment)
+                    else:
+                        st.text(comment)
+            
+            elif not plot_data_for_this_tool:
+                json_response = None
+                try:
+                    json_response = json.loads(tool_result.content)
+                except:
+                    pass
+                if json_response is not None:
+                    st.json(json_response)
+                else:
+                    st.write(tool_result.content if tool_result.content else dt.TOOL_OUTPUT_EMPTY)
+            
+            status.update(state="complete")
+
+    # Render plot data if available
+    if plot_data_for_this_tool:
+        st.plotly_chart(plot_data_for_this_tool)
 
 async def handle_feedback() -> None:
     if "last_star_feedback" not in st.session_state:
