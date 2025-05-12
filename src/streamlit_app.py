@@ -449,7 +449,7 @@ async def draw_messages(
                             )
                             call_results[tool_call["id"]] = status_container
                             tool_names[tool_call["id"]] = tool_call["name"]
-                            if tool_call["name"] in ["Graph_Viewer", "graphing_agent"]: #Can be direct call to the tool, or call to the agent
+                            if tool_call["name"] in ["Graph_Viewer", "tool_graphing_agent"]: #Can be direct call to the tool, or call to the agent
                                 graph_viewer_call_ids.add(tool_call["id"])
                             with status_container: # Write input args inside status
                                 st.write(dt.TOOL_CALL_INPUT_LABEL)
@@ -603,7 +603,6 @@ async def process_tool_result(
     else:
         with status:
             st.write(dt.TOOL_CALL_OUTPUT_LABEL)
-
             if current_tool_name == "SQL_Executor":
                 csv_string = tool_result.content
                 data_lines = []
@@ -640,7 +639,7 @@ async def process_tool_result(
                     json_response = json.loads(tool_result.content)
                 except:
                     pass
-                if json_response is not None:
+                if json_response is not None and isinstance(json_response, (dict, list)):
                     st.json(json_response)
                 else:
                     st.write(tool_result.content if tool_result.content else dt.TOOL_OUTPUT_EMPTY)

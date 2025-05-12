@@ -128,7 +128,7 @@ class Settings(BaseSettings):
             match provider:
                 case Provider.OPENAI:
                     if self.DEFAULT_MODEL is None:
-                        self.DEFAULT_MODEL = OpenAIModelName.GPT_4O_MINI
+                        self.DEFAULT_MODEL = OpenAIModelName.GPT_4O
                     self.AVAILABLE_MODELS.update(set(OpenAIModelName))
                 case Provider.OPENAI_COMPATIBLE:
                     if self.DEFAULT_MODEL is None:
