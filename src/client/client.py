@@ -1,7 +1,7 @@
 import json
 import os
 from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from typing import Any, List, Dict, Optional
 
 import httpx
 
@@ -554,3 +554,72 @@ class AgentClient:
                 return response.json()["title"]
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error getting conversation title: {e}")
+
+    async def aget_annotations(self, pdf_file: str, block_indices: List[int]) -> List[Dict[str, Any]]:
+        """
+        Get highlighting annotations for specified blocks in a PDF asynchronously.
+        """
+        request_data = {"pdf_file": pdf_file, "block_indices": block_indices}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/rag/annotations",
+                    json=request_data,
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json().get("annotations", [])
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error getting RAG annotations: {e}")
+            except Exception as e: # Catch potential JSON parsing errors or missing keys
+                raise AgentClientError(f"Error processing RAG annotations response: {e}")
+
+    async def adebug_pdf_blocks(self, pdf_file: str) -> List[Dict[str, Any]]:
+        """
+        Get all block annotations for a PDF for debugging asynchronously.
+        """
+        request_data = {"pdf_file": pdf_file}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/rag/debug_blocks",
+                    json=request_data,
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json().get("annotations", [])
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error debugging RAG blocks: {e}")
+            except Exception as e: # Catch potential JSON parsing errors or missing keys
+                raise AgentClientError(f"Error processing RAG debug blocks response: {e}")
+
+    async def aget_document_source_status(self, document_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the source status (path or URL) for a given document name asynchronously.
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/documents/{document_name}/source_status",
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status() # Will raise for 4xx/5xx responses
+                response_data = response.json()
+                if response_data.get("error"):
+                    # Log or handle specific error message from server if needed
+                    # For now, returning None signifies not found or error
+                    return None
+                return response_data.get("source_info")
+            except httpx.HTTPStatusError as e:
+                # Specifically catch 404 or other HTTP errors if server raises them
+                # instead of returning error in JSON
+                if e.response.status_code == 404:
+                    return None 
+                raise AgentClientError(f"Error getting document source status: {e}")
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error getting document source status: {e}")
+            except Exception as e: # Catch potential JSON parsing errors or missing keys
+                raise AgentClientError(f"Error processing document source status response: {e}")

@@ -6,6 +6,7 @@ from langchain_community.tools import DuckDuckGoSearchResults, OpenWeatherMapQue
 from langchain_community.utilities import OpenWeatherMapAPIWrapper
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.tools import BaseTool
 from langchain_core.runnables import RunnableConfig, RunnableLambda, RunnableSerializable
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, MessagesState, StateGraph
@@ -15,6 +16,11 @@ from langgraph.prebuilt import ToolNode
 from agents.llama_guard import LlamaGuard, LlamaGuardOutput, SafetyAssessment
 from agents.tools import calculator
 from agents.tools_pg import execute_sql
+
+try:
+    from agents.tools_pg import get_demand_content, count_demands
+except ImportError:
+    pass
 from agents.tool_graphing_agent import tool_graphing_agent
 from agents.rag_tool import query_rag, query_rag_from_id, highlight_pdf
 
@@ -40,12 +46,21 @@ tools = [
     highlight_pdf
 ]
 
+try:
+    tools.append(
+        get_demand_content, 
+        count_demands,
+)
+except:
+    pass
+
 current_date = datetime.now().strftime("%B %d, %Y")
 
 system_prompt = os.getenv("SYSTEM_PROMPT_PATH")
 with open(system_prompt, "r") as f:
     instructions = f.read()
 
+instructions = instructions.replace('{', '{{').replace('}', '}}').replace('/././/', '{').replace('//././.', '}')
 instructions = instructions.format(current_date=current_date)
 
 

@@ -15,17 +15,36 @@ from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 import json
-from pdf_viewer_with_annotations import display_pdf
-from rag_system import RAGSystem
-from db_manager import DatabaseManager
+from frontend.pdf_viewer_with_annotations import display_pdf
+import os
+
+class DotDict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super(DotDict, self).__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = DotDict(v)
+            elif isinstance(v, list):
+                # Convert list items that are dicts to DotDict
+                self[k] = [DotDict(i) if isinstance(i, dict) else i for i in v]
+
+default_display_texts_path = "variables/demo_articles/display_texts.json" # Default if .env var is missing
+display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH", default_display_texts_path)
+
+dt_data = {}
 try:
-    import display_texts_custom as dt
-except ImportError:
-    import display_texts as dt
-
-db_manager = DatabaseManager()
-rag_system = RAGSystem()
-
+    print(f"Attempting to load display texts from: {display_texts_json_path}")
+    with open(display_texts_json_path, 'r', encoding='utf-8') as f:
+        dt_data = json.load(f)
+    dt = DotDict(dt_data)
+    print(f"Successfully loaded display texts from {display_texts_json_path}")
+except Exception as e:
+    raise Exception(f"ERROR: Display texts JSON file not found at '{display_texts_json_path}'. Please check the path and try again.") from e
 
 APP_TITLE = dt.APP_TITLE
 APP_ICON = dt.APP_ICON
@@ -57,10 +76,26 @@ def pdf_dialog():
     pdf_name = st.session_state.pdf_to_view
     annotations = st.session_state.annotations
     debug_viewer = st.session_state.get("debug_viewer", False)
-    if pdf_name:
-        display_pdf(document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer)
+    current_agent_client = st.session_state.get("agent_client")
+
+    if pdf_name and current_agent_client:
+        try:
+            loop = asyncio.get_running_loop()
+            future = asyncio.run_coroutine_threadsafe(
+                display_pdf(agent_client=current_agent_client, document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer),
+                loop
+            )
+            future.result()
+        except RuntimeError:
+            asyncio.run(display_pdf(agent_client=current_agent_client, document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer))
+        except Exception as e:
+            st.error(f"Error displaying PDF: {e}")
+            print(f"Error in pdf_dialog calling display_pdf: {e}")
     else:
-        st.error(dt.PDF_DIALOG_NO_PDF_ERROR)
+        if not pdf_name:
+            st.error(dt.PDF_DIALOG_NO_PDF_ERROR)
+        if not current_agent_client:
+            st.error("Agent client not available for PDF dialog.")
         
     st.session_state.pdf_to_view = None
     st.session_state.annotations = None
@@ -254,36 +289,40 @@ async def main() -> None:
         with st.chat_message("ai", avatar=AI_ICON):
             st.write(WELCOME)
 
+        if hasattr(dt, 'EXAMPLE_PROMPTS') and dt.EXAMPLE_PROMPTS:
+            num_prompts = len(dt.EXAMPLE_PROMPTS)
+            for i in range(0, num_prompts, 2):
+                cols = st.columns(2, gap="medium")
+                with cols[0]:
+                    prompt_data = dt.EXAMPLE_PROMPTS[i]
+                    if st.button(
+                        prompt_data["button_text"],
+                        key=prompt_data["key"],
+                        use_container_width=True,
+                        icon=prompt_data["icon"],
+                        type="secondary", 
+                        disabled=bool(st.session_state.suggested_command)
+                    ):
+                        st.session_state.suggested_command = prompt_data["suggested_command_text"]
+                        st.rerun()
+                
+                if i + 1 < num_prompts:
+                    with cols[1]:
+                        prompt_data_next = dt.EXAMPLE_PROMPTS[i+1]
+                        if st.button(
+                            prompt_data_next["button_text"],
+                            key=prompt_data_next["key"],
+                            use_container_width=True,
+                            icon=prompt_data_next["icon"],
+                            type="secondary",
+                            disabled=bool(st.session_state.suggested_command)
+                        ):
+                            st.session_state.suggested_command = prompt_data_next["suggested_command_text"]
+                            st.rerun()
+        else:
+            st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
 
-        col1, col2 = st.columns(2, gap="medium")
-        
-        with col1:
-            with st.container():
-                if st.button(dt.PROMPT_BUTTON_DB_QUERY, key="btn_db_query", use_container_width=True, icon=":material/description:", type="secondary", disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DB_QUERY
-                    st.rerun()
-        
-        with col2:
-            with st.container():
-                if st.button(dt.PROMPT_BUTTON_DEBUG_PDF, key="btn_debug_pdf", use_container_width=True, icon=":material/bug_report:", disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DEBUG_PDF
-                    st.rerun()
-        col3, col4 = st.columns(2, gap="medium")
-        
-        with col3:
-            with st.container():
-                if st.button(dt.PROMPT_BUTTON_CREATE_GRAPH, key="btn_create_graph", use_container_width=True, icon=":material/monitoring:", disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_CREATE_GRAPH
-                    st.rerun()
-        
-        with col4:
-            with st.container():
-                if st.button(dt.PROMPT_BUTTON_DOCUMENT_SUMMARY, key="btn_document_summary", use_container_width=True, icon=":material/list:", disabled=bool(st.session_state.suggested_command)):
-                    st.session_state.suggested_command = dt.PROMPT_SUGGESTED_DOCUMENT_SUMMARY
-                    st.rerun()
 
-
-    # draw_messages() expects an async iterator over messages
     async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
         for m in messages:
             yield m
@@ -591,15 +630,21 @@ async def process_tool_result(
             pdf_name_btn = tool_output_btn['pdf_file']
             block_indices_btn = tool_output_btn['block_indices']
             debug_viewer_btn = tool_output_btn.get('debug', False)
-            annotations_btn = rag_system.get_annotations_by_indices(
-                    pdf_file=pdf_name_btn,
-                    block_indices=block_indices_btn,
-                ) if not debug_viewer_btn else rag_system.debug_blocks(pdf_file=pdf_name_btn)
+            
+            annotations_btn = []
+            if agent_client:
+                if not debug_viewer_btn:
+                    annotations_btn = await agent_client.aget_annotations(
+                        pdf_file=pdf_name_btn,
+                        block_indices=block_indices_btn
+                    )
+                else:
+                    annotations_btn = await agent_client.adebug_pdf_blocks(pdf_file=pdf_name_btn)
+            
             st.session_state.pdf_documents[pdf_name_btn] = annotations_btn
             if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name_btn), key=f"pdf_button_{tool_result.tool_call_id}"):
                 view_pdf(pdf_name_btn, annotations_btn, debug_viewer=debug_viewer_btn)
 
-    # Handle SQL_Executor and other tools
     else:
         with status:
             st.write(dt.TOOL_CALL_OUTPUT_LABEL)
