@@ -8,12 +8,12 @@ from client import AgentClient # Added AgentClient import
 
 # Removed: db_manager = DatabaseManager()
 
-async def get_pdf_content(agent_client: AgentClient, document_name: str) -> Optional[bytes]: # Made async, added agent_client
+def get_pdf_content(agent_client: AgentClient, document_name: str) -> Optional[bytes]:
     print(f"Attempting to fetch PDF content for: {document_name}")
-    source_info = await agent_client.aget_document_source_status(document_name=document_name) # Use agent_client
+    source_info = agent_client.get_document_source_status(document_name=document_name)
 
     if not source_info:
-        st.error(f"Document source '{document_name}' not found via API.") # Updated error message
+        st.error(f"Document source '{document_name}' not found via API.")
         print(f"Source not found in DB for: {document_name}")
         return None
 
@@ -53,12 +53,11 @@ async def get_pdf_content(agent_client: AgentClient, document_name: str) -> Opti
     print(f"Successfully retrieved PDF content for: {document_name}")
     return pdf_content
 
-async def display_pdf(agent_client: AgentClient, document_name: str, annotations: Optional[List[Dict[str, Any]]] = None, debug_viewer: bool = False) -> None: # Made async, added agent_client
-    pdf_content = await get_pdf_content(agent_client, document_name) # Pass agent_client, await
+def display_pdf(agent_client: AgentClient, document_name: str, annotations: Optional[List[Dict[str, Any]]] = None, debug_viewer: bool = False) -> None:
+    pdf_content = get_pdf_content(agent_client, document_name)
 
     if pdf_content:
         try:
-            # pdf_viewer is synchronous, so it's called directly even within an async function
             pdf_viewer(input=pdf_content, annotations=annotations, render_text=True, annotation_outline_size=2)
             print(f"Successfully rendered PDF display for: {document_name}")
         except Exception as e:

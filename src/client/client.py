@@ -595,6 +595,30 @@ class AgentClient:
             except Exception as e: # Catch potential JSON parsing errors or missing keys
                 raise AgentClientError(f"Error processing RAG debug blocks response: {e}")
 
+    def get_document_source_status(self, document_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the source status (path or URL) for a given document name synchronously.
+        """
+        try:
+            response = httpx.get(
+                f"{self.base_url}/documents/{document_name}/source_status",
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            if response_data.get("error"):
+                return None
+            return response_data.get("source_info")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise AgentClientError(f"Error getting document source status: {e}")
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error getting document source status: {e}")
+        except Exception as e:
+            raise AgentClientError(f"Error processing document source status response: {e}")
+
     async def aget_document_source_status(self, document_name: str) -> Optional[Dict[str, Any]]:
         """
         Get the source status (path or URL) for a given document name asynchronously.

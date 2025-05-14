@@ -646,9 +646,6 @@ async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Error retrieving conversation title: {str(e)}")
 
 
-app.include_router(router)
-
-
 @router.post("/rag/annotations", response_model=AnnotationsResponse)
 async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse:
     """
@@ -693,3 +690,6 @@ async def get_document_source_status_endpoint(document_name: str) -> DocumentSou
     except Exception as e:
         logger.error(f"Error getting document source status for '{document_name}': {e}")
         raise HTTPException(status_code=500, detail=f"Error getting document source status: {str(e)}")
+
+
+app.include_router(router)

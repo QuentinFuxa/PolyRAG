@@ -63,9 +63,8 @@ def view_pdf(pdf_to_view, annotations=None, debug_viewer=False):
     st.session_state.pdf_to_view = pdf_to_view
     st.session_state.annotations = annotations
     st.session_state.debug_viewer = debug_viewer
-    if not st.session_state.get("in_pdf_dialog", False):
-        st.session_state.in_pdf_dialog = True
-        st.rerun()
+    st.session_state.in_pdf_dialog = True
+    st.rerun()
 
 dialog_title = dt.PDF_DIALOG_TITLE if not st.session_state.debug_viewer else dt.PDF_DIALOG_DEBUG_PREFIX + ' ' + str(st.session_state.pdf_to_view)
 @st.dialog(dialog_title, width="large")
@@ -80,14 +79,7 @@ def pdf_dialog():
 
     if pdf_name and current_agent_client:
         try:
-            loop = asyncio.get_running_loop()
-            future = asyncio.run_coroutine_threadsafe(
-                display_pdf(agent_client=current_agent_client, document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer),
-                loop
-            )
-            future.result()
-        except RuntimeError:
-            asyncio.run(display_pdf(agent_client=current_agent_client, document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer))
+            display_pdf(agent_client=current_agent_client, document_name=pdf_name, annotations=annotations, debug_viewer=debug_viewer)
         except Exception as e:
             st.error(f"Error displaying PDF: {e}")
             print(f"Error in pdf_dialog calling display_pdf: {e}")
@@ -97,11 +89,11 @@ def pdf_dialog():
         if not current_agent_client:
             st.error("Agent client not available for PDF dialog.")
         
-    st.session_state.pdf_to_view = None
-    st.session_state.annotations = None
-    st.session_state.in_pdf_dialog = False
 
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON):
+        st.session_state.pdf_to_view = None
+        st.session_state.annotations = None
+        st.session_state.in_pdf_dialog = False
         st.rerun()
 
 async def main() -> None:
