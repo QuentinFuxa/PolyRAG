@@ -33,8 +33,7 @@ class DotDict(dict):
                 # Convert list items that are dicts to DotDict
                 self[k] = [DotDict(i) if isinstance(i, dict) else i for i in v]
 
-default_display_texts_path = "variables/demo_articles/display_texts.json" # Default if .env var is missing
-display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH", default_display_texts_path)
+display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH")
 
 dt_data = {}
 try:
