@@ -172,3 +172,34 @@ class ChatHistoryInput(BaseModel):
 
 class ChatHistory(BaseModel):
     messages: list[ChatMessage]
+
+
+class AnnotationsRequest(BaseModel):
+    pdf_file: str
+    block_indices: list[int]
+
+
+class DebugBlocksRequest(BaseModel):
+    pdf_file: str
+
+
+class AnnotationItem(BaseModel):
+    page: int
+    x: float
+    y: float
+    height: float
+    width: float
+    color: str
+
+
+class AnnotationsResponse(BaseModel):
+    annotations: list[AnnotationItem]
+
+
+class DocumentSourceInfo(BaseModel):
+    path: str | None = None
+    url: str | None = None
+
+class DocumentSourceResponse(BaseModel):
+    source_info: DocumentSourceInfo | None = None
+    error: str | None = None

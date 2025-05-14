@@ -9,6 +9,12 @@ from schema.schema import (
     ServiceMetadata,
     StreamInput,
     UserInput,
+    AnnotationsRequest,
+    AnnotationsResponse,
+    DebugBlocksRequest,
+    AnnotationItem,
+    DocumentSourceInfo,
+    DocumentSourceResponse    
 )
 
 __all__ = [
@@ -22,4 +28,10 @@ __all__ = [
     "FeedbackResponse",
     "ChatHistoryInput",
     "ChatHistory",
+    "AnnotationsRequest",
+    "AnnotationsResponse",
+    "DebugBlocksRequest",
+    "AnnotationItem",
+    "DocumentSourceInfo",
+    "DocumentSourceResponse",
 ]

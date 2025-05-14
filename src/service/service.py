@@ -30,6 +30,12 @@ from schema import (
     ServiceMetadata,
     StreamInput,
     UserInput,
+    AnnotationsRequest,
+    DebugBlocksRequest,
+    AnnotationsResponse,
+    AnnotationItem,
+    DocumentSourceInfo,
+    DocumentSourceResponse,
 )
 from service.utils import (
     convert_message_content_to_string,
@@ -641,3 +647,49 @@ async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
 
 
 app.include_router(router)
+
+
+@router.post("/rag/annotations", response_model=AnnotationsResponse)
+async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse:
+    """
+    Get highlighting annotations for specified blocks in a PDF.
+    """
+    try:
+        annotations = rag_system.get_annotations_by_indices(
+            pdf_file=request.pdf_file,
+            block_indices=request.block_indices
+        )
+        return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
+    except Exception as e:
+        logger.error(f"Error getting RAG annotations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting RAG annotations: {str(e)}")
+
+
+@router.post("/rag/debug_blocks", response_model=AnnotationsResponse)
+async def debug_rag_blocks(request: DebugBlocksRequest) -> AnnotationsResponse:
+    """
+    Get all block annotations for a PDF for debugging.
+    """
+    try:
+        annotations = rag_system.debug_blocks(pdf_file=request.pdf_file)
+        return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
+    except Exception as e:
+        logger.error(f"Error debugging RAG blocks: {e}")
+        raise HTTPException(status_code=500, detail=f"Error debugging RAG blocks: {str(e)}")
+
+
+@router.get("/documents/{document_name}/source_status", response_model=DocumentSourceResponse)
+async def get_document_source_status_endpoint(document_name: str) -> DocumentSourceResponse:
+    """
+    Get the source status (path or URL) for a given document name.
+    """
+    try:
+        source_info_dict = db_manager.get_document_source_status(name=document_name)
+        if source_info_dict:
+            source_info_model = DocumentSourceInfo(**source_info_dict)
+            return DocumentSourceResponse(source_info=source_info_model)
+        else:
+            return DocumentSourceResponse(error=f"Document source for '{document_name}' not found")
+    except Exception as e:
+        logger.error(f"Error getting document source status for '{document_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting document source status: {str(e)}")
