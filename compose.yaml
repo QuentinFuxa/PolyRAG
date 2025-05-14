@@ -7,6 +7,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    depends_on:
+      - postgres_db
     develop:
       watch:
         - path: src/agents/
@@ -46,3 +48,18 @@ services:
         - path: src/streamlit_app.py
           action: sync+restart
           target: /app/streamlit_app.py
+
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres_init:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
