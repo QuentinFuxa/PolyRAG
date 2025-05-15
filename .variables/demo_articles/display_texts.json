@@ -72,14 +72,14 @@
       "key": "btn_ex_document_summary_default"
     },
     {
-      "button_text": "Show NPX demands table by year",
-      "suggested_command_text": "Show me a table of the number of NPX demands per year",
+      "button_text": "Show a table of the number of preprints per month and year",
+      "suggested_command_text": "Show a table of the number of preprints per month and year",
       "icon": ":material/table_chart:",
       "key": "btn_ex_npx_table_default"
     },
     {
-      "button_text": "LDS fraud in 2024 (default)?",
-      "suggested_command_text": "Were there any LDS discussing fraud or similar in 2024?",
+      "button_text": "Do some preprint mention lung cancer or similar?",
+      "suggested_command_text": "Do some preprint mention lung cancer or similar?",
       "icon": ":material/find_in_page:",
       "key": "btn_ex_lds_fraude_default"
     }

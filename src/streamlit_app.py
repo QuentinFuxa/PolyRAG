@@ -62,8 +62,9 @@ def view_pdf(pdf_to_view, annotations=None, debug_viewer=False):
     st.session_state.pdf_to_view = pdf_to_view
     st.session_state.annotations = annotations
     st.session_state.debug_viewer = debug_viewer
-    st.session_state.in_pdf_dialog = True
-    st.rerun()
+    if not st.session_state.get("in_pdf_dialog", False):
+        st.session_state.in_pdf_dialog = True
+        st.rerun()
 
 dialog_title = dt.PDF_DIALOG_TITLE if not st.session_state.debug_viewer else dt.PDF_DIALOG_DEBUG_PREFIX + ' ' + str(st.session_state.pdf_to_view)
 @st.dialog(dialog_title, width="large")
@@ -75,6 +76,10 @@ def pdf_dialog():
     annotations = st.session_state.annotations
     debug_viewer = st.session_state.get("debug_viewer", False)
     current_agent_client = st.session_state.get("agent_client")
+
+    st.session_state.pdf_to_view = None
+    st.session_state.annotations = None
+    st.session_state.in_pdf_dialog = False
 
     if pdf_name and current_agent_client:
         try:
@@ -90,9 +95,6 @@ def pdf_dialog():
         
 
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON):
-        st.session_state.pdf_to_view = None
-        st.session_state.annotations = None
-        st.session_state.in_pdf_dialog = False
         st.rerun()
 
 async def main() -> None:
