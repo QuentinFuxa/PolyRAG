@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir uv
 # Only install the client dependencies
 RUN uv sync --frozen --only-group client
 
-COPY .variables ./variables
+COPY .variables ./.variables
 COPY src/client/ ./client/
 COPY src/schema/ ./schema/
 COPY src/frontend/ ./frontend/

@@ -16,7 +16,7 @@ COPY src/memory/ ./memory/
 COPY src/schema/ ./schema/
 COPY src/service/ ./service/
 COPY src/run_service.py .
-COPY .variables ./variables
+COPY .variables ./.variables
 
 COPY src/db_manager.py ./db_manager.py
 COPY src/rag_system.py ./rag_system.py
