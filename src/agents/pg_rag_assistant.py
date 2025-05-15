@@ -56,9 +56,11 @@ except:
 
 current_date = datetime.now().strftime("%B %d, %Y")
 
-system_prompt = os.getenv("SYSTEM_PROMPT_PATH")
-with open(system_prompt, "r") as f:
-    instructions = f.read()
+instructions = os.getenv("SYSTEM_PROMPT", False)
+if not instructions:
+    system_prompt = os.getenv("SYSTEM_PROMPT_PATH")
+    with open(system_prompt, "r") as f:
+        instructions = f.read()
 
 instructions = instructions.replace('{', '{{').replace('}', '}}').replace('/././/', '{').replace('//././.', '}')
 instructions = instructions.format(current_date=current_date)
