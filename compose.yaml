@@ -1,5 +1,5 @@
 services:
-  agent_service:
+  agent-service:
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     depends_on:
-      - postgres_db
+      - postgres-db
     develop:
       watch:
         - path: src/agents/
@@ -27,7 +27,7 @@ services:
           action: sync+restart
           target: /app/memory/
 
-  streamlit_app:
+  streamlit-app:
     build:
       context: .
       dockerfile: docker/Dockerfile.app
@@ -36,9 +36,9 @@ services:
     env_file:
       - .env
     depends_on:
-      - agent_service
+      - agent-service
     environment:
-      - AGENT_URL=http://agent_service:8080
+      - AGENT_URL=http://agent-service:8080
     develop:
       watch:
         - path: src/client/
@@ -51,9 +51,9 @@ services:
           action: sync+restart
           target: /app/streamlit_app.py
 
-  postgres_db:
+  postgres-db:
     image: postgres:15
-    container_name: postgres_db
+    container_name: postgres-db
     env_file:
       - .env
     volumes:
