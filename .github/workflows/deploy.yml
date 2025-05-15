@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     # Don't try to run deployment in forks and repo copies
-    if: github.repository == 'JoshuaC215/agent-service-toolkit'
+    if: github.repository == 'QuentinFuxa/PolyRag'
     uses: ./.github/workflows/test.yml
 
   build:
@@ -34,7 +34,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: index.docker.io/${{ secrets.DOCKER_USERNAME }}/agent-service-toolkit.service:${{ github.sha }}
+          tags: index.docker.io/${{ secrets.DOCKER_USERNAME }}/PolyRag.service:${{ github.sha }}
           file: docker/Dockerfile.service
 
   deploy:
@@ -49,4 +49,4 @@ jobs:
           app-name: 'agent-service'
           slot-name: 'production'
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          images: 'index.docker.io/${{ secrets.DOCKER_USERNAME }}/agent-service-toolkit.service:${{ github.sha }}'
+          images: 'index.docker.io/${{ secrets.DOCKER_USERNAME }}/PolyRag.service:${{ github.sha }}'

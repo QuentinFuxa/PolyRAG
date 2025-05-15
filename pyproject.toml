@@ -1,5 +1,5 @@
 [project]
-name = "agent-service-toolkit"
+name = "PolyRag"
 version = "0.1.0"
 description = "Full toolkit for running an AI agent service built with LangGraph, FastAPI and Streamlit"
 readme = "README.md"
