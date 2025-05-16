@@ -12,7 +12,13 @@ from psycopg2.extras import DictCursor, Json, register_uuid
 from sqlalchemy import create_engine, text
 import pandas as pd
 from urllib.parse import urlparse
-import os 
+import os
+try:
+    from google.cloud.sql.connector import Connector, IPTypes
+except ImportError:
+    Connector = None
+    IPTypes = None
+
 logger = logging.getLogger(__name__)
 
 schema_app_data = os.environ.get("SCHEMA_APP_DATA", "document_data")
@@ -31,25 +37,62 @@ class DatabaseManager:
     
     def _initialize(self):
         """Initialize connection, tables, connection pool and embedding capabilities."""
-        # Regular connection setup
-        self.connection_string = os.getenv("DATABASE_URL")
-        if not self.connection_string:
-            raise ValueError("DATABASE_URL environment variable not set.")
-        self.engine = create_engine(self.connection_string)        
-        self.connection = psycopg2.connect(self.connection_string)
+        self.using_google_connector = False
+        self.connector = None
+        self.conn_pool = None
+
+        # Google Cloud SQL Connector specific env vars
+        self.instance_connection_name = os.environ.get("INSTANCE_CONNECTION_NAME")
+        self.db_user = os.environ.get("DB_USER")
+        self.db_pass = os.environ.get("DB_PASS")
+        self.db_name = os.environ.get("DB_NAME")
+
+        # Register UUID type handler for psycopg2 globally
+        # This needs to be done before any connection that might handle UUIDs is made.
         register_uuid()
-        self.connection.autocommit = True
-        
-        # Connection pool setup
-        parsed_url = urlparse(self.connection_string)
-        db_params = {
-            "host": parsed_url.hostname,
-            "database": parsed_url.path[1:],
-            "user": parsed_url.username,
-            "password": parsed_url.password,
-            "port": parsed_url.port
-        }
-        self.conn_pool = pool.SimpleConnectionPool(1, 10, **db_params)
+
+        if self.instance_connection_name and self.db_user and self.db_pass and self.db_name:
+            if Connector is None:
+                logger.error("INSTANCE_CONNECTION_NAME is set, but google-cloud-sql-connector library is not installed. Please install it.")
+                raise ImportError("google-cloud-sql-connector is required but not installed.")
+            
+            logger.info(f"Using Google Cloud SQL Connector for instance: {self.instance_connection_name}")
+            self.using_google_connector = True
+            self.connector = Connector()
+            
+            # SQLAlchemy engine setup using Google Cloud SQL Connector
+            self.engine = create_engine(
+                "postgresql+psycopg2://",
+                creator=self._getconn_google_sql
+            )
+            # Main psycopg2 connection for the class instance
+            self.connection = self._getconn_google_sql()
+            self.connection.autocommit = True
+            # self.conn_pool is not used with Google SQL Connector for direct psycopg2 pooling in this setup.
+            # SQLAlchemy's pool will be used by the engine.
+            # For direct psycopg2 connections via get_connection(), new connections are created.
+            self.connection_string = f"postgresql+psycopg2://{self.db_user}:***@{self.instance_connection_name}/{self.db_name}"
+
+
+        else:
+            logger.info("Using DATABASE_URL for direct PostgreSQL connection.")
+            self.connection_string = os.getenv("DATABASE_URL")
+            if not self.connection_string:
+                raise ValueError("DATABASE_URL environment variable not set, and Google Cloud SQL Connector variables (INSTANCE_CONNECTION_NAME, DB_USER, DB_PASS, DB_NAME) are not fully provided.")
+            
+            self.engine = create_engine(self.connection_string)
+            self.connection = psycopg2.connect(self.connection_string)
+            self.connection.autocommit = True
+            
+            parsed_url = urlparse(self.connection_string)
+            db_params = {
+                "host": parsed_url.hostname,
+                "database": parsed_url.path[1:],
+                "user": parsed_url.username,
+                "password": parsed_url.password,
+                "port": parsed_url.port or 5432
+            }
+            self.conn_pool = pool.SimpleConnectionPool(1, 10, **db_params)
         
         # Initialize embedding capabilities
         self.api_key = os.getenv("OPENAI_API_KEY")
@@ -178,24 +221,90 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_graphs_expiry_time ON {schema_app_data}.graphs(expiry_time);
             """)
             
+    def _getconn_google_sql(self):
+        """Helper function to establish a connection using Google Cloud SQL Connector."""
+        if not self.connector:
+            logger.error("Google Cloud SQL Connector not initialized but connection attempt made.")
+            raise RuntimeError("Google Cloud SQL Connector not initialized.")
+        
+        # Determine IP type preference from environment variable, defaulting to PUBLIC
+        # Valid values for ip_type are IPTypes.PUBLIC, IPTypes.PRIVATE
+        # Default to public if not specified or if IPTypes is not available (e.g. older connector version)
+        ip_type_str = os.environ.get("GOOGLE_SQL_IP_TYPE", "PUBLIC").upper()
+        ip_type = IPTypes.PUBLIC # Default
+        if IPTypes: # Check if IPTypes was imported successfully
+            if ip_type_str == "PRIVATE":
+                ip_type = IPTypes.PRIVATE
+            elif ip_type_str == "PUBLIC":
+                ip_type = IPTypes.PUBLIC
+        
+        conn = self.connector.connect(
+            self.instance_connection_name,
+            "psycopg2",
+            user=self.db_user,
+            password=self.db_pass,
+            db=self.db_name,
+            ip_type=ip_type 
+        )
+        # register_uuid() is called globally once in _initialize.
+        # Connections created by the connector should respect globally registered typecasters.
+        return conn
+
     def close(self):
         """Close database connection and connection pool."""
-        if hasattr(self, 'connection') and self.connection:
-            self.connection.close()
-        if hasattr(self, 'conn_pool'):
-            self.conn_pool.closeall()
+        if hasattr(self, 'connection') and self.connection and not self.connection.closed:
+            try:
+                self.connection.close()
+            except Exception as e:
+                logger.warning(f"Error closing main connection: {e}")
+        
+        if self.using_google_connector and hasattr(self, 'connector') and self.connector:
+            try:
+                self.connector.close() # Close the Google SQL Connector
+            except Exception as e:
+                logger.warning(f"Error closing Google SQL Connector: {e}")
+        elif hasattr(self, 'conn_pool') and self.conn_pool:
+            try:
+                self.conn_pool.closeall()
+            except Exception as e:
+                logger.warning(f"Error closing psycopg2 connection pool: {e}")
     
     # Connection pool methods
     def get_connection(self):
-        """Get a connection from the pool."""
-        return self.conn_pool.getconn()
-    
+        """Get a connection from the pool or a new one via Google Connector."""
+        if self.using_google_connector:
+            conn = self._getconn_google_sql()
+            conn.autocommit = True # Ensure autocommit for connections used by execute_query
+            return conn
+        elif self.conn_pool:
+            return self.conn_pool.getconn()
+        else:
+            # Fallback if conn_pool somehow wasn't initialized (should not happen with current logic)
+            logger.error("Connection pool not available and not using Google Connector.")
+            raise RuntimeError("Database connection not configured properly.")
+
     def release_connection(self, conn):
-        """Release a connection back to the pool."""
-        self.conn_pool.putconn(conn)
+        """Release a connection back to the pool or close it if from Google Connector."""
+        if self.using_google_connector:
+            if conn and not conn.closed:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"Error closing Google SQL connection: {e}")
+        elif self.conn_pool:
+            try:
+                self.conn_pool.putconn(conn)
+            except Exception as e:
+                logger.warning(f"Error releasing connection to psycopg2 pool: {e}")
     
     def get_connection_string(self):
-        """Returns the connection string for use with sqlalchemy or other tools."""
+        """
+        Returns the connection string for use with sqlalchemy or other tools.
+        For Google Cloud SQL Connector, this will be a placeholder as direct connection strings aren't typically used.
+        """
+        if self.using_google_connector:
+            # The actual connection is handled by the connector; this is for informational purposes.
+            return f"postgresql+psycopg2://{self.db_user}:[PASSWORD_REDACTED]@{self.instance_connection_name}/{self.db_name} (via Google Cloud SQL Connector)"
         return self.connection_string
     
     # File operations
