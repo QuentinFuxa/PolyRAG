@@ -24,6 +24,7 @@ from schema.models import (
     GroqModelName,
     OllamaModelName,
     OpenAICompatibleName,
+    MistralModelName,
     AlbertModelName,
     OpenAIModelName,
     Provider,
@@ -60,7 +61,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: SecretStr | None = None
     GOOGLE_API_KEY: SecretStr | None = None
     GROQ_API_KEY: SecretStr | None = None
-    ALBERT_API_KEY: SecretStr | None
+    MISTRAL_API_KEY: SecretStr | None = None
+    ALBERT_API_KEY: SecretStr | None = None
+    
     USE_AWS_BEDROCK: bool = False
     OLLAMA_MODEL: str | None = None
     OLLAMA_BASE_URL: str | None = None
@@ -118,6 +121,7 @@ class Settings(BaseSettings):
             Provider.OLLAMA: self.OLLAMA_MODEL,
             Provider.FAKE: self.USE_FAKE_MODEL,
             Provider.AZURE_OPENAI: self.AZURE_OPENAI_API_KEY,
+            Provider.MISTRAL: self.MISTRAL_API_KEY,
             Provider.ALBERT: self.ALBERT_API_KEY,
 
         }
@@ -162,6 +166,10 @@ class Settings(BaseSettings):
                     if self.DEFAULT_MODEL is None:
                         self.DEFAULT_MODEL = FakeModelName.FAKE
                     self.AVAILABLE_MODELS.update(set(FakeModelName))
+                case Provider.MISTRAL:
+                    if self.DEFAULT_MODEL is None:
+                        self.DEFAULT_MODEL = MistralModelName.MISTRAL_LARGE
+                    self.AVAILABLE_MODELS.update(set(MistralModelName))
                 case Provider.ALBERT:
                     if self.DEFAULT_MODEL is None:
                         self.DEFAULT_MODEL = AlbertModelName.Albert_Large

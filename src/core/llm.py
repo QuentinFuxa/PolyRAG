@@ -8,6 +8,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
+try:
+    from langchain_mistralai import ChatMistralAI
+except ImportError:
+    ChatMistralAI = None
 
 from core.settings import settings
 from schema.models import (
@@ -22,6 +26,7 @@ from schema.models import (
     OllamaModelName,
     OpenAICompatibleName,
     OpenAIModelName,
+    MistralModelName,
     AlbertModelName
 )
 
@@ -46,6 +51,8 @@ _MODEL_TABLE = {
     AWSModelName.BEDROCK_SONNET: "anthropic.claude-3-5-sonnet-20240620-v1:0",
     OllamaModelName.OLLAMA_GENERIC: "ollama",
     FakeModelName.FAKE: "fake",
+    MistralModelName.MISTRAL_LARGE : "mistral-large-latest",
+    MistralModelName.MISTRAL_MEDIUM : "mistral-medium-latest",
     AlbertModelName.LLAMA_3_70B: "neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8",
     AlbertModelName.Albert_Small: "albert-small",
     AlbertModelName.Albert_Large: "albert-large",
@@ -76,7 +83,9 @@ ModelT: TypeAlias = (
 def get_model(model_name: AllModelEnum, /) -> ModelT:
     # NOTE: models with streaming=True will send tokens as they are generated
     # if the /stream endpoint is called with stream_tokens=True (the default)
+    print(f"Loading model: {model_name}")
     api_model_name = _MODEL_TABLE.get(model_name)
+    print(f"API model name: {api_model_name}")
     if not api_model_name:
         raise ValueError(f"Unsupported model: {model_name}")
 
@@ -139,6 +148,12 @@ def get_model(model_name: AllModelEnum, /) -> ModelT:
             temperature=0.5,
             streaming=True,
             openai_api_key=settings.ALBERT_API_KEY,
+        )
+    if model_name in MistralModelName and ChatMistralAI:
+        return ChatMistralAI(
+            model=api_model_name,
+            temperature=0.5,
+            streaming=True,
         )
     if model_name in FakeModelName:
         return FakeToolModel(responses=["This is a test response from the fake model."])

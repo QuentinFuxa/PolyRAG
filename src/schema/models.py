@@ -12,8 +12,9 @@ class Provider(StrEnum):
     GROQ = auto()
     AWS = auto()
     OLLAMA = auto()
-    FAKE = auto()
     ALBERT = auto()
+    MISTRAL = auto()
+    FAKE = auto()
 
 
 class OpenAIModelName(StrEnum):
@@ -78,6 +79,12 @@ class OpenAICompatibleName(StrEnum):
 
     OPENAI_COMPATIBLE = "openai-compatible"
 
+class MistralModelName(StrEnum):
+    """https://docs.mistral.ai/getting-started/models/models_overview/"""
+    
+    MISTRAL_LARGE = "Mistral Large"
+    MISTRAL_MEDIUM = "Mistral Medium"	
+
 class AlbertModelName(StrEnum):
 
     LLAMA_3_70B = "Albert llama-3-70b"
@@ -100,6 +107,7 @@ AllModelEnum: TypeAlias = (
     | GroqModelName
     | AWSModelName
     | OllamaModelName
-    | FakeModelName
     | AlbertModelName
+    | MistralModelName
+    | FakeModelName
 )
