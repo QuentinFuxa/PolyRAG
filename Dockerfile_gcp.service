@@ -2,6 +2,9 @@ FROM python:3.12.3-slim
 
 WORKDIR /app
 
+# Install libpq5 for psycopg2 runtime dependencies
+RUN apt-get update && apt-get install -y libpq5 --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 ENV UV_PROJECT_ENVIRONMENT="/usr/local/"
 ENV UV_COMPILE_BYTECODE=1
 
