@@ -6,10 +6,15 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional, Union
 import logging # Added for logging
+from dotenv import load_dotenv
 
 from db_manager import DatabaseManager
 
 logger = logging.getLogger(__name__) # Added logger
+
+load_dotenv()
+
+TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
 
 # Instantiate DatabaseManager - it's a singleton
 try:
@@ -17,7 +22,7 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize DatabaseManager in tools_pg: {e}")
     # Depending on desired behavior, could raise this or have tools fail gracefully
-    db_manager = None 
+    db_manager = None
 
 def to_csv_string_value(obj):
     """Converts Python objects to string representations suitable for CSV cells."""
@@ -74,15 +79,18 @@ def _get_demands_data(
     return_type: Literal['content', 'count'],
     priority: Optional[int] = None, # Made priority optional
     letter_names: Optional[List[str]] = None,
-    letter_name_subquery: Optional[str] = None
-) -> Union[List[str], int]:
+    letter_name_subquery: Optional[str] = None,
+    search_text: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> Union[tuple[List[dict], int], int]: # For content: (list_of_dicts, total_count), for count: int
     """
-    Core function to fetch demand data (content or count) based on optional priority
-    and letter filters (names from public.public_data via list or subquery).
+    Core function to fetch demand data (content or count) based on optional priority,
+    letter filters (names from public.public_data via list or subquery),
+    and optional text search within demand content.
     If priority is None, fetches all demands (priority 1 and 2).
+    If letter_names/subquery are not provided, operates on all letters.
     """
-    if not letter_names and not letter_name_subquery:
-        raise ValueError("Either letter_names or letter_name_subquery must be provided.")
     if letter_names and letter_name_subquery:
         raise ValueError("Provide either letter_names or letter_name_subquery, not both.")
 
@@ -96,114 +104,186 @@ def _get_demands_data(
         # Execute subquery against public.public_data to get names
         target_letter_names = _get_letter_names_from_subquery(letter_name_subquery)
 
-    if not target_letter_names:
-         return 0 if return_type == 'count' else [] # No letters to query
-
-    # Use tuple for psycopg2 parameter substitution for names
-    names_tuple = tuple(target_letter_names)
-    print(target_letter_names)
-    placeholders = ', '.join(['%s'] * len(names_tuple))
-
     # Build the base query parts
-    select_clause = "COUNT(*)" if return_type == 'count' else "l.text, d.start, d.end"
-    base_query = f"""
-        SELECT {select_clause}
+    if return_type == 'content':
+        select_clause = "d.demand_text, l.name, d.priority" # Select demand text, letter name, and priority
+    elif return_type == 'count':
+        select_clause = "COUNT(*)"
+    else:
+        raise ValueError("Invalid return_type specified.") # Should not happen if called by tools
+    base_query_from_join = """
         FROM public.demands d
         JOIN public.letters l ON d.id_letter = l.id_letter
-        WHERE l.name IN ({placeholders})
     """
-    params_list = list(names_tuple) # Start params with letter names
+    
+    conditions = []
+    params_list = []
+
+    if target_letter_names:
+        placeholders = ', '.join(['%s'] * len(target_letter_names))
+        conditions.append(f"l.name IN ({placeholders})")
+        params_list.extend(target_letter_names)
 
     # Add priority filter conditionally
     if priority is not None:
-        base_query += " AND d.priority = %s"
-        params_list.append(priority) # Append priority to params list
+        conditions.append("d.priority = %s")
+        params_list.append(priority)
+
+    # Add text search filter conditionally
+    if search_text:
+        # Search on the pre-computed tsvector column in public.demands
+        conditions.append(f"d.demand_tsv @@ plainto_tsquery(%s, %s)")
+        params_list.extend([TS_QUERY_LANGUAGE, search_text])
+
+    final_query = f"SELECT {select_clause} {base_query_from_join}"
+    if conditions:
+        final_query += " WHERE " + " AND ".join(conditions)
 
     # Add ordering for content retrieval
     if return_type == 'content':
-        base_query += " ORDER BY l.name, d.start"
+        final_query += " ORDER BY l.name, d.start"
+        # Add LIMIT and OFFSET for content queries if provided
+        if limit is not None:
+            final_query += " LIMIT %s"
+            params_list.append(limit)
+        if offset is not None:
+            final_query += " OFFSET %s"
+            params_list.append(offset)
 
-    # Execute the query
-    params = tuple(params_list)
-    print(params)
-    results = _execute_safe_query(base_query, params)
+    params_for_main_query = tuple(params_list)
+    results = _execute_safe_query(final_query, params_for_main_query)
 
     # Process results
     if return_type == 'count':
         return results[0][0] if results else 0
     elif return_type == 'content':
-        demand_texts = []
-        for text, start, end in results:
-            if text is not None and start is not None and end is not None:
-                # Ensure start/end are within bounds
-                start = max(0, start)
-                end = min(len(text), end)
-                if start < end:
-                    demand_texts.append(text[start:end])
-        return demand_texts
-    else:
-        raise ValueError("Invalid return_type specified.")
+        # Construct list of dictionaries
+        demands_list = [
+            {"text": row[0], "letter_name": row[1], "priority": row[2]}
+            for row in results
+            if row[0] is not None # Ensure demand_text is not None
+        ]
+        
+        # Get total count for pagination info (without limit/offset)
+        count_query_parts = [f"SELECT COUNT(*) {base_query_from_join}"]
+        count_params_list = [] # Separate params list for count query
+        
+        # Re-apply same conditions for count query
+        if target_letter_names:
+            placeholders = ', '.join(['%s'] * len(target_letter_names))
+            count_query_parts.append(f"l.name IN ({placeholders})")
+            count_params_list.extend(target_letter_names)
+        if priority is not None:
+            count_query_parts.append("d.priority = %s")
+            count_params_list.append(priority)
+        if search_text:
+            count_query_parts.append(f"d.demand_tsv @@ plainto_tsquery(%s, %s)")
+            count_params_list.extend([TS_QUERY_LANGUAGE, search_text])
+
+        final_count_query = count_query_parts[0]
+        if len(count_query_parts) > 1:
+            final_count_query += " WHERE " + " AND ".join(count_query_parts[1:])
+        
+        total_count_results = _execute_safe_query(final_count_query, tuple(count_params_list))
+        total_matching_demands = total_count_results[0][0] if total_count_results else 0
+        
+        return demands_list, total_matching_demands
+    # else case for invalid return_type is handled by initial check
 
 
 @tool
 def get_demand_content(
     demand_type: Optional[Literal["Demandes à traiter prioritairement", "Autres demandes"]] = None, # Made optional
     letter_names: Optional[List[str]] = None,
-    letter_name_subquery: Optional[str] = None
-) -> List[str]:
+    letter_name_subquery: Optional[str] = None,
+    search_text: Optional[str] = None,
+    limit: Optional[int] = 100, # Default limit
+    offset: Optional[int] = 0   # Default offset
+) -> dict: # Returns a dictionary with demands and pagination info
     """
-    Retrieves the text content of demands from letters identified by name.
-    Requires either a list of letter names or a SQL subquery targeting public.public_data returning names.
+    Retrieves the text content of demands, along with their source letter and priority.
+    Optionally filters by demand_type, letter_names (or letter_name_subquery), and search_text.
+    If letter_names/subquery are omitted, retrieves demands from all letters.
     If demand_type is not specified, retrieves all demands (priority 1 and 2).
+    Can also filter demands by searching for specific text within their content using full-text search.
 
     Args:
         demand_type: (Optional) The type of demand ('Demandes à traiter prioritairement' or 'Autres demandes'). Defaults to all.
-        letter_names: A list of exact letter names (strings) for the letters to search within.
-        letter_name_subquery: A SQL SELECT query string targeting public.public_data that returns a list of letter names.
-                              Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'"
+        letter_names: (Optional) A list of exact letter names (strings) for the letters to search within (filters on `public.letters.name`). Use this OR letter_name_subquery.
+        letter_name_subquery: (Optional) A SQL SELECT query string targeting `public.public_data` that returns a list of letter names (filters on `public.letters.name`).
+                              Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'". Use this OR letter_names.
+        search_text: (Optional) Text to search for within the pre-extracted demand content (in `public.demands.demand_tsv`)
+                     using advanced full-text search.
+                     (language for query parsing configured via TS_QUERY_LANGUAGE env var, defaults to English).
+                     If provided, only demands matching this text will be returned.
+        limit: (Optional) Maximum number of demands to return. Defaults to 100.
+        offset: (Optional) Number of demands to skip before returning results. Defaults to 0.
 
     Returns:
-        A list of strings, where each string is the content of a matching demand.
-        Returns an error message string on failure.
+        A dictionary containing:
+            - "demands": A list of dictionaries, each with "text", "letter_name", and "priority".
+            - "total_matching_demands": The total number of demands matching the criteria (ignoring limit/offset).
+            - "limit": The limit used for the query.
+            - "offset": The offset used for the query.
+            - "has_more": Boolean indicating if more results are available beyond the current set.
+        Returns an error dictionary on failure (e.g., {"error": "message"}).
     """
     try:
-        priority = None
+        priority_val = None
         if demand_type:
             priority_map = {
                 "Demandes à traiter prioritairement": 1,
                 "Autres demandes": 2
             }
-            priority = priority_map.get(demand_type)
-            if priority is None:
-                # This case should ideally not happen due to Literal typing, but good practice
-                return ["Error: Invalid demand_type specified."]
+            priority_val = priority_map.get(demand_type)
+            if priority_val is None and demand_type is not None:
+                return {"error": "Invalid demand_type specified."}
 
-        return _get_demands_data(
+        # _get_demands_data for 'content' now returns a tuple: (demands_list, total_count)
+        demands_list, total_matching_demands = _get_demands_data(
             return_type='content',
-            priority=priority, # Pass None if demand_type wasn't specified
+            priority=priority_val,
             letter_names=letter_names,
-            letter_name_subquery=letter_name_subquery
+            letter_name_subquery=letter_name_subquery,
+            search_text=search_text,
+            limit=limit,
+            offset=offset
         )
+        
+        return {
+            "demands": demands_list,
+            "total_matching_demands": total_matching_demands,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + len(demands_list)) < total_matching_demands
+        }
     except (ValueError, ConnectionError, Exception) as e:
-        return [f"Error: {e}"]
+        return {"error": str(e)}
 
 
 @tool
 def count_demands(
     demand_type: Optional[Literal["Demandes à traiter prioritairement", "Autres demandes"]] = None, # Made optional
     letter_names: Optional[List[str]] = None,
-    letter_name_subquery: Optional[str] = None
+    letter_name_subquery: Optional[str] = None,
+    search_text: Optional[str] = None
 ) -> Union[int, str]:
     """
-    Counts the number of demands within letters identified by name.
-    Requires either a list of letter names or a SQL subquery targeting public.public_data returning names.
+    Counts the number of demands.
+    Optionally filters by demand_type, letter_names (or letter_name_subquery), and search_text.
+    If letter_names/subquery are omitted, counts demands from all letters.
     If demand_type is not specified, counts all demands (priority 1 and 2).
+    Can also filter demands by searching for specific text within their content using full-text search.
 
     Args:
         demand_type: (Optional) The type of demand to count ('Demandes à traiter prioritairement' or 'Autres demandes'). Defaults to all.
-        letter_names: A list of exact letter names (strings) for the letters to search within.
-        letter_name_subquery: A SQL SELECT query string targeting public.public_data that returns a list of letter names.
-                              Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'"
+        letter_names: (Optional) A list of exact letter names (strings) for the letters to search within (filters on `public.letters.name`). Use this OR letter_name_subquery.
+        letter_name_subquery: (Optional) A SQL SELECT query string targeting `public.public_data` that returns a list of letter names (filters on `public.letters.name`).
+                              Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'". Use this OR letter_names.
+        search_text: (Optional) Text to search for within the pre-extracted demand content (in `public.demands.demand_tsv`)
+                     using advanced full-text search.
+                     (language for query parsing configured via TS_QUERY_LANGUAGE env var, defaults to English).
+                     If provided, only demands matching this text will be counted.
 
     Returns:
         An integer representing the total count of matching demands.
@@ -217,15 +297,16 @@ def count_demands(
                 "Autres demandes": 2
             }
             priority = priority_map.get(demand_type)
-            if priority is None:
+            if priority is None and demand_type is not None: # Check if demand_type was given but not mapped
                  # This case should ideally not happen due to Literal typing, but good practice
                 return "Error: Invalid demand_type specified."
-
+        # Always call _get_demands_data, priority will be None if demand_type was not specified
         return _get_demands_data(
             return_type='count',
-            priority=priority, # Pass None if demand_type wasn't specified
+            priority=priority, # Pass None if demand_type wasn't specified or mapped
             letter_names=letter_names,
-            letter_name_subquery=letter_name_subquery
+            letter_name_subquery=letter_name_subquery,
+            search_text=search_text
         )
     except (ValueError, ConnectionError, Exception) as e:
         return f"Error: {e}"
