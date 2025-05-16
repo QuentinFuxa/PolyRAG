@@ -9,6 +9,7 @@ COPY pyproject.toml .
 COPY uv.lock .
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
+RUN pip install --no-cache-dir "google-cloud-sql-connector[pg8000]"
 
 COPY src/agents/ ./agents/
 COPY src/core/ ./core/
