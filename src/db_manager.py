@@ -40,7 +40,6 @@ class DatabaseManager:
         self.using_google_connector = False
         self.connector = None
         self.conn_pool = None
-
         # Google Cloud SQL Connector specific env vars
         self.instance_connection_name = os.environ.get("INSTANCE_CONNECTION_NAME")
         self.db_user = os.environ.get("DB_USER")
@@ -73,7 +72,6 @@ class DatabaseManager:
             # For direct psycopg2 connections via get_connection(), new connections are created.
             self.connection_string = f"postgresql+psycopg2://{self.db_user}:***@{self.instance_connection_name}/{self.db_name}"
 
-
         else:
             logger.info("Using DATABASE_URL for direct PostgreSQL connection.")
             self.connection_string = os.getenv("DATABASE_URL")
@@ -104,6 +102,7 @@ class DatabaseManager:
             self.embedding_dim = 1536  # Default for Ada
         
         self._create_tables()
+        self.get_connection()
     
     def _create_tables(self):
         """Create the necessary schema and tables if they do not exist."""
@@ -275,13 +274,14 @@ class DatabaseManager:
         if self.using_google_connector:
             conn = self._getconn_google_sql()
             conn.autocommit = True # Ensure autocommit for connections used by execute_query
-            return conn
+            self.connection = conn
         elif self.conn_pool:
-            return self.conn_pool.getconn()
+            self.connection = self.conn_pool.getconn()
         else:
             # Fallback if conn_pool somehow wasn't initialized (should not happen with current logic)
             logger.error("Connection pool not available and not using Google Connector.")
             raise RuntimeError("Database connection not configured properly.")
+        return self.connection
 
     def release_connection(self, conn):
         """Release a connection back to the pool or close it if from Google Connector."""
@@ -636,7 +636,8 @@ class DatabaseManager:
 
     def delete_expired_graphs(self) -> int:
         """Delete expired graph entries from the database."""
-        with self.connection.cursor() as cursor:
+        connection = self.get_connection()
+        with connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 DELETE FROM {schema_app_data}.graphs

@@ -2,7 +2,7 @@ import os # Keep os for other potential uses, though not directly for DB_URL her
 import logging
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from src.db_manager import DatabaseManager # Import DatabaseManager
+from db_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
