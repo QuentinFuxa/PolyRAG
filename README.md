@@ -4,6 +4,8 @@ A comprehensive toolkit for building and running advanced AI agent services with
 
 ## Overview
 
+## [Try PolyRag here!](https://polyrag.streamlit.app/) 
+
 PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating sophisticated capabilities for Retrieval-Augmented Generation across structured and unstructured data sources. Built on LangGraph, FastAPI, and Streamlit, it provides a complete framework from agent definition to user interface.
 
 ![Application Screenshot](media/demo_1.png)
