@@ -47,10 +47,10 @@ tools = [
 ]
 
 try:
-    tools.append(
-        get_demand_content, 
-        count_demands,
-)
+    tools.extend([
+            get_demand_content, 
+            count_demands,
+    ])
 except:
     pass
 

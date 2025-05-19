@@ -121,7 +121,7 @@ class AgentClient:
                 )
                 response.raise_for_status()
             except httpx.HTTPError as e:
-                raise AgentClientError(f"Error: {e}")
+                raise AgentClientError(f"Error: {json.loads(response.content)}")
 
         return ChatMessage.model_validate(response.json())
 
@@ -162,7 +162,7 @@ class AgentClient:
             )
             response.raise_for_status()
         except httpx.HTTPError as e:
-            raise AgentClientError(f"Error: {e}")
+            raise AgentClientError(f"Error: {json.loads(response.content)}")
 
         return ChatMessage.model_validate(response.json())
 
@@ -242,7 +242,7 @@ class AgentClient:
                             break
                         yield parsed
         except httpx.HTTPError as e:
-            raise AgentClientError(f"Error: {e}")
+            raise AgentClientError(f"Error: {json.loads(response.content)}")
 
     async def astream(
         self,
@@ -298,7 +298,7 @@ class AgentClient:
                                 break
                             yield parsed
             except httpx.HTTPError as e:
-                raise AgentClientError(f"Error: {e}")
+                raise AgentClientError(f"Error: {json.loads(response.content)}")
 
     async def acreate_feedback(
         self, run_id: str, key: str, score: float, kwargs: dict[str, Any] = {}
