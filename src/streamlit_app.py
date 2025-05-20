@@ -37,11 +37,9 @@ display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH")
 
 dt_data = {}
 try:
-    print(f"Attempting to load display texts from: {display_texts_json_path}")
     with open(display_texts_json_path, 'r', encoding='utf-8') as f:
         dt_data = json.load(f)
     dt = DotDict(dt_data)
-    print(f"Successfully loaded display texts from {display_texts_json_path}")
 except Exception as e:
     raise Exception(f"ERROR: Display texts JSON file not found at '{display_texts_json_path}'. Please check the path and try again.") from e
 
