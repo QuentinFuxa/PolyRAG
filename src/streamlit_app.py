@@ -37,11 +37,9 @@ display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH")
 
 dt_data = {}
 try:
-    print(f"Attempting to load display texts from: {display_texts_json_path}")
     with open(display_texts_json_path, 'r', encoding='utf-8') as f:
         dt_data = json.load(f)
     dt = DotDict(dt_data)
-    print(f"Successfully loaded display texts from {display_texts_json_path}")
 except Exception as e:
     raise Exception(f"ERROR: Display texts JSON file not found at '{display_texts_json_path}'. Please check the path and try again.") from e
 
@@ -96,6 +94,18 @@ def pdf_dialog():
 
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON):
         st.rerun()
+
+def hide_welcome():
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-welcome-msg"] {
+            display: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 async def main() -> None:
     st.set_page_config(
@@ -268,52 +278,58 @@ async def main() -> None:
     messages: list[ChatMessage] = st.session_state.messages
 
     if len(messages) == 0 and user_text is None:
-        match agent_client.agent:
-            case "chatbot":
-                WELCOME = dt.WELCOME_CHATBOT
-            case "interrupt-agent":
-                WELCOME = dt.WELCOME_INTERRUPT
-            case "research-assistant":
-                WELCOME = dt.WELCOME_RESEARCH
-            case "pg_rag_assistant":
-                WELCOME = dt.WELCOME_PG_RAG
-            case _:
-                WELCOME = dt.WELCOME_DEFAULT
-        with st.chat_message("ai", avatar=AI_ICON):
-            st.write(WELCOME)
 
-        if hasattr(dt, 'EXAMPLE_PROMPTS') and dt.EXAMPLE_PROMPTS:
-            num_prompts = len(dt.EXAMPLE_PROMPTS)
-            for i in range(0, num_prompts, 2):
-                cols = st.columns(2, gap="medium")
-                with cols[0]:
-                    prompt_data = dt.EXAMPLE_PROMPTS[i]
-                    if st.button(
-                        prompt_data["button_text"],
-                        key=prompt_data["key"],
-                        use_container_width=True,
-                        icon=prompt_data["icon"],
-                        type="secondary", 
-                        disabled=bool(st.session_state.suggested_command)
-                    ):
-                        st.session_state.suggested_command = prompt_data["suggested_command_text"]
-                        st.rerun()
-                
-                if i + 1 < num_prompts:
-                    with cols[1]:
-                        prompt_data_next = dt.EXAMPLE_PROMPTS[i+1]
+        with st.container(key="welcome-msg"):
+            
+            match agent_client.agent:
+                case "chatbot":
+                    WELCOME = dt.WELCOME_CHATBOT
+                case "interrupt-agent":
+                    WELCOME = dt.WELCOME_INTERRUPT
+                case "research-assistant":
+                    WELCOME = dt.WELCOME_RESEARCH
+                case "pg_rag_assistant":
+                    WELCOME = dt.WELCOME_PG_RAG
+                case _:
+                    WELCOME = dt.WELCOME_DEFAULT
+                 
+            with st.chat_message("ai", avatar=AI_ICON):
+                st.write(WELCOME)
+
+            if hasattr(dt, 'EXAMPLE_PROMPTS') and dt.EXAMPLE_PROMPTS:
+                num_prompts = len(dt.EXAMPLE_PROMPTS)
+                for i in range(0, num_prompts, 2):
+                    cols = st.columns(2, gap="medium")
+                    with cols[0]:
+                        prompt_data = dt.EXAMPLE_PROMPTS[i]
                         if st.button(
-                            prompt_data_next["button_text"],
-                            key=prompt_data_next["key"],
+                            prompt_data["button_text"],
+                            key=prompt_data["key"],
                             use_container_width=True,
-                            icon=prompt_data_next["icon"],
-                            type="secondary",
+                            icon=prompt_data["icon"],
+                            type="secondary", 
                             disabled=bool(st.session_state.suggested_command)
                         ):
-                            st.session_state.suggested_command = prompt_data_next["suggested_command_text"]
+                            st.session_state.suggested_command = prompt_data["suggested_command_text"]
+                            hide_welcome()
                             st.rerun()
-        else:
-            st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
+                    
+                    if i + 1 < num_prompts:
+                        with cols[1]:
+                            prompt_data_next = dt.EXAMPLE_PROMPTS[i+1]
+                            if st.button(
+                                prompt_data_next["button_text"],
+                                key=prompt_data_next["key"],
+                                use_container_width=True,
+                                icon=prompt_data_next["icon"],
+                                type="secondary",
+                                disabled=bool(st.session_state.suggested_command)
+                            ):
+                                st.session_state.suggested_command = prompt_data_next["suggested_command_text"]
+                                hide_welcome()
+                                st.rerun()
+            else:
+                st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
 
 
     async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
@@ -324,6 +340,7 @@ async def main() -> None:
 
 
     if user_input := st.chat_input(dt.CHAT_INPUT_PLACEHOLDER, accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+        hide_welcome()
         if st.session_state.suggested_command:
             user_text = st.session_state.suggested_command
             files = []

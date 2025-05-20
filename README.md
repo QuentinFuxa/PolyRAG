@@ -4,6 +4,8 @@ A comprehensive toolkit for building and running advanced AI agent services with
 
 ## Overview
 
+### [Try PolyRag here!](https://polyrag.streamlit.app/) 
+
 PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating sophisticated capabilities for Retrieval-Augmented Generation across structured and unstructured data sources. Built on LangGraph, FastAPI, and Streamlit, it provides a complete framework from agent definition to user interface.
 
 ![Application Screenshot](media/demo_1.png)
@@ -16,7 +18,16 @@ PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC2
 
 ![Example](media/example.png)
 
-- **Database RAG:** 
+- **Core Agent Tools:** The `pg_rag_assistant` is equipped with a suite of powerful tools:
+  | Tool Name           | Description                                                                                                                               |
+  |---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+  | `execute_sql`       | Enables secure, read-only SQL execution for dynamic data retrieval. |
+  | `tool_graphing_agent` | Invokes a specialized agent to create visualizations from natural language and data (direct input or SQL query). |
+  | `query_rag`         | Leverages Retrieval Augmented Generation to intelligently search documents (specified by name or SQL) for keywords, extracting precise text blocks and context. |
+  | `query_rag_from_id` | Provides targeted access to document content by retrieving specific blocks via their indices, including optional child and surrounding blocks. |
+  | `highlight_pdf`     | Prepares PDF documents for frontend display with highlighted content blocks. |
+
+- **Database RAG:**
   - Dynamically discovers PostgreSQL database schemas
   - Generates tailored prompts for the LLM
   - Enables secure SQL querying via the `execute_sql` tool
@@ -168,3 +179,6 @@ pytest
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+
+uv pip install langchain_mistralai

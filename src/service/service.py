@@ -198,7 +198,7 @@ async def invoke(user_input: UserInput, agent_id: str = DEFAULT_AGENT) -> ChatMe
         return output
     except Exception as e:
         logger.error(f"An exception occurred: {e}")
-        raise HTTPException(status_code=500, detail="Unexpected error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def message_generator(
@@ -306,7 +306,7 @@ async def message_generator(
                     yield f"data: {json.dumps({'type': 'token', 'content': convert_message_content_to_string(content)})}\n\n"
     except Exception as e:
         logger.error(f"Error in message generator: {e}")
-        yield f"data: {json.dumps({'type': 'error', 'content': 'Internal server error'})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
     finally:
         yield "data: [DONE]\n\n"
 
