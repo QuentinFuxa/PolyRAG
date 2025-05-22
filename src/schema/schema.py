@@ -1,9 +1,28 @@
-from typing import Any, Literal, NotRequired
+from typing import Any, Literal, NotRequired, Optional
+from uuid import UUID
+from datetime import datetime
 
-from pydantic import BaseModel, Field, SerializeAsAny
+from pydantic import BaseModel, Field, SerializeAsAny, EmailStr
 from typing_extensions import TypedDict
 
 from schema.models import AllModelEnum, AnthropicModelName, OpenAIModelName
+
+
+# User Authentication Models
+class UserBase(BaseModel):
+    email: str = Field(description="User's email address.")
+
+class UserCreate(UserBase): # Used when creating a user, might take plain password
+    password: str = Field(description="User's plain text password during account creation.")
+
+class UserInDB(UserBase): # Represents a user object as stored in or retrieved from the DB
+    id: UUID = Field(description="Unique identifier for the user.")
+    hashed_password: str = Field(description="Hashed password for the user.")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of user creation.")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of last user update.")
+
+    class Config:
+        from_attributes = True # For Pydantic v2+ (replaces orm_mode)
 
 
 class AgentInfo(BaseModel):
@@ -168,6 +187,10 @@ class ChatHistoryInput(BaseModel):
         description="Thread ID to persist and continue a multi-turn conversation.",
         examples=["847c6285-8fc9-4560-a83f-4e6285809254"],
     )
+    user_id: Optional[UUID] = Field( # Added Optional for UUID
+        default=None,
+        description="Optional user ID to scope history retrieval if applicable on the backend."
+    )
 
 
 class ChatHistory(BaseModel):
@@ -177,10 +200,12 @@ class ChatHistory(BaseModel):
 class AnnotationsRequest(BaseModel):
     pdf_file: str
     block_indices: list[int]
+    user_id: Optional[UUID] = Field(default=None, description="Optional User ID for context.")
 
 
 class DebugBlocksRequest(BaseModel):
     pdf_file: str
+    user_id: Optional[UUID] = Field(default=None, description="Optional User ID for context.")
 
 
 class AnnotationItem(BaseModel):

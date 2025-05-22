@@ -2,6 +2,7 @@ import json
 import os
 from collections.abc import AsyncGenerator, Generator
 from typing import Any, List, Dict, Optional
+from uuid import UUID # Added for user_id typing
 
 import httpx
 
@@ -89,6 +90,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> ChatMessage:
         """
         Invoke the agent asynchronously. Only the final message is returned.
@@ -109,8 +111,13 @@ class AgentClient:
             request.thread_id = thread_id
         if model:
             request.model = model  # type: ignore[assignment]
-        if agent_config:
-            request.agent_config = agent_config
+        
+        current_agent_config = agent_config.copy() if agent_config else {}
+        if user_id:
+            current_agent_config["user_id"] = str(user_id) # Pass user_id in agent_config
+        if current_agent_config: # Only assign if there's something in it
+            request.agent_config = current_agent_config
+
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
@@ -131,6 +138,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> ChatMessage:
         """
         Invoke the agent synchronously. Only the final message is returned.
@@ -151,8 +159,13 @@ class AgentClient:
             request.thread_id = thread_id
         if model:
             request.model = model  # type: ignore[assignment]
-        if agent_config:
-            request.agent_config = agent_config
+
+        current_agent_config = agent_config.copy() if agent_config else {}
+        if user_id:
+            current_agent_config["user_id"] = str(user_id) # Pass user_id in agent_config
+        if current_agent_config: # Only assign if there's something in it
+            request.agent_config = current_agent_config
+            
         try:
             response = httpx.post(
                 f"{self.base_url}/{self.agent}/invoke",
@@ -198,6 +211,7 @@ class AgentClient:
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
         stream_tokens: bool = True,
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> Generator[ChatMessage | str, None, None]:
         """
         Stream the agent's response synchronously.
@@ -224,8 +238,13 @@ class AgentClient:
             request.thread_id = thread_id
         if model:
             request.model = model  # type: ignore[assignment]
-        if agent_config:
-            request.agent_config = agent_config
+
+        current_agent_config = agent_config.copy() if agent_config else {}
+        if user_id:
+            current_agent_config["user_id"] = str(user_id) # Pass user_id in agent_config
+        if current_agent_config: # Only assign if there's something in it
+            request.agent_config = current_agent_config
+
         try:
             with httpx.stream(
                 "POST",
@@ -252,6 +271,7 @@ class AgentClient:
         agent_config: dict[str, Any] | None = None,
         stream_tokens: bool = True,
         file_ids: list[str] | None = None,
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> AsyncGenerator[ChatMessage | str, None]:
         """
         Stream the agent's response asynchronously.
@@ -279,8 +299,13 @@ class AgentClient:
             request.thread_id = thread_id
         if model:
             request.model = model  # type: ignore[assignment]
-        if agent_config:
-            request.agent_config = agent_config
+
+        current_agent_config = agent_config.copy() if agent_config else {}
+        if user_id:
+            current_agent_config["user_id"] = str(user_id) # Pass user_id in agent_config
+        if current_agent_config: # Only assign if there's something in it
+            request.agent_config = current_agent_config
+            
         async with httpx.AsyncClient() as client:
             try:
                 async with client.stream(
@@ -344,14 +369,16 @@ class AgentClient:
     def get_history(
         self,
         thread_id: str,
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> ChatHistory:
         """
         Get chat history.
 
         Args:
-            thread_id (str, optional): Thread ID for identifying a conversation
+            thread_id (str): Thread ID for identifying a conversation
+            user_id (UUID, optional): User ID to scope history if backend supports
         """
-        request = ChatHistoryInput(thread_id=thread_id)
+        request = ChatHistoryInput(thread_id=thread_id, user_id=user_id) # Pass user_id
         try:
             response = httpx.post(
                 f"{self.base_url}/history",
@@ -370,7 +397,8 @@ class AgentClient:
         file_name: str,
         file_content: bytes,
         file_type: str,
-        thread_id: str = None
+        thread_id: Optional[str] = None, # Made Optional consistent
+        user_id: Optional[UUID] = None, # Added user_id
     ) -> str:
         """
         Upload a file to the agent service.
@@ -380,6 +408,7 @@ class AgentClient:
             file_content (bytes): The binary content of the file
             file_type (str): The MIME type of the file
             thread_id (str, optional): Thread ID to associate the file with
+            user_id (UUID, optional): User ID to associate the file with
             
         Returns:
             str: The ID of the uploaded file in the backend
@@ -387,15 +416,20 @@ class AgentClient:
         if not self.agent:
             raise AgentClientError("No agent selected. Use update_agent() to select an agent.")
         
-        url = f"{self.base_url}/{self.agent}/upload"
+        params = {}
         if thread_id:
-            url += f"?thread_id={thread_id}"
+            params["thread_id"] = thread_id
+        if user_id:
+            params["user_id"] = str(user_id)
+
+        url = f"{self.base_url}/{self.agent}/upload"
         
         files = {"file": (file_name, file_content, file_type)}
         
         try:
             response = httpx.post(
                 url,
+                params=params if params else None, # Add params to the request
                 files=files,
                 headers=self._headers,
                 timeout=self.timeout,
@@ -411,19 +445,24 @@ class AgentClient:
         
         return response_data["file_id"]
         
-    def get_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
+    def get_conversations(self, limit: int = 20, user_id: Optional[UUID] = None) -> list[dict[str, Any]]:
         """
         Get a list of recent conversations.
         
         Args:
             limit (int, optional): Maximum number of conversations to retrieve. Default: 20
+            user_id (UUID, optional): User ID to scope conversations if backend supports
             
         Returns:
             list[dict[str, Any]]: List of conversations with thread_id, title, and created_at
         """
+        params = {"limit": limit}
+        if user_id:
+            params["user_id"] = str(user_id)
         try:
             response = httpx.get(
-                f"{self.base_url}/conversations?limit={limit}",
+                f"{self.base_url}/conversations",
+                params=params,
                 headers=self._headers,
                 timeout=self.timeout,
             )
@@ -432,17 +471,22 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error getting conversations: {e}")
             
-    def set_conversation_title(self, thread_id: str, title: str) -> None:
+    def set_conversation_title(self, thread_id: str, title: str, user_id: Optional[UUID] = None) -> None:
         """
         Set or update the title of a conversation.
         
         Args:
             thread_id (str): The thread ID of the conversation
             title (str): The title to set for the conversation
+            user_id (UUID, optional): User ID to scope this operation if backend supports
         """
+        params = {"title": title}
+        if user_id:
+            params["user_id"] = str(user_id)
         try:
             response = httpx.post(
-                f"{self.base_url}/conversations/{thread_id}/title?title={title}",
+                f"{self.base_url}/conversations/{thread_id}/title",
+                params=params,
                 headers=self._headers,
                 timeout=self.timeout,
             )
@@ -450,19 +494,24 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error setting conversation title: {e}")
             
-    def get_conversation_title(self, thread_id: str) -> str:
+    def get_conversation_title(self, thread_id: str, user_id: Optional[UUID] = None) -> str:
         """
         Get the title of a conversation.
         
         Args:
             thread_id (str): The thread ID of the conversation
+            user_id (UUID, optional): User ID to scope this operation if backend supports
             
         Returns:
             str: The title of the conversation
         """
+        params = {}
+        if user_id:
+            params["user_id"] = str(user_id)
         try:
             response = httpx.get(
                 f"{self.base_url}/conversations/{thread_id}/title",
+                params=params if params else None,
                 headers=self._headers,
                 timeout=self.timeout,
             )
@@ -471,19 +520,24 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error getting conversation title: {e}")
             
-    def delete_conversation(self, thread_id: str) -> bool:
+    def delete_conversation(self, thread_id: str, user_id: Optional[UUID] = None) -> bool:
         """
         Delete a conversation and all associated data.
         
         Args:
             thread_id (str): The thread ID of the conversation to delete
+            user_id (UUID, optional): User ID to scope this operation if backend supports
             
         Returns:
             bool: True if the conversation was successfully deleted
         """
+        params = {}
+        if user_id:
+            params["user_id"] = str(user_id)
         try:
             response = httpx.delete(
                 f"{self.base_url}/conversations/{thread_id}",
+                params=params if params else None,
                 headers=self._headers,
                 timeout=self.timeout,
             )
@@ -492,20 +546,25 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error deleting conversation: {e}")
             
-    async def aget_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
+    async def aget_conversations(self, limit: int = 20, user_id: Optional[UUID] = None) -> list[dict[str, Any]]:
         """
         Get a list of recent conversations asynchronously.
         
         Args:
             limit (int, optional): Maximum number of conversations to retrieve. Default: 20
+            user_id (UUID, optional): User ID to scope conversations if backend supports
             
         Returns:
             list[dict[str, Any]]: List of conversations with thread_id, title, and created_at
         """
+        params = {"limit": limit}
+        if user_id:
+            params["user_id"] = str(user_id)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.base_url}/conversations?limit={limit}",
+                    f"{self.base_url}/conversations",
+                    params=params,
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -514,18 +573,23 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error getting conversations: {e}")
                 
-    async def aset_conversation_title(self, thread_id: str, title: str) -> None:
+    async def aset_conversation_title(self, thread_id: str, title: str, user_id: Optional[UUID] = None) -> None:
         """
         Set or update the title of a conversation asynchronously.
         
         Args:
             thread_id (str): The thread ID of the conversation
             title (str): The title to set for the conversation
+            user_id (UUID, optional): User ID to scope this operation if backend supports
         """
+        params = {"title": title}
+        if user_id:
+            params["user_id"] = str(user_id)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self.base_url}/conversations/{thread_id}/title?title={title}",
+                    f"{self.base_url}/conversations/{thread_id}/title",
+                    params=params,
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -533,20 +597,25 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error setting conversation title: {e}")
                 
-    async def aget_conversation_title(self, thread_id: str) -> str:
+    async def aget_conversation_title(self, thread_id: str, user_id: Optional[UUID] = None) -> str:
         """
         Get the title of a conversation asynchronously.
         
         Args:
             thread_id (str): The thread ID of the conversation
+            user_id (UUID, optional): User ID to scope this operation if backend supports
             
         Returns:
             str: The title of the conversation
         """
+        params = {}
+        if user_id:
+            params["user_id"] = str(user_id)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/conversations/{thread_id}/title",
+                    params=params if params else None,
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -555,16 +624,19 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error getting conversation title: {e}")
 
-    async def aget_annotations(self, pdf_file: str, block_indices: List[int]) -> List[Dict[str, Any]]:
+    async def aget_annotations(self, pdf_file: str, block_indices: List[int], user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
         """
         Get highlighting annotations for specified blocks in a PDF asynchronously.
         """
         request_data = {"pdf_file": pdf_file, "block_indices": block_indices}
+        if user_id:
+            request_data["user_id"] = str(user_id) # Add user_id to JSON body
+            
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/rag/annotations",
-                    json=request_data,
+                    json=request_data, # request_data now includes user_id if provided
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -575,16 +647,19 @@ class AgentClient:
             except Exception as e: # Catch potential JSON parsing errors or missing keys
                 raise AgentClientError(f"Error processing RAG annotations response: {e}")
 
-    async def adebug_pdf_blocks(self, pdf_file: str) -> List[Dict[str, Any]]:
+    async def adebug_pdf_blocks(self, pdf_file: str, user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
         """
         Get all block annotations for a PDF for debugging asynchronously.
         """
         request_data = {"pdf_file": pdf_file}
+        if user_id:
+            request_data["user_id"] = str(user_id) # Add user_id to JSON body
+
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/rag/debug_blocks",
-                    json=request_data,
+                    json=request_data, # request_data now includes user_id if provided
                     headers=self._headers,
                     timeout=self.timeout,
                 )

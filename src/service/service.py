@@ -125,17 +125,32 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     """
     run_id = uuid4()
     thread_id = user_input.thread_id or str(uuid4())
+    user_id_from_config = None
+
+    # Extract user_id from agent_config if present
+    temp_agent_config = user_input.agent_config.copy() if user_input.agent_config else {}
+    if "user_id" in temp_agent_config:
+        try:
+            user_id_from_config = UUID(temp_agent_config.pop("user_id"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid user_id format in agent_config.")
 
     configurable = {"thread_id": thread_id, "model": user_input.model}
+    if user_id_from_config: # Add user_id to configurable if extracted
+        configurable["user_id"] = str(user_id_from_config)
 
-    if user_input.agent_config:
-        if overlap := configurable.keys() & user_input.agent_config.keys():
-            raise HTTPException(
-                status_code=422,
-                detail=f"agent_config contains reserved keys: {overlap}",
-            )
-        configurable.update(user_input.agent_config)
-
+    if temp_agent_config: # Use the potentially modified agent_config
+        if overlap := configurable.keys() & temp_agent_config.keys():
+            # Ensure user_id is not part of overlap check if it was handled
+            if "user_id" in overlap and "user_id" in configurable:
+                overlap.remove("user_id") 
+            if overlap: # If there's still an overlap
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"agent_config contains reserved keys: {overlap}",
+                )
+        configurable.update(temp_agent_config)
+    
     config = RunnableConfig(
         configurable=configurable,
         run_id=run_id,
@@ -387,21 +402,38 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
 
 
 @router.post("/history")
-def history(input: ChatHistoryInput) -> ChatHistory:
+def history(input_data: ChatHistoryInput) -> ChatHistory: # Renamed input to input_data
     """
     Get chat history.
     """
-    # TODO: Hard-coding DEFAULT_AGENT here is wonky
+    # TODO: Hard-coding DEFAULT_AGENT here is wonky. 
+    # Also, agent state might not be the sole source of truth for history if db_manager is also used.
+    # This endpoint might need to decide whether to fetch from agent state or db_manager based on user_id.
+    # For now, assuming agent state is primary and thread_id is globally unique or implicitly user-scoped by client.
+    # If strict user scoping is needed here, and thread_ids are not guaranteed unique across users,
+    # this logic needs to change to use input_data.user_id to verify ownership or scope the agent's checkpointer.
+    
     agent: Pregel = get_agent(DEFAULT_AGENT)
+    
+    # Construct configurable, potentially including user_id if the agent's checkpointer uses it.
+    # This depends on how the checkpointer is set up in lifespan.
+    # For now, we'll assume thread_id is sufficient for agent.get_state if user_id is for db_manager.
+    configurable_for_agent = {"thread_id": input_data.thread_id}
+    if input_data.user_id:
+        # If the agent's checkpointer is user-aware, user_id should be passed here.
+        # configurable_for_agent["user_id"] = str(input_data.user_id)
+        # This is a deeper change involving how LangGraph's checkpointer is configured and used.
+        # We'll log that user_id was provided for now.
+        logger.info(f"History requested for thread_id: {input_data.thread_id}, user_id: {input_data.user_id}")
+
+
     try:
         state_snapshot = agent.get_state(
             config=RunnableConfig(
-                configurable={
-                    "thread_id": input.thread_id,
-                }
+                configurable=configurable_for_agent
             )
         )
-        messages: list[AnyMessage] = state_snapshot.values["messages"]
+        messages: list[AnyMessage] = state_snapshot.values.get("messages", [])
         chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
         return ChatHistory(messages=chat_messages)
     except Exception as e:
@@ -413,6 +445,7 @@ def history(input: ChatHistoryInput) -> ChatHistory:
 async def upload_file(
     file: UploadFile = File(...),
     thread_id: Optional[str] = None,
+    user_id: Optional[UUID] = None, # Added user_id as Query parameter
     agent_id: str = DEFAULT_AGENT
 ) -> dict:
     """
@@ -475,8 +508,12 @@ async def upload_file(
             "storage_path": pdf_storage_path
         }
         
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required for uploading files.")
+
         db_manager.save_file(
             file_id=file_id,
+            user_id=user_id, # Pass user_id to db_manager
             thread_id=thread_uuid,
             filename=file.filename,
             content_type=file.content_type,
@@ -556,18 +593,22 @@ async def get_feedback(run_id: str) -> Dict[str, Any]:
 
 
 @router.post("/conversations/{thread_id}/title")
-async def set_conversation_title(thread_id: str, title: str) -> Dict[str, Any]:
+async def set_conversation_title(thread_id: str, title: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
     """Set or update the title of a conversation.
     
     Args:
         thread_id: The thread ID of the conversation
         title: The title to set for the conversation
+        user_id: The ID of the user performing the action (from query or token)
         
     Returns:
         Status confirmation
     """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required to set conversation title.")
     try:
-        db_manager.save_conversation_title(UUID(thread_id), title)
+        # Assuming db_manager.save_conversation_title now requires user_id
+        db_manager.save_conversation_title(UUID(thread_id), user_id, title)
         return {
             "status": "success",
             "thread_id": thread_id,
@@ -579,82 +620,102 @@ async def set_conversation_title(thread_id: str, title: str) -> Dict[str, Any]:
 
 
 @router.get("/conversations")
-async def get_conversations(limit: int = 20) -> Dict[str, Any]:
-    """Get a list of recent conversations.
+async def get_conversations(limit: int = 20, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+    """Get a list of recent conversations for a user.
     
     Args:
         limit: Maximum number of conversations to retrieve (default 20)
+        user_id: The ID of the user whose conversations to retrieve
         
     Returns:
         Dictionary containing the list of conversations
     """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required to retrieve conversations.")
     try:
-        conversations = db_manager.get_conversations(limit)
+        # Assuming db_manager.get_conversations now requires user_id
+        conversations = db_manager.get_conversations(user_id=user_id, limit=limit)
         return {
             "conversations": conversations
         }
     except Exception as e:
-        logger.error(f"Error retrieving conversations: {e}")
+        logger.error(f"Error retrieving conversations for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving conversations: {str(e)}")
 
 
 @router.delete("/conversations/{thread_id}")
-async def delete_conversation(thread_id: str) -> Dict[str, Any]:
-    """Delete a conversation and all associated data.
+async def delete_conversation(thread_id: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+    """Delete a conversation and all associated data for a user.
     
     Args:
         thread_id: The thread ID of the conversation to delete
+        user_id: The ID of the user performing the action
         
     Returns:
         Status confirmation
     """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required to delete a conversation.")
     try:
-        result = db_manager.delete_conversation(UUID(thread_id))
+        # Assuming db_manager.delete_conversation now requires user_id
+        result = db_manager.delete_conversation(UUID(thread_id), user_id)
         if result:
             return {"status": "success", "thread_id": thread_id}
         else:
-            raise HTTPException(status_code=404, detail=f"Conversation with ID {thread_id} not found")
+            # This could mean conversation not found OR not owned by user
+            raise HTTPException(status_code=404, detail=f"Conversation with ID {thread_id} not found or not owned by user.")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid thread_id format")
     except Exception as e:
-        logger.error(f"Error deleting conversation: {e}")
+        logger.error(f"Error deleting conversation {thread_id} for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting conversation: {str(e)}")
 
 @router.get("/conversations/{thread_id}/title")
-async def get_conversation_title(thread_id: str) -> Dict[str, Any]:
-    """Get the title of a conversation.
+async def get_conversation_title(thread_id: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+    """Get the title of a conversation for a user.
     
     Args:
         thread_id: The thread ID of the conversation
+        user_id: The ID of the user
         
     Returns:
         Dictionary containing the conversation title
     """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required to get conversation title.")
     try:
-        title = db_manager.get_conversation_title(UUID(thread_id))
-        if title:
+        # Assuming db_manager.get_conversation_title now requires user_id
+        title = db_manager.get_conversation_title(UUID(thread_id), user_id)
+        if title is not None: # Check for None explicitly, as empty string could be a valid title
             return {"thread_id": thread_id, "title": title}
         else:
-            # Return default title and save it
-            default_title = "New conversation"
-            # db_manager.save_conversation_title(UUID(thread_id), default_title)
-            return {"thread_id": thread_id, "title": default_title}
+            # If title is None, it means not found for this user or thread doesn't exist
+            raise HTTPException(status_code=404, detail=f"Title not found for conversation ID {thread_id} and user.")
+            # Or, alternatively, return a default but this might be confusing if it implies existence
+            # default_title = "New conversation" 
+            # return {"thread_id": thread_id, "title": default_title}
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except HTTPException: # Re-raise HTTPException if already raised (e.g. 404 from above)
+        raise
     except Exception as e:
-        logger.error(f"Error retrieving conversation title: {e}")
+        logger.error(f"Error retrieving conversation title for thread {thread_id}, user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving conversation title: {str(e)}")
 
 
 @router.post("/rag/annotations", response_model=AnnotationsResponse)
-async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse:
+async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse: # user_id is in request model
     """
     Get highlighting annotations for specified blocks in a PDF.
     """
+    # user_id can be accessed via request.user_id if RAGSystem needs it
+    logger.info(f"RAG annotations requested for {request.pdf_file}, user_id: {request.user_id}")
     try:
+        # TODO: Modify rag_system.get_annotations_by_indices if it needs to be user-aware
         annotations = rag_system.get_annotations_by_indices(
             pdf_file=request.pdf_file,
             block_indices=request.block_indices
+            # user_id=request.user_id # Pass if method supports
         )
         return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
     except Exception as e:
@@ -663,12 +724,18 @@ async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsRespons
 
 
 @router.post("/rag/debug_blocks", response_model=AnnotationsResponse)
-async def debug_rag_blocks(request: DebugBlocksRequest) -> AnnotationsResponse:
+async def debug_rag_blocks(request: DebugBlocksRequest) -> AnnotationsResponse: # user_id is in request model
     """
     Get all block annotations for a PDF for debugging.
     """
+    # user_id can be accessed via request.user_id if RAGSystem needs it
+    logger.info(f"RAG debug_blocks requested for {request.pdf_file}, user_id: {request.user_id}")
     try:
-        annotations = rag_system.debug_blocks(pdf_file=request.pdf_file)
+        # TODO: Modify rag_system.debug_blocks if it needs to be user-aware
+        annotations = rag_system.debug_blocks(
+            pdf_file=request.pdf_file
+            # user_id=request.user_id # Pass if method supports
+        )
         return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
     except Exception as e:
         logger.error(f"Error debugging RAG blocks: {e}")
