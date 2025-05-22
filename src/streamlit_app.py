@@ -108,7 +108,7 @@ def login_ui():
     email = st.text_input(dt.LOGIN_EMAIL_PROMPT, key="login_email_input")
 
     if email:
-        if not email.lower().endswith("@asnr.fr"):
+        if not email.lower().endswith(dt.EMAIL_DOMAIN):
             st.error(dt.INVALID_EMAIL_FORMAT)
             return False # Not logged in
 
