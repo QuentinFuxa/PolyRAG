@@ -20,6 +20,8 @@ from frontend.pdf_viewer_with_annotations import display_pdf
 from db_manager import DatabaseManager
 import auth_service
 
+NO_AUTH = True
+
 class DotDict(dict):
     """dot.notation access to dictionary attributes"""
     __getattr__ = dict.get
@@ -118,9 +120,12 @@ def login_ui():
     email = st.text_input(dt.LOGIN_EMAIL_PROMPT, key="login_email_input")
 
     if email:
-        if not email.lower().endswith(dt.EMAIL_DOMAIN):
+        if email == "admin":
+            st.session_state.current_user_id = "00000000-0000-0000-0000-000000000000"
+            st.session_state.current_user_email = ""
+        elif not email.lower().endswith(dt.EMAIL_DOMAIN):
             st.error(dt.INVALID_EMAIL_FORMAT)
-            return False # Not logged in
+            return False
 
         user_in_db = db.get_user_by_email(email)
 
@@ -159,15 +164,30 @@ def logout():
 async def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, menu_items={})
 
+    custom_css = """
+    <style>
+        div[class*=\"st-key-conv_\"] {
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            display: block !important;
+            width: 100% !important;
+            text-align: left !important;
+        }
+    </style>
+    """
+    st.markdown(custom_css, unsafe_allow_html=True)
+
+    if NO_AUTH:
+        st.session_state.current_user_id = '00000000-0000-0000-0000-000000000000'
+        st.session_state.current_user_email = "user@test.test"
+
     if "current_user_id" not in st.session_state:
         if not login_ui():
             st.stop() # Stop execution if login is not successful
     
     current_user_id: UUID_TYPE = st.session_state.current_user_id
     current_user_email = st.session_state.get("current_user_email", "User")
-
-    # current_user_id = '4208d05d-548b-4297-a558-bb708ecc58a3'
-    # current_user_email = 'test@asnr.fr'
     
     if "current_user_id" not in st.session_state:
         st.session_state.current_user_id = current_user_id
@@ -227,7 +247,7 @@ async def main() -> None:
         st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
         
         current_user_email = st.session_state.get("current_user_email", "")
-        username = current_user_email.split("@")[0] if current_user_email else ""
+        username = current_user_email.split("@")[0] if current_user_email else "User"
 
         
         if st.button(
@@ -243,7 +263,7 @@ async def main() -> None:
 
 
         # st.markdown(dt.SIDEBAR_HEADER)
-        if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
+        if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=False): #len(st.session_state.messages) == 0):
             st.query_params.clear()
             st.session_state.messages = []
             st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
@@ -283,7 +303,7 @@ async def main() -> None:
                     
                     col1, col2, col3 = st.columns([0.9, 0.05, 0.05]) # Adjusted for potentially wider titles
                     with col1:
-                        if st.button(f"{title}", key=f"conv_{thread_id_conv}", help=dt.CONVERSATION_LAST_UPDATED_HELP.format(date_str=date_str), type='tertiary'):
+                        if st.button(f"{title}", key=f"conv_{thread_id_conv}", help=f"{title}. {dt.CONVERSATION_LAST_UPDATED_HELP.format(date_str=date_str)}", type='tertiary'):
                             st.query_params["thread_id"] = thread_id_conv; st.rerun()
                     with col2:
                         if st.button(":material/edit:", key=f"edit_{thread_id_conv}", help=dt.EDIT_CONVERSATION_TITLE_HELP, type='tertiary'):
