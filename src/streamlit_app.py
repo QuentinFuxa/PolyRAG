@@ -100,8 +100,18 @@ def pdf_dialog():
         if not current_agent_client: st.error("Agent client not available for PDF dialog.")
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON): st.rerun()
 
+@st.dialog('User', width="small")
+def user_modal():
+    # st.markdown("### Profil utilisateur")
+    st.markdown(f"**Email :** {st.session_state.current_user_email}")
+    if st.button("Logout", key="logout_button_modal", type='primary'):
+        logout()
+
 def hide_welcome():
     st.markdown("<style>div[class*=\"st-key-welcome-msg\"] { display: none; }</style>", unsafe_allow_html=True)
+
+def show_user_modal():
+    st.session_state["show_user_modal"] = True
 
 def login_ui():
     st.title(dt.LOGIN_WELCOME)
@@ -138,6 +148,14 @@ def login_ui():
             return False # Not logged in
     return False # Not logged in
 
+def logout():
+    del st.session_state["current_user_email"]
+    if "current_user_id" in st.session_state:
+        del st.session_state["current_user_id"]
+    st.query_params.clear()
+    st.session_state["show_user_modal"] = False
+    st.rerun()
+
 async def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, menu_items={})
 
@@ -148,7 +166,13 @@ async def main() -> None:
     current_user_id: UUID_TYPE = st.session_state.current_user_id
     current_user_email = st.session_state.get("current_user_email", "User")
 
-
+    # current_user_id = '4208d05d-548b-4297-a558-bb708ecc58a3'
+    # current_user_email = 'test@asnr.fr'
+    
+    if "current_user_id" not in st.session_state:
+        st.session_state.current_user_id = current_user_id
+        st.session_state.current_user_email = current_user_email
+    
     if st.session_state.pdf_to_view: pdf_dialog()
     if "suggested_command" not in st.session_state: st.session_state.suggested_command = None
     user_text = None
@@ -201,15 +225,24 @@ async def main() -> None:
 
     with st.sidebar:
         st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
-        st.markdown(f"Logged in as: {current_user_email}") # Display logged-in user
-        if st.button(dt.LOGOUT_BUTTON, key="logout_button_sidebar"):
-            del st.session_state["current_user_id"]
-            if "current_user_email" in st.session_state: del st.session_state["current_user_email"]
-            # Clear other session state related to user if necessary
-            st.query_params.clear() # Clear query params on logout
-            st.rerun()
+        
+        current_user_email = st.session_state.get("current_user_email", "")
+        username = current_user_email.split("@")[0] if current_user_email else ""
 
-        st.markdown(dt.SIDEBAR_HEADER)
+        
+        if st.button(
+            f"{username}",
+            key="user_button",
+            help="Show user information",
+            icon=":material/account_circle:"
+        ):
+            user_modal()
+
+        model_idx = agent_client.info.models.index(agent_client.info.default_model)
+        model = st.selectbox(dt.SELECT_LLM_LABEL, options=agent_client.info.models, index=model_idx)
+
+
+        # st.markdown(dt.SIDEBAR_HEADER)
         if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=len(st.session_state.messages) == 0):
             st.query_params.clear()
             st.session_state.messages = []
@@ -219,7 +252,6 @@ async def main() -> None:
 
         if "conversation_title" not in st.session_state:
             try:
-                # TODO: Ensure get_conversation_title is user-scoped
                 title = agent_client.get_conversation_title(st.session_state.thread_id, user_id=current_user_id)
                 st.session_state.conversation_title = title
             except: st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
@@ -238,7 +270,6 @@ async def main() -> None:
                     st.session_state.editing_title = False; st.rerun()
         
         try:
-            # TODO: Ensure get_conversations is user-scoped
             conversations = agent_client.get_conversations(limit=20, user_id=current_user_id)
             if conversations:
                 st.subheader(dt.RECENT_SUBHEADER)
@@ -266,25 +297,73 @@ async def main() -> None:
                                 st.rerun()
         except Exception as e: st.error(dt.LOAD_CONVERSATIONS_ERROR.format(e=e))
         
-        st.divider()
-        with st.popover(dt.SETTINGS_POPOVER_LABEL, use_container_width=True):
-            model_idx = agent_client.info.models.index(agent_client.info.default_model)
-            model = st.selectbox(dt.SELECT_LLM_LABEL, options=agent_client.info.models, index=model_idx)
-            agent_list = [a.key for a in agent_client.info.agents]
-            agent_idx = agent_list.index(agent_client.info.default_agent)
-            agent_client.agent = st.selectbox(dt.SELECT_AGENT_LABEL, options=agent_list, index=agent_idx)
-            use_streaming = st.toggle(dt.STREAMING_TOGGLE_LABEL, value=True)
+        # st.divider()
+        # with st.popover(dt.SETTINGS_POPOVER_LABEL, use_container_width=True):
+        #     model_idx = agent_client.info.models.index(agent_client.info.default_model)
+        #     model = st.selectbox(dt.SELECT_LLM_LABEL, options=agent_client.info.models, index=model_idx)
+        #     agent_list = [a.key for a in agent_client.info.agents]
+        #     agent_idx = agent_list.index(agent_client.info.default_agent)
+        #     agent_client.agent = st.selectbox(dt.SELECT_AGENT_LABEL, options=agent_list, index=agent_idx)
+        #     use_streaming = st.toggle(dt.STREAMING_TOGGLE_LABEL, value=True)
         st.caption(dt.CAPTION)
+        use_streaming = True
+        agent_client.agent = "pg_rag_assistant" # Default agent
 
     messages: list[ChatMessage] = st.session_state.messages
     if len(messages) == 0 and user_text is None:
+
         with st.container(key="welcome-msg"):
+            
             match agent_client.agent:
-                case "chatbot": WELCOME = dt.WELCOME_CHATBOT
-                # ... (other cases remain the same) ...
-                case _: WELCOME = dt.WELCOME_DEFAULT
-            with st.chat_message("ai", avatar=AI_ICON): st.write(WELCOME)
-            # ... (example prompts remain the same) ...
+                case "chatbot":
+                    WELCOME = dt.WELCOME_CHATBOT
+                case "interrupt-agent":
+                    WELCOME = dt.WELCOME_INTERRUPT
+                case "research-assistant":
+                    WELCOME = dt.WELCOME_RESEARCH
+                case "pg_rag_assistant":
+                    WELCOME = dt.WELCOME_PG_RAG
+                case _:
+                    WELCOME = dt.WELCOME_DEFAULT
+                 
+            with st.chat_message("ai", avatar=AI_ICON):
+                st.write(WELCOME)
+
+            if hasattr(dt, 'EXAMPLE_PROMPTS') and dt.EXAMPLE_PROMPTS:
+                num_prompts = len(dt.EXAMPLE_PROMPTS)
+                for i in range(0, num_prompts, 2):
+                    cols = st.columns(2, gap="medium")
+                    with cols[0]:
+                        prompt_data = dt.EXAMPLE_PROMPTS[i]
+                        if st.button(
+                            prompt_data["button_text"],
+                            key=prompt_data["key"],
+                            use_container_width=True,
+                            icon=prompt_data["icon"],
+                            type="secondary", 
+                            disabled=bool(st.session_state.suggested_command)
+                        ):
+                            st.session_state.suggested_command = prompt_data["suggested_command_text"]
+                            hide_welcome()
+                            st.rerun()
+                    
+                    if i + 1 < num_prompts:
+                        with cols[1]:
+                            prompt_data_next = dt.EXAMPLE_PROMPTS[i+1]
+                            if st.button(
+                                prompt_data_next["button_text"],
+                                key=prompt_data_next["key"],
+                                use_container_width=True,
+                                icon=prompt_data_next["icon"],
+                                type="secondary",
+                                disabled=bool(st.session_state.suggested_command)
+                            ):
+                                st.session_state.suggested_command = prompt_data_next["suggested_command_text"]
+                                hide_welcome()
+                                st.rerun()
+            else:
+                st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
+
 
     await draw_messages(amessage_iter(), agent_client=agent_client)
 
@@ -354,7 +433,7 @@ async def main() -> None:
     if len(messages) > 0 and st.session_state.get("last_message"): # Check if last_message exists
         with st.session_state.last_message:
             await handle_feedback()
-
+    
 async def amessage_iter() -> AsyncGenerator[ChatMessage, None]:
     for m in st.session_state.get("messages", []):
         yield m
