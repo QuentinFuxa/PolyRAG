@@ -19,8 +19,11 @@ except ImportError:
     Connector = None
     IPTypes = None
 
-from schema.schema import UserInDB
-
+try:
+    from .schema.schema import UserInDB
+except ImportError:
+    from schema.schema import UserInDB
+    
 logger = logging.getLogger(__name__)
 
 schema_app_data = os.environ.get("SCHEMA_APP_DATA", "document_data")

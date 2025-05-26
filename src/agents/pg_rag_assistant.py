@@ -16,11 +16,6 @@ from langgraph.prebuilt import ToolNode
 from agents.llama_guard import LlamaGuard, LlamaGuardOutput, SafetyAssessment
 from agents.tools import calculator
 from agents.tools_pg import execute_sql
-
-try:
-    from agents.tools_pg import get_demand_content, count_demands
-except ImportError:
-    pass
 from agents.tool_graphing_agent import tool_graphing_agent
 from agents.rag_tool import query_rag, query_rag_from_id, highlight_pdf
 
@@ -45,14 +40,6 @@ tools = [
     query_rag_from_id,
     highlight_pdf
 ]
-
-try:
-    tools.extend([
-            get_demand_content, 
-            count_demands,
-    ])
-except:
-    pass
 
 current_date = datetime.now().strftime("%B %d, %Y")
 

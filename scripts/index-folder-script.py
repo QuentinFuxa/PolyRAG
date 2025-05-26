@@ -1,7 +1,7 @@
 import os
 import argparse
-from rag_system import RAGSystem
-from db_manager import DatabaseManager
+from src.rag_system import RAGSystem
+from src.db_manager import DatabaseManager
 
 def index_pdf(pdf_path, use_embeddings=False):
     """Index a PDF using llmsherpa and store in database, tracking source status."""

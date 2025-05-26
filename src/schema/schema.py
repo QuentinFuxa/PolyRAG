@@ -4,8 +4,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, SerializeAsAny, EmailStr
 from typing_extensions import TypedDict
+import importlib
 
-from schema.models import AllModelEnum, AnthropicModelName, OpenAIModelName
+try:
+    models = importlib.import_module("src.schema.models")
+except ImportError:
+    models = importlib.import_module("schema.models")
+
+AllModelEnum = models.AllModelEnum
+AnthropicModelName = models.AnthropicModelName
+OpenAIModelName = models.OpenAIModelName
 
 
 # User Authentication Models
