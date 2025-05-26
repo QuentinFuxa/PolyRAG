@@ -4,12 +4,17 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Any, Union, Tuple
 
-import psycopg2
-from psycopg2 import pool
 from llmsherpa.readers import LayoutPDFReader
 from dotenv import load_dotenv
-from db_manager import DatabaseManager, schema_app_data
 
+try:
+    from .db_manager import DatabaseManager, schema_app_data
+    from .content_classifiers import ContentClassifier, ContentType
+except ImportError:
+    from db_manager import DatabaseManager, schema_app_data
+    from content_classifiers import ContentClassifier, ContentType
+
+    
 # Load environment variables
 load_dotenv()
 
@@ -277,6 +282,9 @@ class RAGSystem:
                 print("Warning: Embeddings requested but OpenAI API key not found. Falling back to text search.")
                 self.use_embeddings = False
         
+        # Initialize content classifier
+        self.content_classifier = ContentClassifier()
+        
         # Create necessary database schema
         self._ensure_schema()
     
@@ -299,6 +307,9 @@ class RAGSystem:
             x1 FLOAT,
             y1 FLOAT,
             parent_idx INTEGER,  -- Changed from parent_id to parent_idx
+            content_type TEXT DEFAULT 'regular',
+            section_type TEXT,
+            demand_priority INTEGER,
             content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED, -- Added generated TSVECTOR column
             UNIQUE(name, block_idx)  -- Changed unique constraint
         );
@@ -306,6 +317,19 @@ class RAGSystem:
         -- Text search index on the generated column
         CREATE INDEX IF NOT EXISTS idx_document_blocks_content_tsv ON {schema_app_data}.rag_document_blocks 
         USING gin(content_tsv);
+        
+        -- Content classification indexes
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_content_type 
+        ON {schema_app_data}.rag_document_blocks(content_type);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_section_type 
+        ON {schema_app_data}.rag_document_blocks(section_type);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_demand_priority 
+        ON {schema_app_data}.rag_document_blocks(demand_priority);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_content_classification
+        ON {schema_app_data}.rag_document_blocks(content_type, section_type, demand_priority);
         """
         
         self.db_manager.execute_query(schema)
@@ -373,6 +397,15 @@ class RAGSystem:
                  blocks = self.processor._process_sherpa_data(existing_sherpa_data) # Use renamed internal method
         else: # Default case
              blocks = self.processor.process_pdf(pdf_path)
+        
+        # Check if this is a "lettre de suite" based on content patterns
+        blocks_content = [block.content for block in blocks if block.content]
+        is_letter_de_suite = self.content_classifier.is_letter_de_suite(blocks_content)
+        
+        # Classify blocks if it's a letter de suite
+        if is_letter_de_suite:
+            print(f"Document {document_name} detected as 'lettre de suite'. Classifying blocks...")
+            self._classify_blocks(blocks)
 
         # Compute embeddings if enabled
         if self.use_embeddings:
@@ -384,6 +417,32 @@ class RAGSystem:
         self._insert_blocks(document_name, blocks, table_name)
         
         return document_name # Return the name used for indexing
+    
+    def _classify_blocks(self, blocks):
+        """
+        Classify blocks for content type, section type, and demand priority.
+        Updates blocks in-place with classification metadata.
+        """
+        current_section = None
+        
+        for block in blocks:
+            if not block.content:
+                continue
+            
+            # Classify this block
+            content_type, section_type, demand_priority = self.content_classifier.classify_block(
+                block.content, current_section
+            )
+            
+            # Update current section if this is a section header
+            if content_type == ContentType.SECTION_HEADER:
+                current_section = section_type
+            
+            # Add classification metadata to block
+            # Using a temporary attribute to pass classification data
+            block.content_type = content_type.value
+            block.section_type = section_type.value if section_type else None
+            block.demand_priority = demand_priority
     
     def _insert_blocks(self, name, blocks, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Insert blocks into database"""
@@ -397,6 +456,11 @@ class RAGSystem:
             x1 = bbox[2] if len(bbox) > 2 else None
             y1 = bbox[3] if len(bbox) > 3 else None
             
+            # Extract classification metadata if present
+            content_type = getattr(block, 'content_type', 'regular')
+            section_type = getattr(block, 'section_type', None)
+            demand_priority = getattr(block, 'demand_priority', None)
+            
             # Create parameter tuple - now using block_idx directly 
             params = (
                 block.block_idx,  # Use block_idx as primary identifier
@@ -407,7 +471,10 @@ class RAGSystem:
                 block.metadata.tag,
                 block.metadata.block_class,
                 x0, y0, x1, y1,
-                block.parent_idx  # Changed from parent_id to parent_idx
+                block.parent_idx,  # Changed from parent_id to parent_idx
+                content_type,
+                section_type,
+                demand_priority
             )
             
             params_list.append(params)
@@ -417,8 +484,8 @@ class RAGSystem:
             query = f"""
             INSERT INTO {table_name}
             (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority, embedding)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (name, block_idx) DO UPDATE SET
             content = EXCLUDED.content,
             level = EXCLUDED.level,
@@ -430,6 +497,9 @@ class RAGSystem:
             x1 = EXCLUDED.x1,
             y1 = EXCLUDED.y1,
             parent_idx = EXCLUDED.parent_idx,
+            content_type = EXCLUDED.content_type,
+            section_type = EXCLUDED.section_type,
+            demand_priority = EXCLUDED.demand_priority,
             embedding = EXCLUDED.embedding
             """
             
@@ -439,8 +509,8 @@ class RAGSystem:
             query = f"""
             INSERT INTO {table_name}
             (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (name, block_idx) DO UPDATE SET
             content = EXCLUDED.content,
             level = EXCLUDED.level,
@@ -451,7 +521,10 @@ class RAGSystem:
             y0 = EXCLUDED.y0,
             x1 = EXCLUDED.x1,
             y1 = EXCLUDED.y1,
-            parent_idx = EXCLUDED.parent_idx
+            parent_idx = EXCLUDED.parent_idx,
+            content_type = EXCLUDED.content_type,
+            section_type = EXCLUDED.section_type,
+            demand_priority = EXCLUDED.demand_priority
             """
         
         self.db_manager.execute_many(query, params_list)
@@ -461,7 +534,10 @@ class RAGSystem:
             query,
             source_names=None,
             strategy=SearchStrategy.TEXT,
-            limit=5
+            limit=5,
+            content_type=None,
+            section_filter=None,
+            demand_priority=None
             ):
         """
         Search rag_documents using specified strategy
@@ -484,108 +560,111 @@ class RAGSystem:
             strategy = SearchStrategy.TEXT
         
         if strategy == SearchStrategy.TEXT:
-            return self._text_search(query, source_names, limit)
+            return self._text_search(query, source_names, limit, content_type, section_filter, demand_priority)
         elif strategy == SearchStrategy.EMBEDDING:
-            return self._embedding_search(query, source_names, limit)
+            return self._embedding_search(query, source_names, limit, content_type, section_filter, demand_priority)
         elif strategy == SearchStrategy.HYBRID:
-            return self._hybrid_search(query, source_names, limit)
+            return self._hybrid_search(query, source_names, limit, content_type, section_filter, demand_priority)
         else:
             raise ValueError(f"Unknown search strategy: {strategy}")
-        
-    def _text_search(self, query: List[str], source_names: Optional[List[str]], limit: int = 5):
+            
+    def _text_search(self, query: List[str], source_names: Optional[List[str]], limit: int = 5,
+                    content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
+                    demand_priority: Optional[int] = None):
         """
         Search using PostgreSQL full-text search with AND/OR fallback logic.
-        First tries to find results where all terms match (AND), 
-        then falls back to results where any term matches (OR) if AND yields nothing.
+        If query is empty, return all matching rows based on filters.
         """
-        
-        # Helper function to build the base query and common parts
-        def build_search_query(ts_query_str: str, source_names: Optional[List[str]]) -> Tuple[str, List[Any]]:
+
+        def build_search_query(ts_query_str: Optional[str], use_tsquery: bool, 
+                            source_names: Optional[List[str]], content_type: Optional[str], 
+                            section_filter: Optional[List[str]], demand_priority: Optional[int]) -> Tuple[str, List[Any]]:
+
             base_query = f"""
             SELECT 
-                name, 
-                block_idx,
-                content, 
-                page_idx, 
-                level,
-                tag,
-                block_class,
-                x0, 
-                y0, 
-                x1, 
-                y1,
-                parent_idx,
-                ts_rank_cd(content_tsv, to_tsquery('{TS_QUERY_LANGUAGE}', %s)) AS score,
-                CASE WHEN tag = 'header' THEN 1 ELSE 0 END AS is_header
-            FROM 
-                {schema_app_data}.rag_document_blocks
-            WHERE 
-                content_tsv @@ to_tsquery('{TS_QUERY_LANGUAGE}', %s)
+                name, block_idx, content, page_idx, level, tag, block_class,
+                x0, y0, x1, y1, parent_idx,
+                {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if use_tsquery else '0'} AS score,
+                CASE WHEN tag = 'header' THEN 1 ELSE 0 END AS is_header,
+                content_type, section_type, demand_priority
+            FROM {schema_app_data}.rag_document_blocks
             """
-            params = [ts_query_str, ts_query_str]
 
-            # Add source filter if specified
-            if source_names and len(source_names) > 0:
+            params = []
+            where_clauses = []
+
+            if use_tsquery:
+                where_clauses.append("content_tsv @@ to_tsquery(%s, %s)")
+                params.extend([TS_QUERY_LANGUAGE, ts_query_str])
+
+            if source_names:
                 placeholders = ', '.join(['%s'] * len(source_names))
-                base_query += f" AND name IN ({placeholders})"
+                where_clauses.append(f"name IN ({placeholders})")
                 params.extend(source_names)
-            
-            # Add order by and limit
+
+            if content_type:
+                where_clauses.append("content_type = %s")
+                params.append(content_type)
+
+            if section_filter:
+                placeholders = ', '.join(['%s'] * len(section_filter))
+                where_clauses.append(f"section_type IN ({placeholders})")
+                params.extend(section_filter)
+
+            if demand_priority is not None:
+                where_clauses.append("demand_priority = %s")
+                params.append(demand_priority)
+
+            if where_clauses:
+                base_query += " WHERE " + " AND ".join(where_clauses)
+
             base_query += """
-            ORDER BY
-                is_header DESC,
-                level DESC,
-                score DESC
+            ORDER BY is_header DESC, level DESC, score DESC
             LIMIT %s
             """
             params.append(limit)
             return base_query, params
 
-        # 1. Prepare base formatted elements (handle spaces within terms)
+        # Clean and format query terms
         formatted_elements = []
         for element in query:
-            # Sanitize element: remove potential tsquery operators to avoid injection
-            sanitized_element = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
-            if not sanitized_element:
+            sanitized = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
+            if not sanitized:
                 continue
-            if ' ' in sanitized_element:
-                # If element contains spaces, treat it as a phrase search within the term
-                formatted_element = ' & '.join(sanitized_element.split())
-                formatted_elements.append(f"({formatted_element})")
-            else:
-                formatted_elements.append(sanitized_element)
-        
-        if not formatted_elements:
-            print("Warning: No valid query terms after sanitization.")
-            return []
+            formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
 
-        # 2. Try AND search first
+        if not formatted_elements:
+            # No tsquery, return all matching filtered rows
+            print("Empty query, returning all rows with filters only.")
+            search_query, params = build_search_query(None, False, source_names, content_type, section_filter, demand_priority)
+            results = self.db_manager.execute_query(search_query, params)
+            return self._format_results(results)
+
+        # AND search
         ts_query_and = " & ".join(formatted_elements)
         print(f"Attempting AND search with ts_query: {ts_query_and}")
-        search_query_and, params_and = build_search_query(ts_query_and, source_names)
+        search_query_and, params_and = build_search_query(ts_query_and, True, source_names, content_type, section_filter, demand_priority)
         results = self.db_manager.execute_query(search_query_and, params_and)
-
-        # 3. If AND search yields results, return them
         if results:
             print("AND search successful.")
             return self._format_results(results)
-        
-        # 4. If AND search yields no results, try OR search
+
+        # OR search
         print("AND search yielded no results. Falling back to OR search.")
         ts_query_or = " | ".join(formatted_elements)
         print(f"Attempting OR search with ts_query: {ts_query_or}")
-        search_query_or, params_or = build_search_query(ts_query_or, source_names)
+        search_query_or, params_or = build_search_query(ts_query_or, True, source_names, content_type, section_filter, demand_priority)
         results = self.db_manager.execute_query(search_query_or, params_or)
-
-        # 5. Return results from OR search (might still be empty)
         if results:
             print("OR search successful.")
         else:
             print("OR search also yielded no results.")
         return self._format_results(results)
 
-    def _embedding_search(self, query, source_names, limit=5):
-        """Search using vector embeddings"""
+    def _embedding_search(self, query, source_names, limit=5,
+                         content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
+                         demand_priority: Optional[int] = None):
+        """Search using vector embeddings with optional filters"""
         if not self.use_embeddings:
             return [] # Correctly return empty list if embeddings are not used
             
@@ -624,6 +703,22 @@ class RAGSystem:
             search_query += f" AND name IN ({placeholders})"
             params.extend(source_names)
         
+        # Add content type filter
+        if content_type:
+            search_query += " AND content_type = %s"
+            params.append(content_type)
+        
+        # Add section filter
+        if section_filter:
+            placeholders = ', '.join(['%s'] * len(section_filter))
+            search_query += f" AND section_type IN ({placeholders})"
+            params.extend(section_filter)
+        
+        # Add demand priority filter
+        if demand_priority is not None:
+            search_query += " AND demand_priority = %s"
+            params.append(demand_priority)
+        
         # Add order by and limit
         search_query += """
         ORDER BY 
@@ -635,10 +730,12 @@ class RAGSystem:
         results = self.db_manager.execute_query(search_query, params)
         return self._format_results(results)
     
-    def _hybrid_search(self, query, source_names, limit=5):
+    def _hybrid_search(self, query, source_names, limit=5,
+                      content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
+                      demand_priority: Optional[int] = None):
         """Hybrid search combining text search and embedding search"""
-        text_results = self._text_search(query, source_names, limit)
-        embedding_results = self._embedding_search(query, source_names, limit)
+        text_results = self._text_search(query, source_names, limit, content_type, section_filter, demand_priority)
+        embedding_results = self._embedding_search(query, source_names, limit, content_type, section_filter, demand_priority)
         
         # Combine and deduplicate results - using block_idx as the key
         combined = {}
@@ -665,7 +762,7 @@ class RAGSystem:
         
         formatted = []
         for row in results:
-            formatted.append({
+            result_dict = {
                 "name": row[0],
                 "block_idx": row[1],  # Now using block_idx instead of block_id
                 "content": row[2],
@@ -679,7 +776,16 @@ class RAGSystem:
                 "y1": row[10],
                 "parent_idx": row[11],  # Changed from parent_id to parent_idx
                 "score": row[12]
-            })
+            }
+            
+            # Add classification fields if they exist (for text search results)
+            if len(row) > 14:  # Text search includes is_header at index 13
+                # Skip is_header (index 13)
+                result_dict["content_type"] = row[14] if len(row) > 14 else None
+                result_dict["section_type"] = row[15] if len(row) > 15 else None
+                result_dict["demand_priority"] = row[16] if len(row) > 16 else None
+            
+            formatted.append(result_dict)
         
         return formatted
     
@@ -929,9 +1035,12 @@ class RAGSystem:
     def query(self,
               user_query: Union[str, List[str]], # Accept string or list for query
               source_names: Optional[List[str]] = None,
-              max_results_per_source: int = 3,
+              max_results_per_source: int = 20,
               get_children: bool = True,
-              strategy: SearchStrategy = SearchStrategy.TEXT # Allow specifying strategy
+              strategy: SearchStrategy = SearchStrategy.TEXT, # Allow specifying strategy
+              content_type: Optional[str] = None, # Filter by content type
+              section_filter: Optional[List[str]] = None, # Filter by sections
+              demand_priority: Optional[int] = None # Filter by demand priority
               ) -> Dict[str, Any]:
         """
         Process a user query, group results by document, limit results per document,
@@ -968,7 +1077,10 @@ class RAGSystem:
             processed_query, # Use processed query list
             source_names,
             strategy=strategy,
-            limit=initial_limit
+            limit=initial_limit,
+            content_type=content_type,
+            section_filter=section_filter,
+            demand_priority=demand_priority
         )
 
         warning_message = None
@@ -1059,9 +1171,15 @@ class RAGSystem:
                      "parent_idx": block["parent_idx"],
                      "level": block["level"],
                      "tag": block["tag"],
-                     # Add other relevant fields if needed, e.g., score?
-                     # "score": block.get("score")
                  }
+                 
+                 # Include classification metadata if present
+                 if "content_type" in block:
+                     formatted_block["content_type"] = block["content_type"]
+                 if "section_type" in block:
+                     formatted_block["section_type"] = block["section_type"]
+                 if "demand_priority" in block:
+                     formatted_block["demand_priority"] = block["demand_priority"]
                  if get_children:
                      # Fetch children using the internal _get_children method
                      children = self._get_children(block["block_idx"], doc_name) # Limit can be added here if needed
