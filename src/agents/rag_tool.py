@@ -24,8 +24,12 @@ def query_rag_func(
     source_query: Optional[str] = None, # SQL query string that returns a single column containing document names. Example: "SELECT doc_name FROM documents WHERE year = 2025"
     source_names: Optional[List[str]] = None, # List of document names to search within. Example: ["report_campaign", "biology_comparison_report"]
     get_children: bool = True, # Whether to retrieve child blocks for each found block.
-    max_results_per_source: Optional[int] = None # Maximum number of results to return per source document. Defaults to 3 in the RAG system.
-    ) -> str:
+    max_results_per_source: Optional[int] = None, # Maximum number of results to return per source document. Defaults to 3 in the RAG system.
+    content_type: Optional[str] = None, # Filter by content type: 'demand', 'section_header', or 'regular'
+    section_filter: Optional[List[str]] = None, # Filter by section types: e.g., ['synthesis', 'demands', 'observations']
+    demand_priority: Optional[int] = None, # Filter demands by priority: 1 (prioritaires) or 2 (complémentaires)
+    count_only: bool = False # If True, return only statistics instead of full results
+    ) -> Union[Dict[str, Any], str]:
     """
     Query the RAG system to find relevant information in documents. Provide EITHER source_names OR source_query.
 
@@ -35,16 +39,30 @@ def query_rag_func(
         source_names: A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]. Use this OR source_query.
         get_children: Whether to retrieve child blocks for each found block. Defaults to True.
         max_results_per_source: Maximum number of results to return per source document. If None, defaults to 3.
+        content_type: Filter by content type: 'demand' (demandes), 'section_header' (titres de sections), or 'regular' (contenu normal)
+        section_filter: Filter by section types. Valid values: 'synthesis', 'demands', 'demandes_prioritaires', 'autres_demandes', 'information', 'observations'
+        demand_priority: Filter demands by priority: 1 for "demandes prioritaires", 2 for "demandes complémentaires"
+        count_only: If True, return only count statistics instead of full results
 
     Returns:
-        The structured result from the RAG system, typically a dictionary containing 'success' status and 'results' list (grouped by document), or an error dictionary.
-            - document name
-            - id of the block
-            - text content of the block
-            - page number of the block
-            - parent block id
-            - level of the block
-            - tag of the block (header, list_item, etc.)
+        If count_only is False:
+            The structured result from the RAG system with enriched metadata including:
+                - document name
+                - id of the block
+                - text content of the block
+                - page number of the block
+                - parent block id
+                - level of the block
+                - tag of the block (header, list_item, etc.)
+                - content_type (if classified)
+                - section_type (if classified)
+                - demand_priority (if it's a demand)
+        If count_only is True:
+            Statistics dictionary containing:
+                - total_count: Total number of matching blocks
+                - by_document: Count breakdown by document
+                - by_section: Count breakdown by section (if applicable)
+                - by_priority: Count breakdown by priority (if applicable)
         Or an error dictionary if something goes wrong.
     """
     final_source_names = []
@@ -91,19 +109,110 @@ def query_rag_func(
     if not final_source_names:
         return {"error": "No valid source names provided or found from the input."}
 
-    # Prepare arguments for rag_system.query
+    # If count_only is True, perform counting logic
+    if count_only:
+        try:
+            # Build count query with filters
+            count_query = f"""
+            SELECT 
+                name,
+                section_type,
+                demand_priority,
+                COUNT(*) as count
+            FROM 
+                {schema_app_data}.rag_document_blocks
+            WHERE 
+                name IN ({', '.join(['%s'] * len(final_source_names))})
+            """
+            
+            params = final_source_names.copy()
+            conditions = []
+            
+            # Add content type filter
+            if content_type:
+                conditions.append("content_type = %s")
+                params.append(content_type)
+            
+            # Add section filter
+            if section_filter:
+                placeholders = ', '.join(['%s'] * len(section_filter))
+                conditions.append(f"section_type IN ({placeholders})")
+                params.extend(section_filter)
+            
+            # Add demand priority filter
+            if demand_priority:
+                conditions.append("demand_priority = %s")
+                params.append(demand_priority)
+            
+            # Add keyword search if provided
+            if keywords:
+                ts_query = " & ".join([kw.replace(" & ", " ") for kw in keywords])
+                conditions.append(f"content_tsv @@ to_tsquery('{rag_system.TS_QUERY_LANGUAGE}', %s)")
+                params.append(ts_query)
+            
+            if conditions:
+                count_query += " AND " + " AND ".join(conditions)
+            
+            count_query += " GROUP BY name, section_type, demand_priority"
+            count_query += " ORDER BY name, demand_priority, section_type"
+            
+            results = rag_system.db_manager.execute_query(count_query, tuple(params))
+            
+            # Process results into statistics
+            statistics = {
+                "total_count": 0,
+                "by_document": {},
+                "by_section": {},
+                "by_priority": {}
+            }
+            
+            for row in results:
+                doc_name = row[0]
+                section_type = row[1]
+                priority = row[2]
+                count = row[3]
+                
+                statistics["total_count"] += count
+                
+                # Count by document
+                if doc_name not in statistics["by_document"]:
+                    statistics["by_document"][doc_name] = 0
+                statistics["by_document"][doc_name] += count
+                
+                # Count by section
+                if section_type:
+                    if section_type not in statistics["by_section"]:
+                        statistics["by_section"][section_type] = 0
+                    statistics["by_section"][section_type] += count
+                
+                # Count by priority
+                if priority:
+                    priority_label = f"priority_{priority}"
+                    if priority_label not in statistics["by_priority"]:
+                        statistics["by_priority"][priority_label] = 0
+                    statistics["by_priority"][priority_label] += count
+            
+            return statistics
+            
+        except Exception as e:
+            return {"error": f"Error during counting: {str(e)}"}
+    
+    # For regular search, pass filter parameters directly to RAG system
     query_args = {
         "user_query": keywords,
         "source_names": final_source_names,
-        "get_children": get_children
+        "get_children": get_children,
+        "content_type": content_type,
+        "section_filter": section_filter,
+        "demand_priority": demand_priority
     }
     if max_results_per_source is not None:
         query_args["max_results_per_source"] = max_results_per_source
         
-    # Query the RAG system
+    # Query the RAG system with filters - it will handle them efficiently at the DB level
+    # The RAG system now returns already filtered results with metadata included directly from the search
     result = rag_system.query(**query_args)
-
-    # The RAG system now returns the final structured output or an error message
+    
     return result
 
 
@@ -159,6 +268,45 @@ def query_rag_from_id_func(
     if not blocks:
         return {"error": "No blocks found with the provided indices"}
     
+    # Try to enrich blocks with classification metadata
+    try:
+        block_indices_list = [block["block_idx"] for block in blocks]
+        if block_indices_list:
+            # Query for metadata
+            metadata_query = f"""
+            SELECT 
+                block_idx,
+                content_type,
+                section_type,
+                demand_priority
+            FROM 
+                {schema_app_data}.rag_document_blocks
+            WHERE 
+                block_idx IN ({', '.join(['%s'] * len(block_indices_list))})
+            """
+            
+            metadata_results = rag_system.db_manager.execute_query(
+                metadata_query, tuple(block_indices_list)
+            )
+            
+            # Create metadata lookup
+            metadata_lookup = {}
+            for row in metadata_results:
+                if row[1] or row[2] or row[3]:  # Only add if there's some metadata
+                    metadata_lookup[row[0]] = {
+                        "content_type": row[1],
+                        "section_type": row[2],
+                        "demand_priority": row[3]
+                    }
+            
+            # Enrich blocks
+            for block in blocks:
+                if block["block_idx"] in metadata_lookup:
+                    block.update(metadata_lookup[block["block_idx"]])
+    except Exception:
+        # Silently continue if enrichment fails
+        pass
+    
     # Extract text from blocks
     context_text = ""
     for block in blocks:
@@ -169,18 +317,28 @@ def query_rag_from_id_func(
         else:
             context_text += f"{block['content']}\n\n"
     
-    # Return blocks information
-    return [
-            {
-                "idx": block["block_idx"],
-                "content": block["content"],
-                "page": block["page_idx"],
-                "parent_idx": block["parent_idx"],
-                "level": block["level"],
-                "tag": block["tag"]
-            }
-            for block in blocks
-        ]
+    # Return enriched blocks information
+    result_blocks = []
+    for block in blocks:
+        block_info = {
+            "idx": block["block_idx"],
+            "content": block["content"],
+            "page": block["page_idx"],
+            "parent_idx": block["parent_idx"],
+            "level": block["level"],
+            "tag": block["tag"]
+        }
+        # Add classification metadata if present
+        if "content_type" in block:
+            block_info["content_type"] = block["content_type"]
+        if "section_type" in block:
+            block_info["section_type"] = block["section_type"]
+        if "demand_priority" in block:
+            block_info["demand_priority"] = block["demand_priority"]
+        
+        result_blocks.append(block_info)
+    
+    return result_blocks
 
 
 def highlight_pdf_func(
@@ -233,8 +391,18 @@ query_rag: BaseTool = tool(query_rag_func)
 query_rag.name = "Query_RAG"
 query_rag.description = """
 Use this tool to search for information in documents.
-Input is a question string.
-The tool returns list of objects containing:
+Enhanced with demand classification: can filter by content type, section, and demand priority.
+Can also return statistics only (count_only mode).
+
+Parameters:
+- keywords: List of keywords to search (e.g., ["incendie", "risque"])
+- source_query or source_names: SQL query or list of document names
+- content_type: Optional filter ('demand', 'section_header', 'regular')
+- section_filter: Optional filter by sections (['synthesis', 'demands', 'observations', etc.])
+- demand_priority: Optional filter (1 for prioritaires, 2 for complémentaires)
+- count_only: If True, returns statistics instead of content
+
+Returns (if count_only=False):
     - document name
     - id of the block
     - text content of the block
@@ -242,6 +410,15 @@ The tool returns list of objects containing:
     - parent block id
     - level of the block
     - tag of the block (header, list_item, etc.)
+    - content_type (if classified)
+    - section_type (if classified)
+    - demand_priority (if it's a demand)
+
+Returns (if count_only=True):
+    - total_count
+    - by_document breakdown
+    - by_section breakdown
+    - by_priority breakdown
 """
 
 query_rag_from_id: BaseTool = tool(query_rag_from_id_func)

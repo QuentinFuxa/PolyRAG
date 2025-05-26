@@ -789,6 +789,308 @@ class RAGSystem:
         
         return formatted
     
+    def _text_search_with_counts(self, query: List[str], source_names: Optional[List[str]], 
+                                 max_results_per_source: int = 20, get_children: bool = True,
+                                 content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
+                                 demand_priority: Optional[int] = None):
+        """
+        Optimized text search that:
+        1. Gets total counts per document
+        2. Fetches results with their children in a single query
+        3. Returns formatted results with count information
+        """
+        # Clean and format query terms
+        formatted_elements = []
+        for element in query:
+            sanitized = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
+            if not sanitized:
+                continue
+            formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
+
+        # Build the base WHERE clause conditions
+        where_conditions = []
+        params = []
+        
+        if formatted_elements:
+            # Try AND search first
+            ts_query = " & ".join(formatted_elements)
+            where_conditions.append("content_tsv @@ to_tsquery(%s, %s)")
+            params.extend([TS_QUERY_LANGUAGE, ts_query])
+        
+        if source_names:
+            placeholders = ', '.join(['%s'] * len(source_names))
+            where_conditions.append(f"name IN ({placeholders})")
+            params.extend(source_names)
+        
+        if content_type:
+            where_conditions.append("content_type = %s")
+            params.append(content_type)
+        
+        if section_filter:
+            placeholders = ', '.join(['%s'] * len(section_filter))
+            where_conditions.append(f"section_type IN ({placeholders})")
+            params.extend(section_filter)
+        
+        if demand_priority is not None:
+            where_conditions.append("demand_priority = %s")
+            params.append(demand_priority)
+        
+        where_clause = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+        
+        # Execute the optimized query with CTEs
+        optimized_query = f"""
+        WITH matched_blocks AS (
+            SELECT 
+                name, block_idx, content, page_idx, level, tag, block_class,
+                x0, y0, x1, y1, parent_idx,
+                {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} AS score,
+                content_type, section_type, demand_priority,
+                ROW_NUMBER() OVER (PARTITION BY name ORDER BY 
+                    CASE WHEN tag = 'header' THEN 1 ELSE 0 END DESC, 
+                    level DESC, 
+                    {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} DESC
+                ) as rn,
+                COUNT(*) OVER (PARTITION BY name) as total_per_doc
+            FROM {schema_app_data}.rag_document_blocks
+            {where_clause}
+        ),
+        top_results AS (
+            SELECT * FROM matched_blocks WHERE rn <= %s
+        ),
+        results_with_children AS (
+            -- Parent blocks
+            SELECT 
+                t.name, t.block_idx, t.content, t.page_idx, t.level, t.tag, t.block_class,
+                t.x0, t.y0, t.x1, t.y1, t.parent_idx, t.score, t.content_type, t.section_type, 
+                t.demand_priority, t.rn, t.total_per_doc,
+                NULL::integer as parent_block_idx,
+                0 as is_child
+            FROM top_results t
+            
+            UNION ALL
+            
+            -- Child blocks (if get_children is True)
+            {"SELECT c.name, c.block_idx, c.content, c.page_idx, c.level, c.tag, c.block_class, c.x0, c.y0, c.x1, c.y1, c.parent_idx, 0 as score, c.content_type, c.section_type, c.demand_priority, t.rn, t.total_per_doc, t.block_idx as parent_block_idx, 1 as is_child FROM " + schema_app_data + ".rag_document_blocks c INNER JOIN top_results t ON c.parent_idx = t.block_idx AND c.name = t.name" if get_children else "SELECT NULL::text, NULL::integer, NULL::text, NULL::integer, NULL::integer, NULL::text, NULL::text, NULL::float, NULL::float, NULL::float, NULL::float, NULL::integer, NULL::float, NULL::text, NULL::text, NULL::integer, NULL::integer, NULL::bigint, NULL::integer, NULL::integer WHERE FALSE"}
+        )
+        SELECT * FROM results_with_children
+        ORDER BY name, rn, is_child, page_idx, block_idx
+        """
+        
+        # Add rank query params if needed
+        if formatted_elements:
+            params.extend([TS_QUERY_LANGUAGE, ts_query])  # For ROW_NUMBER rank
+        
+        params.append(max_results_per_source)  # For the limit
+        
+        results = self.db_manager.execute_query(optimized_query, params)
+        
+        # If no results and we were doing AND search, try OR search
+        if not results and formatted_elements:
+            ts_query = " | ".join(formatted_elements)
+            # Update the query string in params
+            if formatted_elements:
+                params[1] = ts_query  # Update the ts_query parameter
+                if len(params) > len(where_conditions) + 1:
+                    params[-3] = ts_query  # Update the ROW_NUMBER ts_query parameter
+            
+            results = self.db_manager.execute_query(optimized_query, params)
+        
+        # Process results into the desired format
+        if not results:
+            return []
+        
+        documents = {}
+        for row in results:
+            doc_name = row[0]
+            if doc_name not in documents:
+                documents[doc_name] = {
+                    "document_name": doc_name,
+                    "results": [],
+                    "other_result_idx": [],
+                    "total_results": row[17] if row[17] else 0,  # total_per_doc
+                    "displayed_results": 0,
+                    "additional_results": 0,
+                    "_seen_parents": set()
+                }
+            
+            is_child = row[19]  # is_child flag
+            parent_block_idx = row[18]  # parent_block_idx
+            
+            if is_child:
+                # This is a child block, add it to its parent
+                for result in documents[doc_name]["results"]:
+                    if result["idx"] == parent_block_idx:
+                        if "children" not in result:
+                            result["children"] = []
+                        result["children"].append({
+                            "idx": row[1],
+                            "content": row[2],
+                            "page": row[3],
+                            "parent_idx": row[11],
+                            "level": row[4],
+                            "tag": row[5],
+                        })
+                        break
+            else:
+                # This is a parent block
+                block_idx = row[1]
+                if block_idx not in documents[doc_name]["_seen_parents"]:
+                    documents[doc_name]["_seen_parents"].add(block_idx)
+                    documents[doc_name]["displayed_results"] += 1
+                    
+                    result = {
+                        "idx": block_idx,
+                        "content": row[2],
+                        "page": row[3],
+                        "parent_idx": row[11],
+                        "level": row[4],
+                        "tag": row[5],
+                        "children": []  # Initialize empty children list
+                    }
+                    
+                    # Add classification metadata if present
+                    if row[13] is not None:
+                        result["content_type"] = row[13]
+                    if row[14] is not None:
+                        result["section_type"] = row[14]
+                    if row[15] is not None:
+                        result["demand_priority"] = row[15]
+                    
+                    documents[doc_name]["results"].append(result)
+        
+        # Calculate additional results and clean up
+        final_results = []
+        for doc_data in documents.values():
+            # Calculate additional results
+            doc_data["additional_results"] = doc_data["total_results"] - doc_data["displayed_results"]
+            
+            # If we need to get other_result_idx, we need another query
+            if doc_data["additional_results"] > 0:
+                # Get the block indices of results not displayed
+                other_idx_query = f"""
+                WITH matched_blocks AS (
+                    SELECT block_idx,
+                        ROW_NUMBER() OVER (ORDER BY 
+                            CASE WHEN tag = 'header' THEN 1 ELSE 0 END DESC, 
+                            level DESC, 
+                            {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} DESC
+                        ) as rn
+                    FROM {schema_app_data}.rag_document_blocks
+                    WHERE name = %s
+                    {" AND " + " AND ".join(where_conditions[1:]) if len(where_conditions) > 1 else ""}
+                    {"AND content_tsv @@ to_tsquery(%s, %s)" if formatted_elements else ""}
+                )
+                SELECT block_idx FROM matched_blocks WHERE rn > %s
+                """
+                
+                other_params = []
+                if formatted_elements:
+                    other_params.extend([TS_QUERY_LANGUAGE, ts_query])
+                other_params.append(doc_data["document_name"])
+                
+                # Add other filter params
+                if source_names:
+                    # Skip source_names since we're filtering by specific doc name
+                    pass
+                if content_type:
+                    other_params.append(content_type)
+                if section_filter:
+                    other_params.extend(section_filter)
+                if demand_priority is not None:
+                    other_params.append(demand_priority)
+                if formatted_elements:
+                    other_params.extend([TS_QUERY_LANGUAGE, ts_query])
+                
+                other_params.append(max_results_per_source)
+                
+                other_results = self.db_manager.execute_query(other_idx_query, other_params)
+                doc_data["other_result_idx"] = [row[0] for row in other_results] if other_results else []
+            
+            # Remove internal tracking field
+            del doc_data["_seen_parents"]
+            
+            final_results.append(doc_data)
+        
+        return final_results
+    
+    def _convert_to_counted_format(self, search_results, max_results_per_source, get_children):
+        """
+        Convert old-style search results to the new format with counts.
+        Used as a fallback for embedding and hybrid search.
+        """
+        if not search_results:
+            return []
+        
+        # Group results by document
+        grouped_results = {}
+        for block in search_results:
+            doc_name = block["name"]
+            if doc_name not in grouped_results:
+                grouped_results[doc_name] = []
+            grouped_results[doc_name].append(block)
+        
+        # Process each document's results
+        final_output_list = []
+        for doc_name, blocks in grouped_results.items():
+            # Sort blocks within the document (assuming higher score is better)
+            blocks.sort(key=lambda x: x.get("score", 0), reverse=True)
+            
+            # Select top N results
+            top_results = blocks[:max_results_per_source]
+            other_results = blocks[max_results_per_source:]
+            other_result_idx = [b["block_idx"] for b in other_results]
+            
+            # Fetch children if requested
+            processed_top_results = []
+            for block in top_results:
+                formatted_block = {
+                    "idx": block["block_idx"],
+                    "content": block["content"],
+                    "page": block["page_idx"],
+                    "parent_idx": block["parent_idx"],
+                    "level": block["level"],
+                    "tag": block["tag"],
+                }
+                
+                # Include classification metadata if present
+                if "content_type" in block:
+                    formatted_block["content_type"] = block["content_type"]
+                if "section_type" in block:
+                    formatted_block["section_type"] = block["section_type"]
+                if "demand_priority" in block:
+                    formatted_block["demand_priority"] = block["demand_priority"]
+                
+                if get_children:
+                    # Fetch children using the internal _get_children method
+                    children = self._get_children(block["block_idx"], doc_name)
+                    formatted_children = [
+                        {
+                            "idx": c["block_idx"],
+                            "content": c["content"],
+                            "page": c["page_idx"],
+                            "parent_idx": c["parent_idx"],
+                            "level": c["level"],
+                            "tag": c["tag"],
+                        } for c in children
+                    ]
+                    formatted_block["children"] = formatted_children
+                else:
+                    formatted_block["children"] = []
+                
+                processed_top_results.append(formatted_block)
+            
+            # Add to the final list with count information
+            final_output_list.append({
+                "document_name": doc_name,
+                "results": processed_top_results,
+                "other_result_idx": other_result_idx,
+                "total_results": len(blocks),
+                "displayed_results": len(top_results),
+                "additional_results": len(other_results)
+            })
+        
+        return final_output_list
+    
     def get_context(self, block_result, context_size=3):
         """
         Get contextual blocks for a given block
@@ -1060,6 +1362,9 @@ class RAGSystem:
                     - document_name (str)
                     - results (list): Top N results for the document.
                     - other_result_idx (list): Indices of remaining results for the document.
+                    - total_results (int): Total number of matching results for this document.
+                    - displayed_results (int): Number of results being shown.
+                    - additional_results (int): Number of results not displayed.
                 - message (str, optional): Error or warning message.
         """
         # Ensure user_query is a list for internal processing consistency
@@ -1069,22 +1374,46 @@ class RAGSystem:
         else:
             processed_query = user_query
 
-        # Determine the overall limit for the initial search.
-        # Fetch more initially to allow for better distribution across documents.
-        initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
-
-        search_results = self.search(
-            processed_query, # Use processed query list
-            source_names,
-            strategy=strategy,
-            limit=initial_limit,
-            content_type=content_type,
-            section_filter=section_filter,
-            demand_priority=demand_priority
-        )
+        # Use the optimized search method that returns results with children and counts
+        if strategy == SearchStrategy.TEXT:
+            search_results = self._text_search_with_counts(
+                processed_query,
+                source_names,
+                max_results_per_source,
+                get_children,
+                content_type,
+                section_filter,
+                demand_priority
+            )
+        elif strategy == SearchStrategy.EMBEDDING:
+            # For now, fall back to the old method for embedding search
+            # This can be optimized similarly in the future
+            initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
+            search_results = self._embedding_search(
+                processed_query,
+                source_names,
+                initial_limit,
+                content_type,
+                section_filter,
+                demand_priority
+            )
+            # Convert to new format
+            search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
+        else:  # HYBRID
+            # For now, fall back to the old method for hybrid search
+            initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
+            search_results = self._hybrid_search(
+                processed_query,
+                source_names,
+                initial_limit,
+                content_type,
+                section_filter,
+                demand_priority
+            )
+            # Convert to new format
+            search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
 
         warning_message = None
-        final_results_by_doc = {}
 
         # Handle case where specific sources were requested but yielded no results
         if not search_results and source_names:
@@ -1099,122 +1428,65 @@ class RAGSystem:
             requested_sources_set = set(source_names)
             missing_sources = sorted(list(requested_sources_set - existing_sources_set))
 
-            # Check if the requested source documents actually exist in the DB
-            placeholders = ', '.join(['%s'] * len(source_names))
-            check_query = f"""
-            SELECT DISTINCT name
-            FROM {schema_app_data}.rag_document_blocks
-            WHERE name IN ({placeholders})
-            """
-            try:
-                existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
-                existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
-                requested_sources_set = set(source_names)
-                missing_sources = sorted(list(requested_sources_set - existing_sources_set))
+            if not missing_sources:
+                # All requested sources exist, but the query yielded no results within them.
+                return {
+                    "success": False,
+                    "message": "No relevant information found for the query in the specified document(s)."
+                }
+            else:
+                # Some requested sources don't exist
+                print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
+                warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
 
-                if not missing_sources:
-                    # All requested sources exist, but the query yielded no results within them.
-                    return {
-                        "success": False,
-                        "message": "No relevant information found for the query in the specified document(s)."
-                    }
-                else:
-                    # Some requested sources don't exist
-                    print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
-                    warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
-
-                    # Retry search across all documents
-                    search_results = self.search(
+                # Retry search across all documents
+                if strategy == SearchStrategy.TEXT:
+                    search_results = self._text_search_with_counts(
                         processed_query,
-                        source_names=None, # Search all documents
-                        strategy=strategy,
-                        limit=initial_limit
+                        None,  # Search all documents
+                        max_results_per_source,
+                        get_children,
+                        content_type,
+                        section_filter,
+                        demand_priority
                     )
-            except Exception as e:
-                 return {"success": False, "message": f"Database error checking sources: {e}"}
-
+                else:
+                    # Fall back to old method for other strategies
+                    initial_limit = max(max_results_per_source * 5, 15)
+                    if strategy == SearchStrategy.EMBEDDING:
+                        search_results = self._embedding_search(
+                            processed_query,
+                            None,
+                            initial_limit,
+                            content_type,
+                            section_filter,
+                            demand_priority
+                        )
+                    else:
+                        search_results = self._hybrid_search(
+                            processed_query,
+                            None,
+                            initial_limit,
+                            content_type,
+                            section_filter,
+                            demand_priority
+                        )
+                    search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
 
         # If still no results after potential retry, return failure
         if not search_results:
-             return {
-                 "success": False,
-                 "message": warning_message or "No relevant information found in the documents."
-             }
-
-        # Group results by document name
-        grouped_results = {}
-        for block in search_results:
-            doc_name = block["name"]
-            if doc_name not in grouped_results:
-                grouped_results[doc_name] = []
-            grouped_results[doc_name].append(block)
-
-        # Process each document's results
-        final_output_list = []
-        for doc_name, blocks in grouped_results.items():
-            # Sort blocks within the document (assuming higher score is better)
-            blocks.sort(key=lambda x: x.get("score", 0), reverse=True)
-
-            # Select top N results
-            top_results = blocks[:max_results_per_source]
-            other_results = blocks[max_results_per_source:]
-            other_result_idx = [b["block_idx"] for b in other_results]
-
-            # Fetch children if requested
-            processed_top_results = []
-            for block in top_results:
-                 # Format the block according to the desired output structure
-                 formatted_block = {
-                     "idx": block["block_idx"],
-                     "content": block["content"],
-                     "page": block["page_idx"],
-                     "parent_idx": block["parent_idx"],
-                     "level": block["level"],
-                     "tag": block["tag"],
-                 }
-                 
-                 # Include classification metadata if present
-                 if "content_type" in block:
-                     formatted_block["content_type"] = block["content_type"]
-                 if "section_type" in block:
-                     formatted_block["section_type"] = block["section_type"]
-                 if "demand_priority" in block:
-                     formatted_block["demand_priority"] = block["demand_priority"]
-                 if get_children:
-                     # Fetch children using the internal _get_children method
-                     children = self._get_children(block["block_idx"], doc_name) # Limit can be added here if needed
-                     # Format children similarly or as needed
-                     formatted_children = [
-                         {
-                             "idx": c["block_idx"],
-                             "content": c["content"],
-                             "page": c["page_idx"],
-                             "parent_idx": c["parent_idx"],
-                             "level": c["level"],
-                             "tag": c["tag"],
-                         } for c in children
-                     ]
-                     formatted_block["children"] = formatted_children
-                 else:
-                     formatted_block["children"] = [] # Ensure key exists
-
-                 processed_top_results.append(formatted_block)
-
-
-            # Add to the final list
-            final_output_list.append({
-                "document_name": doc_name,
-                "results": processed_top_results,
-                "other_result_idx": other_result_idx
-            })
+            return {
+                "success": False,
+                "message": warning_message or "No relevant information found in the documents."
+            }
 
         # Construct the final success response
         final_result = {
             "success": True,
-            "results": final_output_list
+            "results": search_results
         }
         if warning_message:
-            final_result["message"] = warning_message # Use 'message' key for warnings/errors
+            final_result["message"] = warning_message
 
         return final_result
     
