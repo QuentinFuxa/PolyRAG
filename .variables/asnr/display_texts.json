@@ -1,9 +1,9 @@
 {
-  "APP_TITLE": "Siance Chat",
+  "APP_TITLE": "Siance Chat Expérimental",
   "APP_ICON": ":material/experiment:",
   "AI_ICON": ":material/flare:",
   "USER_ICON": ":material/person:",
-  "CAPTION": "Attention : Les réponses générées par ce système sont susceptibles d'être inexactes ou trompeuses.",
+  "CAPTION": "Attention : Les réponses générées par ce système sont susceptibles d'être inexactes ou trompeuses. Dans le cadre de la version expérimentale, Vos conversations avec ce système sont enregistrées et peuvent être utilisées pour améliorer le service. Veuillez ne pas partager d'informations sensibles ou personnelles.",
   "PDF_DIALOG_TITLE": "Lettre de suite",
   "PDF_DIALOG_DEBUG_PREFIX": "/debug",
   "PDF_DIALOG_NO_PDF_ERROR": "Pas de LDS sélectionnée pour la visualisation.",
