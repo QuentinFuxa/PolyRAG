@@ -108,6 +108,26 @@ def user_modal():
     st.markdown(f"**Email :** {st.session_state.current_user_email}")
     if st.button("Logout", key="logout_button_modal", type='primary'):
         logout()
+        
+@st.dialog('Commentaire/Suggestion', width="small")
+def user_feedback_modal():
+    st.markdown("Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.")
+    
+    feedback_text = st.text_area("Votre commentaire", key="feedback_text_area")
+    if st.button("Soumettre", key="submit_feedback_button"):
+        if feedback_text:
+
+            try:
+                # Send feedback through the agent client
+                st.session_state.agent_client.create_feedback(
+                    user_id=st.session_state.current_user_id,
+                    feedback=feedback_text,
+                )
+                
+                st.session_state["show_user_modal"] = False # Keeping as is, though it might refer to a different modal.
+                st.rerun() # Often used to refresh state and close dialogs
+            except Exception as e:
+                st.error(f"An error occurred while submitting your feedback: {e}")
 
 def hide_welcome():
     st.markdown("<style>div[class*=\"st-key-welcome-msg\"] { display: none; }</style>", unsafe_allow_html=True)
@@ -179,7 +199,7 @@ async def main() -> None:
     st.markdown(custom_css, unsafe_allow_html=True)
 
     if NO_AUTH:
-        st.session_state.current_user_id = '00000000-0000-0000-0000-000000000000'
+        st.session_state.current_user_id = '00000000-0000-0000-0000-000000000001'
         st.session_state.current_user_email = "user@test.test"
 
     if "current_user_id" not in st.session_state:
@@ -249,18 +269,27 @@ async def main() -> None:
         current_user_email = st.session_state.get("current_user_email", "")
         username = current_user_email.split("@")[0] if current_user_email else "User"
 
-        
-        if st.button(
-            f"{username}",
-            key="user_button",
-            help="Show user information",
-            icon=":material/account_circle:"
-        ):
-            user_modal()
+        col1, col2 = st.columns([0.4, 0.6])
+        with col1:
+            if st.button(
+                f"{username}",
+                key="user_button",
+                help="Show user information",
+                icon=":material/account_circle:"
+            ):
+                user_modal()
+        with col2:
+            if st.button(
+                f"Commentaire/Suggestion",
+                key="user_settings_button",
+                help="Commentaire/Suggestion",
+                icon=":material/comment:"
+            ):
+                user_feedback_modal()
 
         model_idx = agent_client.info.models.index(agent_client.info.default_model)
-        model = st.selectbox(dt.SELECT_LLM_LABEL, options=agent_client.info.models, index=model_idx)
-
+        model = 'gpt-4o'
+        print(model)
 
         # st.markdown(dt.SIDEBAR_HEADER)
         if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=False): #len(st.session_state.messages) == 0):
@@ -383,6 +412,12 @@ async def main() -> None:
                                 st.rerun()
             else:
                 st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
+            with st.container(border=False):
+                st.markdown("""
+                <div style="padding: 10px; margin-top: 150px; border-radius: 10px; text-size: 0.6rem; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                    <i><strong>Attention:</strong> Ne pas communiquer de données sensibles dans les messages, car ils peuvent être stockés et utilisés pour améliorer le modèle. Évitez de partager des informations personnelles ou confidentielles.</i>
+                </div>
+                """, unsafe_allow_html=True)
 
 
     await draw_messages(amessage_iter(), agent_client=agent_client)
