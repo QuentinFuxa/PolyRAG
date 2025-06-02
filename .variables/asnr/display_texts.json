@@ -1,5 +1,5 @@
 {
-  "APP_TITLE": "Siance Chat Expérimental",
+  "APP_TITLE": "Assistant Siance",
   "APP_ICON": ":material/experiment:",
   "AI_ICON": ":material/flare:",
   "USER_ICON": ":material/person:",
@@ -119,7 +119,7 @@
   "FEEDBACK_STARS_ICON": ":material/reviews:",
   "TOOL_OUTPUT_EMPTY": "Aucun résultat trouvé",
   "PDF_VIEWER_OUTPUT_LABEL": "Aperçu du PDF {pdf_name}",
-  "LOGIN_WELCOME": "Bienvenue sur Siance Chat",
+  "LOGIN_WELCOME": "Bienvenue sur l'Assistant Siance",
   "LOGIN_EMAIL_PROMPT": "Entrez votre adresse e-mail @asnr.fr :",
   "LOGIN_PASSWORD_PROMPT": "Entrez votre mot de passe :",
   "LOGIN_BUTTON": "Connexion",
