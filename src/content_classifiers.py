@@ -32,7 +32,7 @@ def normalize_text(text: str) -> str:
     text_lower = (
         text.replace("–", "-")
         .replace("—", "-")
-        .replace("'", "'")
+        .replace("’", "'")
         .replace("é", "e")
         .replace("É", "e")
         .replace("Ê", "e")
@@ -57,24 +57,24 @@ class ContentClassifier:
         # Section header patterns from sections_demands.py
         self.section_patterns = {
             SectionType.SYNTHESIS: [
-                r"[\r\n|\n|\\n]+[(i\. )|(1\. )|(a\. )|(1 \- )]*s[a-z]{1,2}these de (l'insp[a-z]{3}ion|la visite)[\.| |:]*",
+                r"(?:^|\n+)[(i\. )|(1\. )|(a\. )|(1 \- )]*s[a-z]{1,2}these de (l'insp[a-z]{3}ion|la visite)[\.| |:]*",
                 r"1[\-|\.| ]*synthese de l'inspection[\.| |:]*",
-                r"[\r\n|\n|\\n]+synthese des inspections[\.| |:]*",
-                r"[\r\n|\n|\\n]+synthese du contrôle[\.| |:]*",
-                r"[\r\n|\n|\\n]+[ ]*synthese[\.| |:]*[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+i. appreciation globale",
+                r"(?:^|\n+)synthese des inspections[\.| |:]*",
+                r"(?:^|\n+)synthese du contrôle[\.| |:]*",
+                r"(?:^|\n+)[ ]*synthese[\.| |:]*(?:\n+|$)",
+                r"(?:^|\n+)i. appreciation globale",
             ],
             SectionType.DEMANDS: [
                 r"[1|2|a|b|ii][ |\.|\-|\|\/)]+demande[s]* d'action[s]* corrective[s]*[\.| |:]*",
                 r"[1|2|a|b|ii][ |\.|\-|\|\/)]+demande[s]* d'a[a-z]{1,2}ion[s]* co[a-z]{5,6}ve[s]*[\.| |:]*",
-                r"[\r\n|\n|\\n]+demande[s]* d'action[s]* corrective[s]*[\.| |:]*",
-                r"demande[s]* d'action[s]* corrective[s]*[\.| |:]*[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+a[\.| \-]{0,1} demandes[ :]{0,1}[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+[1|2|a|b|ii][ |\.|\-|\|\/)]+demandes d'action[s]*[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+[a\. ]*description des ecarts[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+a. actions correctives[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+a[0-9]{0,1}. actions correctives[\r\n|\n|\\n]+",
-                r"[\r\n|\n|\\n]+a. (demande[s]* de )*mise[s]* en conformite a la reglementation",
+                r"(?:^|\n+)demande[s]* d'action[s]* corrective[s]*[\.| |:]*",
+                r"demande[s]* d'action[s]* corrective[s]*[\.| |:]*(?:\n+|$)",
+                r"(?:^|\n+)a[\.| \-]{0,1} demandes[ :]{0,1}(?:\n+|$)",
+                r"(?:^|\n+)[1|2|a|b|ii][ |\.|\-|\|\/)]+demandes d'action[s]*(?:\n+|$)",
+                r"(?:^|\n+)[a\. ]*description des ecarts(?:\n+|$)",
+                r"(?:^|\n+)a. actions correctives(?:\n+|$)",
+                r"(?:^|\n+)a[0-9]{0,1}. actions correctives(?:\n+|$)",
+                r"(?:^|\n+)a. (demande[s]* de )*mise[s]* en conformite a la reglementation",
                 r"ii[ |\.|\-|\|\/)]+demande[s]* portant sur des ecarts[\.| |:]*",
                 r"ii[ |\.|\-|\|\/)]+demande[s]* d'engagements[\.| |:]*",
                 r"[1|2|a|b|ii][ |\.|\-|\|\/)]+principales constatations et demandes",
@@ -86,20 +86,20 @@ class ContentClassifier:
                 r"[a|b|c|ii|iii|2|3][ |\.|\-|\|\/)]+demande[s]*( d'information[s]*)* complementaire[s]*[\.| |:]*",
                 r"[a|b|c|ii|iii|2|3][ |\.|\-|\|\/)]+demande[s]* d'information[s]*[\.| |:]*",
                 r"[a|b|c|ii|iii|2|3][ |\.|\-|\|\/)]+demande[s]* de complement[s]*( d'information[s]*){0,1}[\.| |:]*",
-                r"[\r\n|\n|\\n]+(demande[s]* de ){0,1}complement[s]* d'information[s]*[\.| |:]*",
-                r"[\r\n|\n|\\n]+b[\.] d'informations complementaires[\.| |:]*",
+                r"(?:^|\n+)(demande[s]* de ){0,1}complement[s]* d'information[s]*[\.| |:]*",
+                r"(?:^|\n+)b[\.] d'informations complementaires[\.| |:]*",
                 r"[a|b|c|ii|iii|2|3][ |\.|\-|\|\/)]+complement[s]* d'information[s]*[\.| |:]*",
-                r"[ a-z]*complement[s]* d'informations[\.| |:]*[\r\n|\n|\\n]+",
-                r"[ a-z]*complement[s]* d'information[s]*[\.| |:]*[\r\n|\n|\\n]+",
+                r"[ a-z]*complement[s]* d'informations[\.| |:]*(?:\n+|$)",
+                r"[ a-z]*complement[s]* d'information[s]*[\.| |:]*(?:\n+|$)",
                 r"[a|b|c|ii|iii|2|3][ |\.|\-|\|\/)]+demande[s]* de justification et de positionnement[\.| |:]*",
             ],
             SectionType.AUTRES_DEMANDES: [
                 r"(2|ii)\. autres demandes"
             ],
             SectionType.OBSERVATIONS: [
-                r"[\r\n|\n|\\n]+[b|c|2|iv][ |\.|\-|\|\/)]+observation[s]*[\.| |:]*",
+                r"(?:^|\n+)[b|c|2|iv][ |\.|\-|\|\/)]+observation[s]*[\.| |:]*",
                 r"[2|iv][ |\.|\-|\|\/)]+observation[s]*[\.| |:]*",
-                r"[\r\n|\n|\\n]+[ ]*observation[s]*[\.| |:]*[\r\n|\n|\\n]+",
+                r"(?:^|\n+)[ ]*observation[s]*[\.| |:]*(?:\n+|$)",
                 r"iii\. constats ou observations[ n('|')appelant pas de r(e|é)ponse]*[ (a|à) l('|')asn]*",
             ],
             SectionType.CONCLUSION: [
