@@ -36,6 +36,8 @@ from schema import (
     AnnotationItem,
     DocumentSourceInfo,
     DocumentSourceResponse,
+    UserFeedbackCreate,
+    UserFeedbackRead,
 )
 from service.utils import (
     convert_message_content_to_string,
@@ -656,19 +658,39 @@ async def delete_conversation(thread_id: str, user_id: Optional[UUID] = None) ->
     """
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required to delete a conversation.")
+    
+    admin_user_id = UUID("00000000-0000-0000-0000-000000000000")
+    title_prefix = "Deleted : "
+    
     try:
-        # Assuming db_manager.delete_conversation now requires user_id
-        result = db_manager.delete_conversation(UUID(thread_id), user_id)
-        if result:
-            return {"status": "success", "thread_id": thread_id}
+        uuid_thread_id = UUID(thread_id)
+        success = db_manager.reassign_and_rename_conversation(
+            thread_id=uuid_thread_id,
+            current_user_id=user_id,
+            new_user_id=admin_user_id,
+            title_prefix=title_prefix
+        )
+        
+        if success:
+            return {
+                "status": "success", 
+                "thread_id": thread_id,
+                "message": "Conversation has been marked as deleted and reassigned to admin."
+            }
         else:
-            # This could mean conversation not found OR not owned by user
-            raise HTTPException(status_code=404, detail=f"Conversation with ID {thread_id} not found or not owned by user.")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+            # This could mean conversation not found for the user, or an issue during the transaction.
+            # db_manager.reassign_and_rename_conversation logs specific reasons.
+            raise HTTPException(
+                status_code=404, # Or 500 if it's a general failure, but 404 is common for "not found or not authorized"
+                detail=f"Failed to mark conversation {thread_id} as deleted. It might not exist, not be owned by the user, or an internal error occurred."
+            )
+    except ValueError: # For UUID(thread_id) conversion
+        raise HTTPException(status_code=400, detail="Invalid thread_id format.")
+    except HTTPException: # Re-raise if already an HTTPException (like the 404 above)
+        raise
     except Exception as e:
-        logger.error(f"Error deleting conversation {thread_id} for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting conversation: {str(e)}")
+        logger.error(f"Error processing delete (reassign) request for conversation {thread_id}, user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing delete request: {str(e)}")
 
 @router.get("/conversations/{thread_id}/title")
 async def get_conversation_title(thread_id: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
@@ -757,6 +779,20 @@ async def get_document_source_status_endpoint(document_name: str) -> DocumentSou
     except Exception as e:
         logger.error(f"Error getting document source status for '{document_name}': {e}")
         raise HTTPException(status_code=500, detail=f"Error getting document source status: {str(e)}")
+
+
+@router.post("/user_feedback", response_model=UserFeedbackRead)
+async def create_user_feedback(feedback_data: UserFeedbackCreate) -> UserFeedbackRead:
+    """
+    Save user feedback to the database.
+    """
+    try:
+        saved_feedback = db_manager.save_user_feedback(feedback_data)
+        logger.info(f"Saved user feedback from user {feedback_data.user_id}")
+        return saved_feedback
+    except Exception as e:
+        logger.error(f"Error saving user feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving user feedback: {str(e)}")
 
 
 app.include_router(router)
