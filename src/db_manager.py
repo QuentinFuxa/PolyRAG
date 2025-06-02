@@ -20,9 +20,9 @@ except ImportError:
     IPTypes = None
 
 try:
-    from .schema.schema import UserInDB
+    from .schema.schema import UserInDB, UserFeedbackCreate, UserFeedbackRead
 except ImportError:
-    from schema.schema import UserInDB
+    from schema.schema import UserInDB, UserFeedbackCreate, UserFeedbackRead
     
 logger = logging.getLogger(__name__)
 
@@ -249,6 +249,19 @@ class DatabaseManager:
                 )
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_graphs_expiry_time ON {schema_app_data}.graphs(expiry_time)")
+
+                # User Feedback table
+                cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {schema_app_data}.user_feedback (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES {schema_app_data}.users(id) ON DELETE CASCADE,
+                    feedback_content TEXT NOT NULL,
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_feedback_user_id ON {schema_app_data}.user_feedback(user_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_feedback_created_at ON {schema_app_data}.user_feedback(created_at DESC)")
+
             conn.commit()
         finally:
             self.release_connection(conn)
@@ -447,6 +460,24 @@ class DatabaseManager:
     
     def get_embedding_dimension(self) -> int:
         return self.embedding_dim if self.embedding_enabled else 0
+
+    def save_user_feedback(self, feedback_data: UserFeedbackCreate) -> UserFeedbackRead:
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(
+                    f"""
+                    INSERT INTO {schema_app_data}.user_feedback (user_id, feedback_content)
+                    VALUES (%s, %s)
+                    RETURNING id, user_id, feedback_content, created_at
+                    """,
+                    (feedback_data.user_id, feedback_data.feedback_content)
+                )
+                saved_feedback = cursor.fetchone()
+                conn.commit()
+                return UserFeedbackRead(**saved_feedback)
+        finally:
+            self.release_connection(conn)
         
     def save_feedback(self, run_id: str, key: str, score: float, additional_data: Optional[Dict[str, Any]] = None) -> int:
         conn = self.get_connection()
@@ -564,6 +595,74 @@ class DatabaseManager:
             return False
         finally:
             self.release_connection(conn)
+
+    def reassign_and_rename_conversation(self, thread_id: UUID, current_user_id: UUID, new_user_id: UUID, title_prefix: str) -> bool:
+        conn = self.get_connection()
+        # Explicitly manage transaction
+        conn.autocommit = False 
+        try:
+            with conn.cursor() as cursor:
+                # 1. Fetch current title and lock the row
+                cursor.execute(
+                    f"""
+                    SELECT title FROM {schema_app_data}.conversations
+                    WHERE thread_id = %s AND user_id = %s
+                    FOR UPDATE
+                    """,
+                    (thread_id, current_user_id)
+                )
+                result = cursor.fetchone()
+                if not result:
+                    conn.rollback() # Conversation not found for this user
+                    logger.warning(f"Conversation {thread_id} not found for user {current_user_id} during reassignment attempt.")
+                    return False
+                
+                original_title = result[0]
+                new_title = f"{title_prefix}{original_title}"
+
+                # 2. Update conversation owner and title
+                cursor.execute(
+                    f"""
+                    UPDATE {schema_app_data}.conversations
+                    SET user_id = %s, title = %s, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                    WHERE thread_id = %s AND user_id = %s 
+                    """, 
+                    # Ensure we are still updating the original user's record before changing owner,
+                    # though FOR UPDATE should prevent concurrent changes.
+                    (new_user_id, new_title, thread_id, current_user_id)
+                )
+                if cursor.rowcount == 0: # Should not happen if SELECT FOR UPDATE worked
+                    conn.rollback()
+                    logger.error(f"Failed to update conversation {thread_id} for user {current_user_id} during reassignment (rowcount 0).")
+                    return False
+
+                # 3. Update associated files owner
+                # We update files that belonged to the original user for this thread.
+                cursor.execute(
+                    f"""
+                    UPDATE {schema_app_data}.files
+                    SET user_id = %s
+                    WHERE thread_id = %s AND user_id = %s
+                    """,
+                    (new_user_id, thread_id, current_user_id)
+                )
+                # Not checking rowcount for files, as there might be no files.
+
+                conn.commit()
+                logger.info(f"Conversation {thread_id} successfully reassigned from user {current_user_id} to {new_user_id} with title '{new_title}'.")
+                return True
+        except Exception as e:
+            if conn and not conn.closed: # Check if conn is still valid before rollback
+                try:
+                    conn.rollback()
+                except Exception as rb_e:
+                    logger.error(f"Error during rollback for conversation reassignment {thread_id}: {rb_e}")
+            logger.error(f"Error reassigning conversation {thread_id} from user {current_user_id} to {new_user_id}: {e}")
+            return False
+        finally:
+            if conn: # Ensure conn exists before trying to modify or release
+                conn.autocommit = True # Reset autocommit before releasing
+                self.release_connection(conn)
 
     def save_graph(self, graph_id: UUID, graph_json: Dict[str, Any], expiry_time: float) -> None:
         conn = self.get_connection()

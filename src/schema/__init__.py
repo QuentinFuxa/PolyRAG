@@ -27,6 +27,9 @@ DebugBlocksRequest = schema.DebugBlocksRequest
 AnnotationItem = schema.AnnotationItem
 DocumentSourceInfo = schema.DocumentSourceInfo
 DocumentSourceResponse = schema.DocumentSourceResponse
+UserFeedbackCreate = schema.UserFeedbackCreate
+UserFeedbackResponse = schema.FeedbackResponse
+UserFeedbackRead = schema.UserFeedbackRead
 
 __all__ = [
     "AgentInfo",
@@ -45,4 +48,7 @@ __all__ = [
     "AnnotationItem",
     "DocumentSourceInfo",
     "DocumentSourceResponse",
+    "UserFeedbackCreate",
+    "UserFeedbackRead",
+    "FeedbackResponse",
 ]

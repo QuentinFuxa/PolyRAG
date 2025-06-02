@@ -14,6 +14,8 @@ from schema import (
     ServiceMetadata,
     StreamInput,
     UserInput,
+    UserFeedbackCreate,
+    UserFeedbackRead,
 )
 
 
@@ -348,6 +350,18 @@ class AgentClient:
                 response.json()
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error: {e}")
+
+    def create_feedback(
+        self, user_id: UUID, feedback: str
+    ) -> None:
+        """
+        Create feedback for the agent.
+
+        Args:
+            user_id (UUID): The ID of the user providing feedback
+            feedback (str): The feedback text
+        """
+        print(f"Creating feedback for user {user_id}: {feedback}")
 
     def retrieve_graph(self, graph_id: str) -> str | None:
         """
@@ -713,12 +727,73 @@ class AgentClient:
                     return None
                 return response_data.get("source_info")
             except httpx.HTTPStatusError as e:
-                # Specifically catch 404 or other HTTP errors if server raises them
-                # instead of returning error in JSON
                 if e.response.status_code == 404:
-                    return None 
-                raise AgentClientError(f"Error getting document source status: {e}")
+                    return None
+                # For other HTTPStatusErrors, wrap and raise
+                raise AgentClientError(f"HTTP Status Error getting document source status: {e.response.status_code} - {e}")
             except httpx.HTTPError as e:
-                raise AgentClientError(f"Error getting document source status: {e}")
-            except Exception as e: # Catch potential JSON parsing errors or missing keys
+                # For other httpx.HTTPErrors (e.g., network issues)
+                raise AgentClientError(f"HTTPError getting document source status: {e}")
+            except Exception as e: # Catch other potential errors like JSON parsing
                 raise AgentClientError(f"Error processing document source status response: {e}")
+
+    def submit_user_feedback(self, user_id: UUID, feedback_content: str) -> UserFeedbackRead:
+        """
+        Submit user feedback to the service.
+
+        Args:
+            user_id (UUID): The ID of the user submitting feedback.
+            feedback_content (str): The content of the feedback.
+
+        Returns:
+            UserFeedbackRead: The saved feedback object.
+        """
+        request_data = UserFeedbackCreate(user_id=user_id, feedback_content=feedback_content)
+        try:
+            response = httpx.post(
+                f"{self.base_url}/user_feedback",
+                json=request_data.model_dump(mode='json'), # Ensure UUID is serialized correctly
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return UserFeedbackRead.model_validate(response.json())
+        except httpx.HTTPError as e:
+            try:
+                error_detail = response.json().get("detail", str(e))
+            except Exception: # If response.json() fails or "detail" is not present
+                error_detail = str(e)
+            raise AgentClientError(f"Error submitting user feedback: {error_detail}")
+        except Exception as e:
+            raise AgentClientError(f"An unexpected error occurred while submitting user feedback: {e}")
+
+    async def asubmit_user_feedback(self, user_id: UUID, feedback_content: str) -> UserFeedbackRead:
+        """
+        Submit user feedback to the service asynchronously.
+
+        Args:
+            user_id (UUID): The ID of the user submitting feedback.
+            feedback_content (str): The content of the feedback.
+
+        Returns:
+            UserFeedbackRead: The saved feedback object.
+        """
+        request_data = UserFeedbackCreate(user_id=user_id, feedback_content=feedback_content)
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/user_feedback",
+                    json=request_data.model_dump(mode='json'), # Ensure UUID is serialized correctly
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return UserFeedbackRead.model_validate(response.json())
+            except httpx.HTTPError as e:
+                try:
+                    error_detail = response.json().get("detail", str(e))
+                except Exception: # If response.json() fails or "detail" is not present
+                    error_detail = str(e)
+                raise AgentClientError(f"Error submitting user feedback: {error_detail}")
+            except Exception as e:
+                raise AgentClientError(f"An unexpected error occurred while submitting user feedback: {e}")

@@ -236,3 +236,17 @@ class DocumentSourceInfo(BaseModel):
 class DocumentSourceResponse(BaseModel):
     source_info: DocumentSourceInfo | None = None
     error: str | None = None
+
+
+# User Feedback Models
+class UserFeedbackCreate(BaseModel):
+    user_id: UUID = Field(description="The ID of the user submitting the feedback.")
+    feedback_content: str = Field(description="The content of the feedback.")
+
+
+class UserFeedbackRead(UserFeedbackCreate):
+    id: UUID = Field(description="The unique ID of the feedback entry.")
+    created_at: datetime = Field(description="Timestamp of when the feedback was created.")
+
+    class Config:
+        from_attributes = True
