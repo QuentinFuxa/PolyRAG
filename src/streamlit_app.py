@@ -598,27 +598,81 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
             except Exception as e: st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e)); status.update(state="complete")
     
     elif current_tool_name == "PDF_Viewer":
-        # ... (PDF_Viewer logic remains the same, ensure agent_client calls are user-scoped if needed) ...
-        # e.g., agent_client.aget_annotations might need user_id
+        pdf_buttons_to_create = [] # Initialize here to ensure it's always defined
         with status:
             try:
-                tool_output = json.loads(tool_result.content)
-                pdf_name = "Error" # Default
-                if tool_output.get('error'): st.error(tool_output['error'])
-                else: pdf_name = tool_output['pdf_file']; st.write(dt.PDF_VIEWER_OUTPUT_LABEL.format(pdf_name=pdf_name))
-                status.update(state="complete", label=dt.PDF_READY_STATUS.format(pdf_name=pdf_name))
-            except Exception as e: st.error(dt.PDF_PROCESSING_ERROR.format(e=e)); st.write(dt.RAW_OUTPUT_LABEL.format(content=tool_result.content)); status.update(state="complete")
-        if current_tool_name == "PDF_Viewer" and not json.loads(tool_result.content).get('error'):
-            tool_output_btn = json.loads(tool_result.content)
-            pdf_name_btn = tool_output_btn['pdf_file']; block_indices_btn = tool_output_btn['block_indices']
-            debug_viewer_btn = tool_output_btn.get('debug', False); annotations_btn = []
-            if agent_client:
-                # TODO: Ensure aget_annotations/adebug_pdf_blocks are user-scoped
-                if not debug_viewer_btn: annotations_btn = await agent_client.aget_annotations(pdf_file=pdf_name_btn, block_indices=block_indices_btn) # user_id?
-                else: annotations_btn = await agent_client.adebug_pdf_blocks(pdf_file=pdf_name_btn) # user_id?
-            st.session_state.pdf_documents[pdf_name_btn] = annotations_btn
-            if st.button(dt.VIEW_PDF_BUTTON.format(pdf_name=pdf_name_btn), key=f"pdf_button_{tool_result.tool_call_id}"):
-                view_pdf(pdf_name_btn, annotations_btn, debug_viewer=debug_viewer_btn)
+                pdf_results_list = json.loads(tool_result.content)
+                if not isinstance(pdf_results_list, list):
+                    st.error("PDF_Viewer tool returned an unexpected format. Expected a list of PDF results.")
+                    status.update(state="complete", label="PDF Viewer Error")
+                    # Must return here as pdf_buttons_to_create would be undefined for the loop after 'with status'
+                    return
+
+                status.update(state="running", label=f"Processing {len(pdf_results_list)} PDF(s)...")
+                
+                all_processed_successfully = True
+                # pdf_buttons_to_create is already initialized outside
+
+                for pdf_entry_idx, pdf_entry in enumerate(pdf_results_list): # Added enumerate for unique key generation
+                    if pdf_entry.get('error'):
+                        original_pdf_file_name = pdf_entry.get('original_request', {}).get('pdf_file', f"request_{pdf_entry_idx}")
+                        st.error(f"Error for PDF '{original_pdf_file_name}': {pdf_entry['error']}")
+                        all_processed_successfully = False
+                        continue # Skip to next PDF entry
+
+                    pdf_name = pdf_entry.get('pdf_file')
+                    block_indices = pdf_entry.get('block_indices')
+                    # Use the global debug flag from the tool call if present, else default to False
+                    # This assumes the 'debug' flag from the tool call is passed down or is accessible
+                    # For now, let's assume the 'debug' in pdf_entry is the one to use per PDF.
+                    debug_viewer = pdf_entry.get('debug', False) 
+
+                    if not pdf_name:
+                        st.error(f"PDF entry at index {pdf_entry_idx} is missing 'pdf_file'.")
+                        all_processed_successfully = False
+                        continue
+
+                    st.write(dt.PDF_VIEWER_OUTPUT_LABEL.format(pdf_name=pdf_name))
+                    annotations = []
+                    if agent_client:
+                        try:
+                            if not debug_viewer:
+                                # Pass user_id if available and required by the backend
+                                annotations = await agent_client.aget_annotations(pdf_file=pdf_name, block_indices=block_indices, user_id=user_id) 
+                            else:
+                                annotations = await agent_client.adebug_pdf_blocks(pdf_file=pdf_name, user_id=user_id)
+                            st.session_state.pdf_documents[pdf_name] = annotations
+                            pdf_buttons_to_create.append({
+                                "name": pdf_name,
+                                "annotations": annotations,
+                                "debug": debug_viewer,
+                                "tool_call_id": tool_result.tool_call_id,
+                                "unique_suffix": f"{pdf_entry_idx}_{pdf_name.replace(' ','_')}" # for unique button key
+                            })
+                        except Exception as e:
+                            st.error(f"Error fetching annotations for '{pdf_name}': {e}")
+                            all_processed_successfully = False
+                
+                if all_processed_successfully and pdf_buttons_to_create:
+                    status.update(state="complete", label=f"{len(pdf_buttons_to_create)} PDF(s) ready for viewing.")
+                elif not pdf_buttons_to_create:
+                     status.update(state="complete", label="No PDFs to display or all had errors.")
+                else:
+                    status.update(state="complete", label="Some PDFs processed with errors.")
+
+            except json.JSONDecodeError:
+                st.error(f"PDF_Viewer tool returned invalid JSON: {tool_result.content}")
+                status.update(state="complete", label="PDF Viewer JSON Error")
+            except Exception as e:
+                st.error(f"Error processing PDF_Viewer results: {e}")
+                st.write(f"Raw output: {tool_result.content}")
+                status.update(state="complete", label="PDF Viewer Processing Error")
+        
+        # Create buttons outside the status context if any were prepared
+        for btn_data in pdf_buttons_to_create:
+            button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
+            if st.button(btn_data['name'], key=button_key, type="tertiary", icon=":material/picture_as_pdf:"):
+                view_pdf(btn_data['name'], btn_data['annotations'], debug_viewer=btn_data['debug'])
     else: # Other tools
         # ... (SQL_Executor and generic tool output remain the same) ...
         with status:
