@@ -29,14 +29,9 @@ Les PDFs sont construits à partir de documents Word, les titres des grandes par
    - Description : Date d'envoi du rapport d'inspection.
    - Exemples : 1970-01-01, 2007-10-22, 2016-10-21
 
-
 - **interlocutor_name** (texte)
    - Description : Nom du contact principal ou de l'organisation impliquée dans l'inspection.
    - Exemples : "Cea", "Edf", "Orano"
-
-- **theme** (texte)
-   - Description : Thème principal ou focus de l'inspection.
-   - Exemples : "LT2f-b-Contrôles et EP", "R.6.2 Incendie et explosion", "Radioprotection"
 
 - **resp_entity** (texte)
    - Description : Entité ou organisation responsable de l'inspection.
@@ -53,10 +48,6 @@ Les PDFs sont construits à partir de documents Word, les titres des grandes par
    - Description : Nom du site où l'inspection a eu lieu.
    - Exemples : "Saclay", "Chinon", "Bugey", "Flammanville"
 
-- **complementary_site_name** (TABLEAU)
-    - Description : Noms de sites additionnels pertinents pour l'inspection.
-    - Exemples : ["ORPHÉE"], [], ["Réacteur 5"]
-
 - **domains** (texte)
     - Description : Domaines spécifiques liés à l'inspection.
     - Exemples : "Inspection du travail", "Sûreté nucléaire", "Nucléaire de proximité"
@@ -64,7 +55,6 @@ Les PDFs sont construits à partir de documents Word, les titres des grandes par
 -  **category** (texte)
     - Description : Catégorie du type d'inspection ou nature de l'entité inspectée.
     - Exemples : None, "Accélérateur", "Autres activités recherche", "Recherche"
-
 
 Vous allez aider les utilisateurs à interroger les données et fournir des analyses pertinentes.
 
