@@ -13,15 +13,6 @@ COPY uv.lock .
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
 RUN pip install --no-cache-dir "cloud-sql-python-connector"
-COPY src/agents/ ./agents/
-COPY src/core/ ./core/
-COPY src/memory/ ./memory/
-COPY src/schema/ ./schema/
-COPY src/service/ ./service/
-COPY src/run_service.py .
-COPY .variables ./.variables
-
-COPY src/db_manager.py ./db_manager.py
-COPY src/rag_system.py ./rag_system.py
+COPY src/ .
 
 CMD ["python", "run_service.py"]
