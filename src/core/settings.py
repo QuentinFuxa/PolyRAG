@@ -128,7 +128,7 @@ class Settings(BaseSettings):
         active_keys = [k for k, v in api_keys.items() if v]
         if not active_keys:
             raise ValueError("At least one LLM API key must be provided.")
-        self.DEFAULT_MODEL = MistralModelName.MISTRAL_LARGE
+        # self.DEFAULT_MODEL = MistralModelName.MISTRAL_LARGE
         for provider in active_keys:
             match provider:
                 case Provider.OPENAI:
