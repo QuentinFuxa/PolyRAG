@@ -1,7 +1,7 @@
 import json
 import os
+import re
 from dataclasses import dataclass
-from enum import Enum
 from typing import Dict, List, Optional, Any, Union, Tuple
 
 from llmsherpa.readers import LayoutPDFReader
@@ -20,10 +20,69 @@ load_dotenv()
 
 TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
 
-class SearchStrategy(Enum):
-    TEXT = "text"
-    EMBEDDING = "embedding"
-    HYBRID = "hybrid"
+
+def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str:
+    if not clause_str:
+        return ""
+
+    sql_keywords = {'AND', 'OR', 'NOT', 'NULL', 'TRUE', 'FALSE', 'IS', 'IN', 'LIKE', 'BETWEEN', 'EXISTS',
+                    'SELECT', 'FROM', 'WHERE', 'GROUP', 'ORDER', 'BY', 'LIMIT', 'OFFSET', 'AS',
+                    'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'}
+
+    parts = re.split(r'(\s+AND\s+|\s+OR\s+)', clause_str, flags=re.IGNORECASE)
+    
+    processed_parts = []
+    for part_idx, part_content in enumerate(parts):
+        stripped_part_content = part_content.strip()
+        
+        # If it's a delimiter (AND/OR), keep it
+        if part_idx % 2 == 1: # Delimiters are at odd indices
+            processed_parts.append(part_content)
+            continue
+
+        # Attempt to identify "column operator value" like structures
+        match = re.match(r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(.*)", stripped_part_content, re.IGNORECASE)
+        
+        if match:
+            column_candidate = match.group(1)
+            rest_of_condition = match.group(2)
+
+            # Check if it's a keyword, already prefixed, a function call, or a literal string/number
+            if (column_candidate.upper() not in sql_keywords and
+                '.' not in column_candidate and
+                '(' not in column_candidate and # Simple check for function
+                not (column_candidate.startswith("'") and column_candidate.endswith("'")) and # String literal
+                not (column_candidate.startswith('"') and column_candidate.endswith('"')) and # String literal
+                not column_candidate.replace('.', '', 1).isdigit() and # Number
+                column_candidate.upper() != 'TRUE' and column_candidate.upper() != 'FALSE' and column_candidate.upper() != 'NULL'
+               ):
+                processed_parts.append(f"{prefix}{column_candidate}{rest_of_condition}")
+            else:
+                processed_parts.append(part_content) # No change
+        else:
+            processed_parts.append(part_content) # No change if no word-like start
+            
+    return "".join(processed_parts)
+
+# Helper function to prefix column names in an ORDER BY clause string
+def _prefix_columns_in_order_by_clause(clause_str: str, prefix: str = "js.") -> str:
+    if not clause_str:
+        return ""
+    
+    terms = clause_str.split(',')
+    prefixed_terms = []
+    for term_str in terms:
+        term_str = term_str.strip()
+        # Split term into column and direction (ASC/DESC)
+        parts = term_str.split() # e.g. ["date", "DESC"] or ["name"]
+        if parts:
+            col_name = parts[0]
+            # Avoid prefixing if already prefixed or is a function call (simple check)
+            if '.' not in col_name and '(' not in col_name:
+                parts[0] = f"{prefix}{col_name}"
+            prefixed_terms.append(" ".join(parts))
+    return ", ".join(prefixed_terms)
+
 
 @dataclass
 class BlockMetadata:
@@ -38,51 +97,10 @@ class BlockMetadata:
 @dataclass
 class DocumentBlock:
     """Representation of a document block with content and metadata"""
-    # Using block_idx as the primary identifier instead of id string
     block_idx: int
     content: str
     metadata: BlockMetadata
-    parent_idx: Optional[int] = None  # Changed from parent_id to parent_idx
-    embedding: Optional[List[float]] = None
-
-class EmbeddingManager:
-    """Manager for embedding operations (optional)"""
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(EmbeddingManager, cls).__new__(cls)
-            # Check if OpenAI API key is available
-            cls._instance.api_key = os.getenv("OPENAI_API_KEY")
-            cls._instance.enabled = cls._instance.api_key is not None
-            if cls._instance.enabled:
-                from openai import OpenAI
-                cls._instance.client = OpenAI(api_key=cls._instance.api_key)
-                cls._instance.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-                cls._instance.embedding_dim = 1536  # Default for Ada
-        return cls._instance
-    
-    def is_enabled(self):
-        return self.enabled
-    
-    def compute_embedding(self, text):
-        """Compute embedding for a given text using OpenAI API"""
-        if not self.enabled:
-            return None
-        
-        try:
-            response = self.client.embeddings.create(
-                input=text,
-                model=self.embedding_model
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            print(f"Error computing embedding: {e}")
-            return None
-    
-    def get_embedding_dimension(self):
-        """Returns the dimension of embeddings used"""
-        return self.embedding_dim if self.enabled else 0
+    parent_idx: Optional[int] = None
 
 class SherpaDocumentProcessor:
     """Processor for rag_documents from llmsherpa"""
@@ -95,36 +113,31 @@ class SherpaDocumentProcessor:
         self.pdf_reader = LayoutPDFReader(self.sherpa_api_url)
     
     def process_pdf(self, pdf_path):
-        """Process a PDF file and return structured content"""
         """Process a PDF file using llmsherpa and return DocumentBlock objects"""
         sherpa_data = self.pdf_reader.read_pdf(pdf_path).json
-        return self._process_sherpa_data(sherpa_data) # Call internal processing method
+        return self._process_sherpa_data(sherpa_data)
 
     def _process_sherpa_data(self, sherpa_data):
         """Process raw llmsherpa output (JSON) and convert to DocumentBlock objects"""
         blocks = []
 
-        # Convert string to JSON if necessary
         if isinstance(sherpa_data, str):
             try:
                 sherpa_data = json.loads(sherpa_data)
             except json.JSONDecodeError:
                 raise ValueError("Invalid JSON data from llmsherpa")
         
-        # Process each block
         for block_data in sherpa_data:
             # Extract content from sentences
             content = ""
             if "sentences" in block_data:
                 sentences = block_data["sentences"]
                 if isinstance(sentences, list):
-                    # Handle different sentence formats
                     if sentences and isinstance(sentences[0], dict) and "text" in sentences[0]:
                         content = " ".join(s["text"] for s in sentences)
                     elif sentences and isinstance(sentences[0], str):
                         content = " ".join(sentences)
             elif "table_rows" in block_data:
-                # Handle table rows if present
                 for row in block_data["table_rows"]:
                     try:
                         cells = row.get("cells", [])
@@ -139,7 +152,6 @@ class SherpaDocumentProcessor:
             else:
                 raise ValueError("Invalid block data format")
             
-            # Create metadata
             metadata = BlockMetadata(
                 block_idx=block_data.get("block_idx", 0),
                 level=block_data.get("level", 0),
@@ -149,7 +161,6 @@ class SherpaDocumentProcessor:
                 bbox=block_data.get("bbox", [0, 0, 0, 0])
             )
             
-            # Create block - using block_idx directly as the identifier
             block = DocumentBlock(
                 block_idx=metadata.block_idx,
                 content=content,
@@ -158,144 +169,48 @@ class SherpaDocumentProcessor:
             
             blocks.append(block)
         
-        # Establish parent-child relationships based on hierarchy
         self._establish_hierarchy(blocks)
-        
         return blocks
     
     def _establish_hierarchy(self, blocks):
         """Establish parent-child relationships based on level and position"""
-        # Sort blocks by page and vertical position
         sorted_blocks = sorted(blocks, key=lambda b: (b.metadata.page_idx, b.metadata.bbox[1]))
-        
-        # Create a map for quick access
-        block_map = {block.block_idx: block for block in blocks}
-        
-        # Stack to track the current hierarchy
         hierarchy_stack = []
         
         for block in sorted_blocks:
-            # Pop from stack until we find a parent of higher level
             while hierarchy_stack and hierarchy_stack[-1].metadata.level >= block.metadata.level:
                 hierarchy_stack.pop()
             
-            # Set parent if available
             if hierarchy_stack:
                 block.parent_idx = hierarchy_stack[-1].block_idx
             
-            # Add current block to stack
             hierarchy_stack.append(block)
 
 
-class PyMuPDFDocumentProcessor:
-    """Processor for documents using PyMuPDF"""
-
-    def process_pdf(self, pdf_path):
-        import pymupdf
-        """Process a PDF file using PyMuPDF and return DocumentBlock objects"""
-        blocks = []
-        try:
-            doc = pymupdf.open(pdf_path)
-        except Exception as e:
-            print(f"Error opening PDF with PyMuPDF: {e}")
-            return []
-
-        block_counter = 0
-        for page_num, page in enumerate(doc):
-            page_dict = page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT) # Get detailed block info
-            page_width = page.rect.width
-            page_height = page.rect.height
-
-            for block_data in page_dict.get("blocks", []):
-                # We are interested in text blocks ('type' == 0)
-                if block_data.get("type") == 0:
-                    block_text = ""
-                    # Consolidate lines within the block
-                    for line in block_data.get("lines", []):
-                        for span in line.get("spans", []):
-                            block_text += span.get("text", "") + " "
-                        block_text += "\n" # Add newline after each line like llmsherpa might
-
-                    block_text = block_text.strip()
-                    if not block_text:
-                        continue
-
-                    bbox = block_data.get("bbox", [0, 0, 0, 0])
-
-                    # Basic heuristic for tag (can be improved)
-                    # Assuming larger fonts might be headers, but default to 'para'
-                    tag = 'para'
-                    if block_data.get("lines"):
-                         first_line = block_data["lines"][0]
-                         if first_line.get("spans"):
-                             first_span = first_line["spans"][0]
-                             if first_span.get("size", 10) > 14: # Arbitrary threshold for header
-                                 tag = 'header'
-
-                    metadata = BlockMetadata(
-                        block_idx=block_counter,
-                        level=0,  # PyMuPDF doesn't provide semantic levels easily
-                        page_idx=page_num,
-                        tag=tag, # Default tag, could add heuristics
-                        block_class="", # PyMuPDF doesn't provide this
-                        bbox=list(bbox)
-                    )
-
-                    block = DocumentBlock(
-                        block_idx=block_counter,
-                        content=block_text,
-                        metadata=metadata,
-                        parent_idx=None # PyMuPDF doesn't provide hierarchy easily
-                    )
-                    blocks.append(block)
-                    block_counter += 1
-        
-        doc.close()
-        # Note: PyMuPDF doesn't inherently provide hierarchy like llmsherpa.
-        # The _establish_hierarchy method is specific to llmsherpa's output structure.
-        return blocks
-
-
 class RAGSystem:
-    """RAG system with flexible search strategies and PDF backends"""
+    """RAG system with text search and PDF backends"""
 
-    def __init__(self, use_embeddings=False):
+    def __init__(self):
         self.db_manager = DatabaseManager()
-
+        self.TS_QUERY_LANGUAGE = TS_QUERY_LANGUAGE
+        
         # Determine PDF parsing backend
         pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
         if pdf_parser_backend == "pymupdf":
-            print("Using PyMuPDF backend for PDF processing.")
+            from .pymupdf_processor import PyMuPDFDocumentProcessor
             self.processor = PyMuPDFDocumentProcessor()
-        elif pdf_parser_backend == "nlm-ingestor":
-            print("Using NLM Ingestor (llmsherpa) backend for PDF processing.")
-            self.processor = SherpaDocumentProcessor()
         else:
-            print(f"Warning: Unknown PDF_PARSER '{pdf_parser_backend}'. Defaulting to nlm-ingestor.")
             self.processor = SherpaDocumentProcessor()
 
-        # Initialize embedding manager if enabled
-        self.use_embeddings = use_embeddings
-        if use_embeddings:
-            self.embedding_manager = EmbeddingManager()
-            if not self.embedding_manager.is_enabled():
-                print("Warning: Embeddings requested but OpenAI API key not found. Falling back to text search.")
-                self.use_embeddings = False
-        
-        # Initialize content classifier
         self.content_classifier = ContentClassifier()
-        
-        # Create necessary database schema
         self._ensure_schema()
     
     def _ensure_schema(self):
         """Create necessary database schema if it doesn't exist"""
-        # Base schema - updated to use block_idx as primary identifier
         schema = f"""        
-        -- Document blocks table
         CREATE TABLE IF NOT EXISTS {schema_app_data}.rag_document_blocks (
             id SERIAL PRIMARY KEY,
-            block_idx INTEGER NOT NULL,  -- This is now our primary block identifier
+            block_idx INTEGER NOT NULL,
             name TEXT NOT NULL,
             content TEXT,
             level INTEGER NOT NULL,
@@ -306,19 +221,17 @@ class RAGSystem:
             y0 FLOAT,
             x1 FLOAT,
             y1 FLOAT,
-            parent_idx INTEGER,  -- Changed from parent_id to parent_idx
+            parent_idx INTEGER,
             content_type TEXT DEFAULT 'regular',
             section_type TEXT,
             demand_priority INTEGER,
-            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED, -- Added generated TSVECTOR column
-            UNIQUE(name, block_idx)  -- Changed unique constraint
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED,
+            UNIQUE(name, block_idx)
         );
         
-        -- Text search index on the generated column
         CREATE INDEX IF NOT EXISTS idx_document_blocks_content_tsv ON {schema_app_data}.rag_document_blocks 
         USING gin(content_tsv);
         
-        -- Content classification indexes
         CREATE INDEX IF NOT EXISTS idx_rag_blocks_content_type 
         ON {schema_app_data}.rag_document_blocks(content_type);
         
@@ -327,119 +240,45 @@ class RAGSystem:
         
         CREATE INDEX IF NOT EXISTS idx_rag_blocks_demand_priority 
         ON {schema_app_data}.rag_document_blocks(demand_priority);
-        
-        CREATE INDEX IF NOT EXISTS idx_rag_blocks_content_classification
-        ON {schema_app_data}.rag_document_blocks(content_type, section_type, demand_priority);
         """
         
         self.db_manager.execute_query(schema)
-        
-        # Add embedding column and index if embeddings are enabled
-        if self.use_embeddings:
-            try:
-                # Check if vector extension is available
-                extension_query = "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
-                result = self.db_manager.execute_query(extension_query)
-                
-                if not result:
-                    # Create vector extension if not exists
-                    self.db_manager.execute_query("CREATE EXTENSION IF NOT EXISTS vector")
-                
-                # Add embedding column if not exists
-                col_exists_query = f"""
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'rag_document_blocks' 
-                AND table_schema = '{schema_app_data}'
-                AND column_name = 'embedding'
-                """
-                col_exists = self.db_manager.execute_query(col_exists_query)
-                
-                if not col_exists:
-                    dim = self.embedding_manager.get_embedding_dimension()
-                    embedding_schema = f"""
-                    ALTER TABLE {schema_app_data}.rag_document_blocks ADD COLUMN IF NOT EXISTS embedding vector({dim});
-                    CREATE INDEX IF NOT EXISTS idx_document_blocks_embedding ON {schema_app_data}.rag_document_blocks 
-                    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-                    """
-                    self.db_manager.execute_query(embedding_schema)
-            except Exception as e:
-                print(f"Warning: Could not create vector extension or embedding column: {e}")
-                print("Falling back to text search only.")
-                self.use_embeddings = False
     
     def index_document(self, pdf_path, document_name_override: Optional[str] = None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
-        """
-        Index a PDF document from a given path.
-        Uses pdf_path as the unique identifier (name) by default, but can be overridden.
-        Optionally accepts pre-processed sherpa data.
-
-        Args:
-            pdf_path: Path to the PDF file to process.
-            document_name_override: If provided, use this string as the unique 'name' identifier
-                                     when storing blocks, instead of pdf_path. Useful for URLs
-                                     where the path is temporary.
-            existing_sherpa_data: Pre-processed data from llmsherpa (optional).
-            table_name: The database table to insert blocks into.
-        """
+        """Index a PDF document from a given path."""
         document_name = document_name_override if document_name_override is not None else pdf_path
 
-        # Process the document using the selected processor
-        # existing_sherpa_data is specific to llmsherpa, so we ignore it if using pymupdf
-        pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
-        if pdf_parser_backend == "pymupdf":
-             blocks = self.processor.process_pdf(pdf_path)
-        elif pdf_parser_backend == "nlm-ingestor":
-             if existing_sherpa_data is None:
-                 # Sherpa processor's process_pdf now returns blocks directly
-                 blocks = self.processor.process_pdf(pdf_path)
-             else:
-                 # If sherpa data is provided, process it (specific to sherpa)
-                 blocks = self.processor._process_sherpa_data(existing_sherpa_data) # Use renamed internal method
-        else: # Default case
-             blocks = self.processor.process_pdf(pdf_path)
+        if existing_sherpa_data is None:
+            blocks = self.processor.process_pdf(pdf_path)
+        else:
+            blocks = self.processor._process_sherpa_data(existing_sherpa_data)
         
         # Check if this is a "lettre de suite" based on content patterns
         blocks_content = [block.content for block in blocks if block.content]
         is_letter_de_suite = self.content_classifier.is_letter_de_suite(blocks_content)
         
-        # Classify blocks if it's a letter de suite
         if is_letter_de_suite:
             print(f"Document {document_name} detected as 'lettre de suite'. Classifying blocks...")
             self._classify_blocks(blocks)
 
-        # Compute embeddings if enabled
-        if self.use_embeddings:
-            for block in blocks:
-                if block.content:
-                    block.embedding = self.embedding_manager.compute_embedding(block.content)
-        
-        # Insert blocks using the document_name (pdf_path)
         self._insert_blocks(document_name, blocks, table_name)
-        
-        return document_name # Return the name used for indexing
+        return document_name
     
     def _classify_blocks(self, blocks):
-        """
-        Classify blocks for content type, section type, and demand priority.
-        Updates blocks in-place with classification metadata.
-        """
+        """Classify blocks for content type, section type, and demand priority."""
         current_section = None
         
         for block in blocks:
             if not block.content:
                 continue
             
-            # Classify this block
             content_type, section_type, demand_priority = self.content_classifier.classify_block(
                 block.content, current_section
             )
             
-            # Update current section if this is a section header
             if content_type == ContentType.SECTION_HEADER:
                 current_section = section_type
             
-            # Add classification metadata to block
-            # Using a temporary attribute to pass classification data
             block.content_type = content_type.value
             block.section_type = section_type.value if section_type else None
             block.demand_priority = demand_priority
@@ -449,842 +288,272 @@ class RAGSystem:
         params_list = []
         
         for block in blocks:
-            # Extract bbox coordinates
             bbox = block.metadata.bbox
             x0 = bbox[0] if len(bbox) > 0 else None
             y0 = bbox[1] if len(bbox) > 1 else None
             x1 = bbox[2] if len(bbox) > 2 else None
             y1 = bbox[3] if len(bbox) > 3 else None
             
-            # Extract classification metadata if present
             content_type = getattr(block, 'content_type', 'regular')
             section_type = getattr(block, 'section_type', None)
             demand_priority = getattr(block, 'demand_priority', None)
             
-            # Create parameter tuple - now using block_idx directly 
             params = (
-                block.block_idx,  # Use block_idx as primary identifier
-                name,
-                block.content,
-                block.metadata.level,
-                block.metadata.page_idx,
-                block.metadata.tag,
-                block.metadata.block_class,
-                x0, y0, x1, y1,
-                block.parent_idx,  # Changed from parent_id to parent_idx
-                content_type,
-                section_type,
-                demand_priority
+                block.block_idx, name, block.content, block.metadata.level,
+                block.metadata.page_idx, block.metadata.tag, block.metadata.block_class,
+                x0, y0, x1, y1, block.parent_idx, content_type, section_type, demand_priority
             )
             
             params_list.append(params)
         
-        # Insert all blocks - schema updated for block_idx
-        if self.use_embeddings:
-            query = f"""
-            INSERT INTO {table_name}
-            (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (name, block_idx) DO UPDATE SET
-            content = EXCLUDED.content,
-            level = EXCLUDED.level,
-            page_idx = EXCLUDED.page_idx,
-            tag = EXCLUDED.tag,
-            block_class = EXCLUDED.block_class,
-            x0 = EXCLUDED.x0,
-            y0 = EXCLUDED.y0,
-            x1 = EXCLUDED.x1,
-            y1 = EXCLUDED.y1,
-            parent_idx = EXCLUDED.parent_idx,
-            content_type = EXCLUDED.content_type,
-            section_type = EXCLUDED.section_type,
-            demand_priority = EXCLUDED.demand_priority,
-            embedding = EXCLUDED.embedding
-            """
-            
-            # Add embedding to params
-            params_list = [(p + (block.embedding,)) for p, block in zip(params_list, blocks)]
-        else:
-            query = f"""
-            INSERT INTO {table_name}
-            (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (name, block_idx) DO UPDATE SET
-            content = EXCLUDED.content,
-            level = EXCLUDED.level,
-            page_idx = EXCLUDED.page_idx,
-            tag = EXCLUDED.tag,
-            block_class = EXCLUDED.block_class,
-            x0 = EXCLUDED.x0,
-            y0 = EXCLUDED.y0,
-            x1 = EXCLUDED.x1,
-            y1 = EXCLUDED.y1,
-            parent_idx = EXCLUDED.parent_idx,
-            content_type = EXCLUDED.content_type,
-            section_type = EXCLUDED.section_type,
-            demand_priority = EXCLUDED.demand_priority
-            """
+        query = f"""
+        INSERT INTO {table_name}
+        (block_idx, name, content, level, page_idx, tag, block_class, 
+         x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (name, block_idx) DO UPDATE SET
+        content = EXCLUDED.content,
+        level = EXCLUDED.level,
+        page_idx = EXCLUDED.page_idx,
+        tag = EXCLUDED.tag,
+        block_class = EXCLUDED.block_class,
+        x0 = EXCLUDED.x0,
+        y0 = EXCLUDED.y0,
+        x1 = EXCLUDED.x1,
+        y1 = EXCLUDED.y1,
+        parent_idx = EXCLUDED.parent_idx,
+        content_type = EXCLUDED.content_type,
+        section_type = EXCLUDED.section_type,
+        demand_priority = EXCLUDED.demand_priority
+        """
         
         self.db_manager.execute_many(query, params_list)
 
-    def search(
-            self,
-            query,
-            source_names=None,
-            strategy=SearchStrategy.TEXT,
-            limit=5,
-            content_type=None,
-            section_filter=None,
-            demand_priority=None
-            ):
+    def query(self,
+              user_query: Union[str, List[str]],
+              source_query: Optional[str] = None,
+              source_names: Optional[List[str]] = None,
+              limit: int = 20,
+              offset: int = 0,
+              get_children: bool = True,
+              content_type: Optional[str] = None,
+              section_filter: Optional[List[str]] = None,
+              demand_priority: Optional[int] = None
+              ) -> Dict[str, Any]:
         """
-        Search rag_documents using specified strategy
-
-        Args:
-            query: The search query
-            source_names: List of document names to search in
-            strategy: SearchStrategy (TEXT, EMBEDDING, or HYBRID)
-            limit: Maximum number of results to return
-
-        Returns:
-            List of relevant blocks with metadata
+        Process a user query with simplified return format and single-query source handling.
         """
-        if strategy == SearchStrategy.EMBEDDING and not self.use_embeddings:
-            print("Warning: Embedding search requested but embeddings not enabled. Falling back to text search.")
-            strategy = SearchStrategy.TEXT
-        
-        if strategy == SearchStrategy.HYBRID and not self.use_embeddings:
-            print("Warning: Hybrid search requested but embeddings not enabled. Falling back to text search.")
-            strategy = SearchStrategy.TEXT
-        
-        if strategy == SearchStrategy.TEXT:
-            return self._text_search(query, source_names, limit, content_type, section_filter, demand_priority)
-        elif strategy == SearchStrategy.EMBEDDING:
-            return self._embedding_search(query, source_names, limit, content_type, section_filter, demand_priority)
-        elif strategy == SearchStrategy.HYBRID:
-            return self._hybrid_search(query, source_names, limit, content_type, section_filter, demand_priority)
+        # Ensure user_query is a list
+        if isinstance(user_query, str):
+            processed_query = user_query.split()
         else:
-            raise ValueError(f"Unknown search strategy: {strategy}")
-            
-    def _text_search(self, query: List[str], source_names: Optional[List[str]], limit: int = 5,
-                    content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
-                    demand_priority: Optional[int] = None):
-        """
-        Search using PostgreSQL full-text search with AND/OR fallback logic.
-        If query is empty, return all matching rows based on filters.
-        """
-
-        def build_search_query(ts_query_str: Optional[str], use_tsquery: bool, 
-                            source_names: Optional[List[str]], content_type: Optional[str], 
-                            section_filter: Optional[List[str]], demand_priority: Optional[int]) -> Tuple[str, List[Any]]:
-
-            base_query = f"""
-            SELECT 
-                name, block_idx, content, page_idx, level, tag, block_class,
-                x0, y0, x1, y1, parent_idx,
-                {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if use_tsquery else '0'} AS score,
-                CASE WHEN tag = 'header' THEN 1 ELSE 0 END AS is_header,
-                content_type, section_type, demand_priority
-            FROM {schema_app_data}.rag_document_blocks
-            """
-
-            params = []
-            where_clauses = []
-
-            if use_tsquery:
-                where_clauses.append("content_tsv @@ to_tsquery(%s, %s)")
-                params.extend([TS_QUERY_LANGUAGE, ts_query_str])
-
-            if source_names:
-                placeholders = ', '.join(['%s'] * len(source_names))
-                where_clauses.append(f"name IN ({placeholders})")
-                params.extend(source_names)
-
-            if content_type:
-                where_clauses.append("content_type = %s")
-                params.append(content_type)
-
-            if section_filter:
-                placeholders = ', '.join(['%s'] * len(section_filter))
-                where_clauses.append(f"section_type IN ({placeholders})")
-                params.extend(section_filter)
-
-            if demand_priority is not None:
-                where_clauses.append("demand_priority = %s")
-                params.append(demand_priority)
-
-            if where_clauses:
-                base_query += " WHERE " + " AND ".join(where_clauses)
-
-            base_query += """
-            ORDER BY is_header DESC, level DESC, score DESC
-            LIMIT %s
-            """
-            params.append(limit)
-            return base_query, params
+            processed_query = user_query
 
         # Clean and format query terms
         formatted_elements = []
-        for element in query:
+        for element in processed_query:
             sanitized = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
-            if not sanitized:
-                continue
-            formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
+            if sanitized:
+                formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
 
-        if not formatted_elements:
-            # No tsquery, return all matching filtered rows
-            print("Empty query, returning all rows with filters only.")
-            search_query, params = build_search_query(None, False, source_names, content_type, section_filter, demand_priority)
-            results = self.db_manager.execute_query(search_query, params)
-            return self._format_results(results)
+        join_clause_str = ""
+        where_join_conditions_list = []
+        order_by_join_clause_str = ""
+        ts_query_for_format = "" # Initialize for .format() later
 
-        # AND search
-        ts_query_and = " & ".join(formatted_elements)
-        print(f"Attempting AND search with ts_query: {ts_query_and}")
-        search_query_and, params_and = build_search_query(ts_query_and, True, source_names, content_type, section_filter, demand_priority)
-        results = self.db_manager.execute_query(search_query_and, params_and)
-        if results:
-            print("AND search successful.")
-            return self._format_results(results)
-
-        # OR search
-        print("AND search yielded no results. Falling back to OR search.")
-        ts_query_or = " | ".join(formatted_elements)
-        print(f"Attempting OR search with ts_query: {ts_query_or}")
-        search_query_or, params_or = build_search_query(ts_query_or, True, source_names, content_type, section_filter, demand_priority)
-        results = self.db_manager.execute_query(search_query_or, params_or)
-        if results:
-            print("OR search successful.")
-        else:
-            print("OR search also yielded no results.")
-        return self._format_results(results)
-
-    def _embedding_search(self, query, source_names, limit=5,
-                         content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
-                         demand_priority: Optional[int] = None):
-        """Search using vector embeddings with optional filters"""
-        if not self.use_embeddings:
-            return [] # Correctly return empty list if embeddings are not used
-            
-        embedding = self.embedding_manager.compute_embedding(query)
-        
-        if not embedding:
-            return []
-        
-        # Updated search query for block_idx
-        search_query = f"""
-        SELECT 
-            name, 
-            block_idx,
-            content, 
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx,
-            1 - (embedding <=> %s) AS score
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE
-            embedding IS NOT NULL
-        """
-        
-        params = [embedding]
-        
-        # Add source filter if specified
-        if source_names and len(source_names) > 0:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            search_query += f" AND name IN ({placeholders})"
-            params.extend(source_names)
-        
-        # Add content type filter
-        if content_type:
-            search_query += " AND content_type = %s"
-            params.append(content_type)
-        
-        # Add section filter
-        if section_filter:
-            placeholders = ', '.join(['%s'] * len(section_filter))
-            search_query += f" AND section_type IN ({placeholders})"
-            params.extend(section_filter)
-        
-        # Add demand priority filter
-        if demand_priority is not None:
-            search_query += " AND demand_priority = %s"
-            params.append(demand_priority)
-        
-        # Add order by and limit
-        search_query += """
-        ORDER BY 
-            embedding <=> %s
-        LIMIT %s
-        """
-        params.extend([embedding, limit])
-        
-        results = self.db_manager.execute_query(search_query, params)
-        return self._format_results(results)
-    
-    def _hybrid_search(self, query, source_names, limit=5,
-                      content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
-                      demand_priority: Optional[int] = None):
-        """Hybrid search combining text search and embedding search"""
-        text_results = self._text_search(query, source_names, limit, content_type, section_filter, demand_priority)
-        embedding_results = self._embedding_search(query, source_names, limit, content_type, section_filter, demand_priority)
-        
-        # Combine and deduplicate results - using block_idx as the key
-        combined = {}
-        for result in text_results:
-            block_idx = result["block_idx"]
-            combined[block_idx] = result
-        
-        for result in embedding_results:
-            block_idx = result["block_idx"]
-            if block_idx in combined:
-                # Average the scores
-                combined[block_idx]["score"] = (combined[block_idx]["score"] + result["score"]) / 2
+        if source_query:
+            # Parse source_query using regex for more robustness
+            _from_parts = re.split(r'\sFROM\s', source_query, 1, re.IGNORECASE)
+            if len(_from_parts) < 2:
+                # Log or handle error: source_query must contain FROM clause
+                # For now, we'll let it proceed, and it might result in an SQL error or empty results
+                pass # Or raise ValueError("source_query must contain FROM clause")
             else:
-                combined[block_idx] = result
-        
-        # Sort by score and limit
-        sorted_results = sorted(combined.values(), key=lambda x: x["score"], reverse=True)
-        return sorted_results[:limit]
-    
-    def _format_results(self, results):
-        """Format database results into a structured format"""
-        if not results:
-            return []
-        
-        formatted = []
-        for row in results:
-            result_dict = {
-                "name": row[0],
-                "block_idx": row[1],  # Now using block_idx instead of block_id
-                "content": row[2],
-                "page_idx": row[3],
-                "level": row[4],
-                "tag": row[5],
-                "block_class": row[6],
-                "x0": row[7],
-                "y0": row[8],
-                "x1": row[9],
-                "y1": row[10],
-                "parent_idx": row[11],  # Changed from parent_id to parent_idx
-                "score": row[12]
-            }
-            
-            # Add classification fields if they exist (for text search results)
-            if len(row) > 14:  # Text search includes is_header at index 13
-                # Skip is_header (index 13)
-                result_dict["content_type"] = row[14] if len(row) > 14 else None
-                result_dict["section_type"] = row[15] if len(row) > 15 else None
-                result_dict["demand_priority"] = row[16] if len(row) > 16 else None
-            
-            formatted.append(result_dict)
-        
-        return formatted
-    
-    def _text_search_with_counts(self, query: List[str], source_names: Optional[List[str]], 
-                                 max_results_per_source: int = 20, get_children: bool = True,
-                                 content_type: Optional[str] = None, section_filter: Optional[List[str]] = None, 
-                                 demand_priority: Optional[int] = None):
-        """
-        Optimized text search that:
-        1. Gets total counts per document
-        2. Fetches results with their children in a single query
-        3. Returns formatted results with count information
-        """
-        # Clean and format query terms
-        formatted_elements = []
-        for element in query:
-            sanitized = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
-            if not sanitized:
-                continue
-            formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
+                _after_from = _from_parts[1]
+                
+                # Extract table name (part after FROM, before WHERE or ORDER BY or LIMIT or OFFSET)
+                _table_name_part = re.split(r'\sWHERE\s|\sORDER BY\s|\sLIMIT\s|\sOFFSET\s', _after_from, 1, re.IGNORECASE)[0].strip()
+                table_name = _table_name_part
 
-        # Build the base WHERE clause conditions
+                # Extract WHERE clause specific to the source_query
+                _where_match = re.search(r'\sWHERE\s(.*?)(?:\sORDER BY\s|\sLIMIT\s|\sOFFSET\s|$)', _after_from, re.IGNORECASE | re.DOTALL)
+                raw_where_from_source = _where_match.group(1).strip() if _where_match else ""
+
+                # Extract ORDER BY clause specific to the source_query
+                _orderby_match = re.search(r'\sORDER BY\s(.*?)(?:\sLIMIT\s|\sOFFSET\s|$)', _after_from, re.IGNORECASE | re.DOTALL)
+                raw_orderby_from_source = _orderby_match.group(1).strip() if _orderby_match else ""
+
+                if table_name:
+                    join_clause_str = f' JOIN {table_name} js ON r.name = js.name'
+
+                    if raw_where_from_source:
+                        prefixed_where = _prefix_columns_in_where_clause(raw_where_from_source, "js.")
+                        if prefixed_where:
+                            where_join_conditions_list.append(f"({prefixed_where})")
+                    
+                    if raw_orderby_from_source:
+                        order_by_join_clause_str = _prefix_columns_in_order_by_clause(raw_orderby_from_source, "js.")
+        
+        # Define base SELECT clause based on FTS
+        if formatted_elements:
+            ts_query_for_format = " & ".join(formatted_elements) # Used for FTS AND search
+            select_base = f"""
+            SELECT 
+                r.name, r.block_idx, r.content, r.level, r.tag,
+                r.content_type, r.section_type, r.demand_priority, r.parent_idx,
+                ts_rank_cd(r.content_tsv, to_tsquery('{self.TS_QUERY_LANGUAGE}','{{ts_query}}')) AS score
+            """
+        else:
+            select_base = f"""
+            SELECT 
+                r.name, r.block_idx, r.content, r.level, r.tag,
+                r.content_type, r.section_type, r.demand_priority, r.parent_idx
+            """
+        
+        from_r_clause = f"FROM {schema_app_data}.rag_document_blocks r"
+
+        # Build search_query parts
+        search_query_parts = [select_base, from_r_clause]
+        if join_clause_str:
+            search_query_parts.append(join_clause_str)
+
+        # Build count_query parts
+        count_query_parts = [f"SELECT COUNT(*) FROM {schema_app_data}.rag_document_blocks r"]
+        if join_clause_str:
+            count_query_parts.append(join_clause_str)
+        
         where_conditions = []
-        params = []
-        
         if formatted_elements:
-            # Try AND search first
-            ts_query = " & ".join(formatted_elements)
-            where_conditions.append("content_tsv @@ to_tsquery(%s, %s)")
-            params.extend([TS_QUERY_LANGUAGE, ts_query])
+            # ts_query variable for formatting is ts_query_for_format
+            where_conditions.append(f"r.content_tsv @@ to_tsquery('{self.TS_QUERY_LANGUAGE}', '{{ts_query}}')")
+
+        # Add conditions from source_query's WHERE clause
+        if where_join_conditions_list:
+            where_conditions.extend(where_join_conditions_list)
         
-        if source_names:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            where_conditions.append(f"name IN ({placeholders})")
-            params.extend(source_names)
+        # Original conditions (source_names, content_type, etc.)
+        # Ensure source_names is mutually exclusive with source_query logic for joins
+        if not source_query and source_names: # Only apply if source_query was not used
+            str_source_names = "', '".join(source_names)
+            where_conditions.append(f"r.name IN ('{str_source_names}')")
         
         if content_type:
-            where_conditions.append("content_type = %s")
-            params.append(content_type)
-        
+            where_conditions.append(f"r.content_type = '{content_type}'")
         if section_filter:
-            placeholders = ', '.join(['%s'] * len(section_filter))
-            where_conditions.append(f"section_type IN ({placeholders})")
-            params.extend(section_filter)
-        
+            str_section_filter = "', '".join(section_filter)
+            where_conditions.append(f"r.section_type IN ('{str_section_filter}')")
         if demand_priority is not None:
-            where_conditions.append("demand_priority = %s")
-            params.append(demand_priority)
+            where_conditions.append(f"r.demand_priority = {demand_priority}")
+
+        if where_conditions:
+            where_clause_full_str = " WHERE " + " AND ".join(where_conditions)
+            search_query_parts.append(where_clause_full_str)
+            count_query_parts.append(where_clause_full_str)
         
-        where_clause = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+        # ORDER BY logic
+        final_order_by_clauses = []
+        if order_by_join_clause_str:
+            final_order_by_clauses.append(order_by_join_clause_str)
         
-        # Execute the optimized query with CTEs
-        optimized_query = f"""
-        WITH matched_blocks AS (
-            SELECT 
-                name, block_idx, content, page_idx, level, tag, block_class,
-                x0, y0, x1, y1, parent_idx,
-                {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} AS score,
-                content_type, section_type, demand_priority,
-                ROW_NUMBER() OVER (PARTITION BY name ORDER BY 
-                    CASE WHEN tag = 'header' THEN 1 ELSE 0 END DESC, 
-                    level DESC, 
-                    {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} DESC
-                ) as rn,
-                COUNT(*) OVER (PARTITION BY name) as total_per_doc
-            FROM {schema_app_data}.rag_document_blocks
-            {where_clause}
-        ),
-        top_results AS (
-            SELECT * FROM matched_blocks WHERE rn <= %s
-        ),
-        results_with_children AS (
-            -- Parent blocks
-            SELECT 
-                t.name, t.block_idx, t.content, t.page_idx, t.level, t.tag, t.block_class,
-                t.x0, t.y0, t.x1, t.y1, t.parent_idx, t.score, t.content_type, t.section_type, 
-                t.demand_priority, t.rn, t.total_per_doc,
-                NULL::integer as parent_block_idx,
-                0 as is_child
-            FROM top_results t
+        if formatted_elements and (not order_by_join_clause_str or "score" not in order_by_join_clause_str.lower()):
+            final_order_by_clauses.append("score DESC")
+        
+        # Add r.level DESC if not already covered by order_by_join_clause_str or if no FTS
+        if not order_by_join_clause_str or "r.level" not in order_by_join_clause_str.lower():
+             final_order_by_clauses.append("r.level DESC")
+        
+        # Fallback if no other ordering is present and no FTS
+        if not formatted_elements and not final_order_by_clauses:
+            final_order_by_clauses.append("r.block_idx")
+
+
+        if final_order_by_clauses:
+            # Filter out potential empty strings if some clauses were conditionally not added
+            valid_clauses = [clause for clause in final_order_by_clauses if clause and clause.strip()]
+            if valid_clauses:
+                 search_query_parts.append(" ORDER BY " + ", ".join(valid_clauses))
             
-            UNION ALL
-            
-            -- Child blocks (if get_children is True)
-            {"SELECT c.name, c.block_idx, c.content, c.page_idx, c.level, c.tag, c.block_class, c.x0, c.y0, c.x1, c.y1, c.parent_idx, 0 as score, c.content_type, c.section_type, c.demand_priority, t.rn, t.total_per_doc, t.block_idx as parent_block_idx, 1 as is_child FROM " + schema_app_data + ".rag_document_blocks c INNER JOIN top_results t ON c.parent_idx = t.block_idx AND c.name = t.name" if get_children else "SELECT NULL::text, NULL::integer, NULL::text, NULL::integer, NULL::integer, NULL::text, NULL::text, NULL::float, NULL::float, NULL::float, NULL::float, NULL::integer, NULL::float, NULL::text, NULL::text, NULL::integer, NULL::integer, NULL::bigint, NULL::integer, NULL::integer WHERE FALSE"}
-        )
-        SELECT * FROM results_with_children
-        ORDER BY name, rn, is_child, page_idx, block_idx
-        """
+        search_query = "\n".join(search_query_parts)
+        count_query = "\n".join(count_query_parts)
+
+        # Execute queries
+        _final_count_query = count_query.format(ts_query=ts_query_for_format)
+        count_result = self.db_manager.execute_query(_final_count_query)
         
-        # Add rank query params if needed
-        if formatted_elements:
-            params.extend([TS_QUERY_LANGUAGE, ts_query])  # For ROW_NUMBER rank
+        _final_search_query = search_query.format(ts_query=ts_query_for_format)
+        _final_search_query += f" LIMIT {limit} OFFSET {offset}"
+        results = self.db_manager.execute_query(_final_search_query)
         
-        params.append(max_results_per_source)  # For the limit
-        
-        results = self.db_manager.execute_query(optimized_query, params)
-        
-        # If no results and we were doing AND search, try OR search
+        total_count_to_return = count_result[0][0] if count_result and count_result[0] else 0
+
+        # If AND search returns no results, try OR search
         if not results and formatted_elements:
-            ts_query = " | ".join(formatted_elements)
-            # Update the query string in params
-            if formatted_elements:
-                params[1] = ts_query  # Update the ts_query parameter
-                if len(params) > len(where_conditions) + 1:
-                    params[-3] = ts_query  # Update the ROW_NUMBER ts_query parameter
+            ts_query_or_for_format = " | ".join(formatted_elements) # OR version for FTS
             
-            results = self.db_manager.execute_query(optimized_query, params)
+            _final_count_query_or = count_query.format(ts_query=ts_query_or_for_format)
+            count_result_or = self.db_manager.execute_query(_final_count_query_or)
+            # Update total_count_to_return with the count from the OR search
+            total_count_to_return = count_result_or[0][0] if count_result_or and count_result_or[0] else 0
+
+            _final_search_query_or = search_query.format(ts_query=ts_query_or_for_format)
+            _final_search_query_or += f" LIMIT {limit} OFFSET {offset}"
+            results = self.db_manager.execute_query(_final_search_query_or)
         
-        # Process results into the desired format
-        if not results:
-            return []
+        # total_count = count_result[0][0] if count_result else 0 # This line is now handled by total_count_to_return
+
         
-        documents = {}
+        # Format results
+        formatted_results = []
         for row in results:
-            doc_name = row[0]
-            if doc_name not in documents:
-                documents[doc_name] = {
-                    "document_name": doc_name,
-                    "results": [],
-                    "other_result_idx": [],
-                    "total_results": row[17] if row[17] else 0,  # total_per_doc
-                    "displayed_results": 0,
-                    "additional_results": 0,
-                    "_seen_parents": set()
-                }
-            
-            is_child = row[19]  # is_child flag
-            parent_block_idx = row[18]  # parent_block_idx
-            
-            if is_child:
-                # This is a child block, add it to its parent
-                for result in documents[doc_name]["results"]:
-                    if result["idx"] == parent_block_idx:
-                        if "children" not in result:
-                            result["children"] = []
-                        result["children"].append({
-                            "idx": row[1],
-                            "content": row[2],
-                            "page": row[3],
-                            "parent_idx": row[11],
-                            "level": row[4],
-                            "tag": row[5],
-                        })
-                        break
-            else:
-                # This is a parent block
-                block_idx = row[1]
-                if block_idx not in documents[doc_name]["_seen_parents"]:
-                    documents[doc_name]["_seen_parents"].add(block_idx)
-                    documents[doc_name]["displayed_results"] += 1
-                    
-                    result = {
-                        "idx": block_idx,
-                        "content": row[2],
-                        "page": row[3],
-                        "parent_idx": row[11],
-                        "level": row[4],
-                        "tag": row[5],
-                        "children": []  # Initialize empty children list
-                    }
-                    
-                    # Add classification metadata if present
-                    if row[13] is not None:
-                        result["content_type"] = row[13]
-                    if row[14] is not None:
-                        result["section_type"] = row[14]
-                    if row[15] is not None:
-                        result["demand_priority"] = row[15]
-                    
-                    documents[doc_name]["results"].append(result)
-        
-        # Calculate additional results and clean up
-        final_results = []
-        for doc_data in documents.values():
-            # Calculate additional results
-            doc_data["additional_results"] = doc_data["total_results"] - doc_data["displayed_results"]
-            
-            # If we need to get other_result_idx, we need another query
-            if doc_data["additional_results"] > 0:
-                # Get the block indices of results not displayed
-                other_idx_query = f"""
-                WITH matched_blocks AS (
-                    SELECT block_idx,
-                        ROW_NUMBER() OVER (ORDER BY 
-                            CASE WHEN tag = 'header' THEN 1 ELSE 0 END DESC, 
-                            level DESC, 
-                            {'ts_rank_cd(content_tsv, to_tsquery(%s, %s))' if formatted_elements else '0'} DESC
-                        ) as rn
-                    FROM {schema_app_data}.rag_document_blocks
-                    WHERE name = %s
-                    {" AND " + " AND ".join(where_conditions[1:]) if len(where_conditions) > 1 else ""}
-                    {"AND content_tsv @@ to_tsquery(%s, %s)" if formatted_elements else ""}
-                )
-                SELECT block_idx FROM matched_blocks WHERE rn > %s
-                """
-                
-                other_params = []
-                if formatted_elements:
-                    other_params.extend([TS_QUERY_LANGUAGE, ts_query])
-                other_params.append(doc_data["document_name"])
-                
-                # Add other filter params
-                if source_names:
-                    # Skip source_names since we're filtering by specific doc name
-                    pass
-                if content_type:
-                    other_params.append(content_type)
-                if section_filter:
-                    other_params.extend(section_filter)
-                if demand_priority is not None:
-                    other_params.append(demand_priority)
-                if formatted_elements:
-                    other_params.extend([TS_QUERY_LANGUAGE, ts_query])
-                
-                other_params.append(max_results_per_source)
-                
-                other_results = self.db_manager.execute_query(other_idx_query, other_params)
-                doc_data["other_result_idx"] = [row[0] for row in other_results] if other_results else []
-            
-            # Remove internal tracking field
-            del doc_data["_seen_parents"]
-            
-            final_results.append(doc_data)
-        
-        return final_results
-    
-    def _convert_to_counted_format(self, search_results, max_results_per_source, get_children):
-        """
-        Convert old-style search results to the new format with counts.
-        Used as a fallback for embedding and hybrid search.
-        """
-        if not search_results:
-            return []
-        
-        # Group results by document
-        grouped_results = {}
-        for block in search_results:
-            doc_name = block["name"]
-            if doc_name not in grouped_results:
-                grouped_results[doc_name] = []
-            grouped_results[doc_name].append(block)
-        
-        # Process each document's results
-        final_output_list = []
-        for doc_name, blocks in grouped_results.items():
-            # Sort blocks within the document (assuming higher score is better)
-            blocks.sort(key=lambda x: x.get("score", 0), reverse=True)
-            
-            # Select top N results
-            top_results = blocks[:max_results_per_source]
-            other_results = blocks[max_results_per_source:]
-            other_result_idx = [b["block_idx"] for b in other_results]
-            
-            # Fetch children if requested
-            processed_top_results = []
-            for block in top_results:
-                formatted_block = {
-                    "idx": block["block_idx"],
-                    "content": block["content"],
-                    "page": block["page_idx"],
-                    "parent_idx": block["parent_idx"],
-                    "level": block["level"],
-                    "tag": block["tag"],
-                }
-                
-                # Include classification metadata if present
-                if "content_type" in block:
-                    formatted_block["content_type"] = block["content_type"]
-                if "section_type" in block:
-                    formatted_block["section_type"] = block["section_type"]
-                if "demand_priority" in block:
-                    formatted_block["demand_priority"] = block["demand_priority"]
-                
-                if get_children:
-                    # Fetch children using the internal _get_children method
-                    children = self._get_children(block["block_idx"], doc_name)
-                    formatted_children = [
-                        {
-                            "idx": c["block_idx"],
-                            "content": c["content"],
-                            "page": c["page_idx"],
-                            "parent_idx": c["parent_idx"],
-                            "level": c["level"],
-                            "tag": c["tag"],
-                        } for c in children
-                    ]
-                    formatted_block["children"] = formatted_children
-                else:
-                    formatted_block["children"] = []
-                
-                processed_top_results.append(formatted_block)
-            
-            # Add to the final list with count information
-            final_output_list.append({
-                "document_name": doc_name,
-                "results": processed_top_results,
-                "other_result_idx": other_result_idx,
-                "total_results": len(blocks),
-                "displayed_results": len(top_results),
-                "additional_results": len(other_results)
-            })
-        
-        return final_output_list
-    
-    def get_context(self, block_result, context_size=3):
-        """
-        Get contextual blocks for a given block
-        
-        Args:
-            block_result: A block result from search
-            context_size: Number of contextual blocks to include
-            
-        Returns:
-            List of blocks including the original and its context
-        """
-        context = [block_result]
-        
-        # Get parent blocks
-        if block_result["parent_idx"]:
-            parent = self._get_block(block_result["parent_idx"], block_result["name"])
-            if parent:
-                context.append(parent)
-                
-                # Get grandparent if exists
-                if parent["parent_idx"]:
-                    grandparent = self._get_block(parent["parent_idx"], parent["name"])
-                    if grandparent:
-                        context.append(grandparent)
-        
-        # Get siblings (blocks with the same parent, same level, nearby positions)
-        siblings = self._get_siblings(
-            block_result["name"],
-            block_result["page_idx"],
-            block_result["level"],
-            block_result["block_idx"],
-            block_result["parent_idx"],
-            limit=context_size
-        )
-        context.extend(siblings)
-        
-        # Get children if this is a header or section
-        if block_result["tag"] in ["header", "title", "section"]:
-            children = self._get_children(block_result["block_idx"], block_result["name"], limit=context_size)
-            context.extend(children)
-        
-        # Sort by page and position
-        context.sort(key=lambda x: (x["page_idx"], x["level"], x.get("y0", 0)))
-        
-        return context
-    
-    def _get_block(self, block_idx, name):
-        """Get a specific block by its block_idx"""
-        query = f"""
-        SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            block_idx = %s AND name = %s
-        """
-        
-        results = self.db_manager.execute_query(query, (block_idx, name))
-        if not results:
-            return None
-        
-        row = results[0]
-        return {
-            "id": row[0],
-            "block_idx": row[1],
-            "content": row[2],
-            "name": row[3],
-            "page_idx": row[4],
-            "level": row[5],
-            "tag": row[6],
-            "block_class": row[7],
-            "x0": row[8],
-            "y0": row[9],
-            "x1": row[10],
-            "y1": row[11],
-            "parent_idx": row[12],
-            "score": 1.0  # Default score for context blocks
-        }
-    
-    def _get_siblings(self, name, page_idx, level, block_idx, parent_idx, limit=3):
-        """Get sibling blocks (same parent, same level, nearby positions)"""
-        query = f"""
-        SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            name = %s
-            AND page_idx = %s
-            AND level = %s
-            AND block_idx != %s
-            AND (
-                (parent_idx = %s) OR
-                (%s IS NULL AND parent_idx IS NULL)
-            )
-            AND (block_idx BETWEEN %s - %s AND %s + %s)
-        ORDER BY
-            ABS(block_idx - %s)
-        LIMIT %s
-        """
-        
-        results = self.db_manager.execute_query(
-            query, 
-            (
-                name, 
-                page_idx, 
-                level, 
-                block_idx,
-                parent_idx, parent_idx,
-                block_idx, limit, block_idx, limit,
-                block_idx,
-                limit
-            )
-        )
-        
-        if not results:
-            return []
-            
-        return [
-            {
-                "id": row[0],
-                "block_idx": row[1],
+            result = {
+                "document_name": row[0],
+                "idx": row[1],
                 "content": row[2],
-                "name": row[3],
-                "page_idx": row[4],
-                "level": row[5],
-                "tag": row[6],
-                "block_class": row[7],
-                "x0": row[8],
-                "y0": row[9],
-                "x1": row[10],
-                "y1": row[11],
-                "parent_idx": row[12],
-                "score": 1.0  # Default score for context blocks
+                "level": row[3],
+                "tag": row[4],
+                "content_type": row[5],
+                "section_type": row[6],
+                "demand_priority": row[7],
+                "parent_idx": row[8]
             }
-            for row in results
-        ]
+            
+            # Add children if requested
+            if get_children:
+                children = self._get_children(row[1], row[0])
+                result["children"] = [
+                    {
+                        "idx": c["block_idx"],
+                        "content": c["content"],
+                        "level": c["level"],
+                        "tag": c["tag"],
+                        "parent_idx": c["parent_idx"]
+                    } for c in children
+                ]
+            else:
+                result["children"] = []
+            
+            formatted_results.append(result)
+
+        return {
+            "total_number_results": total_count_to_return,
+            "number_returned_results": len(formatted_results),
+            "results": formatted_results
+        }
     
     def _get_children(self, parent_idx, name, limit=5):
         """Get child blocks for a given parent"""
         query = f"""
         SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            parent_idx = %s
-            AND name = %s
-        ORDER BY
-            page_idx, block_idx
+            id, block_idx, content, name, page_idx, level, tag, block_class,
+            x0, y0, x1, y1, parent_idx
+        FROM {schema_app_data}.rag_document_blocks
+        WHERE parent_idx = %s AND name = %s
+        ORDER BY page_idx, block_idx
         LIMIT %s
         """
         
         results = self.db_manager.execute_query(query, (parent_idx, name, limit))
         
-        if not results:
-            return []
-            
         return [
             {
                 "id": row[0],
@@ -1300,240 +569,30 @@ class RAGSystem:
                 "x1": row[10],
                 "y1": row[11],
                 "parent_idx": row[12],
-                "score": 1.0  # Default score for context blocks
+                "score": 1.0
             }
-            for row in results
+            for row in results 
         ]
     
-    def get_pdf_highlights(self, context_blocks):
-        """
-        Prepare highlighting annotations for a PDF based on context blocks
-        
-        Returns:
-            List of annotation objects compatible with the graph display
-        """
-        annotations = []
-        
-        # Process each block
-        for block in context_blocks:
-            # Skip blocks without coordinates
-            if block["x0"] is None or block["y0"] is None or block["x1"] is None or block["y1"] is None:
-                continue
-            
-            # Create highlight annotation in the required format
-            annotation = {
-                "page": block["page_idx"] + 1,  # Convert to 1-indexed page numbering
-                "x": block["x0"],
-                "y": block["y0"],
-                "height": block["y1"] - block["y0"],
-                "width": block["x1"] - block["x0"],
-                "color": "red",
-            }
-            
-            annotations.append(annotation)
-        
-        return annotations
-    
-    def query(self,
-              user_query: Union[str, List[str]], # Accept string or list for query
-              source_names: Optional[List[str]] = None,
-              max_results_per_source: int = 20,
-              get_children: bool = True,
-              strategy: SearchStrategy = SearchStrategy.TEXT, # Allow specifying strategy
-              content_type: Optional[str] = None, # Filter by content type
-              section_filter: Optional[List[str]] = None, # Filter by sections
-              demand_priority: Optional[int] = None # Filter by demand priority
-              ) -> Dict[str, Any]:
-        """
-        Process a user query, group results by document, limit results per document,
-        and optionally fetch children.
-
-        Args:
-            user_query: The user's question (string or list of keywords).
-            source_names: List of document names to search within (optional).
-            max_results_per_source: Max number of top results per document (default: 3).
-            get_children: Whether to fetch child blocks for the results (default: True).
-            strategy: Search strategy to use (TEXT, EMBEDDING, HYBRID).
-
-        Returns:
-            Dictionary containing:
-                - success (bool): True if results were found.
-                - results (list): List of dictionaries, one per document, containing:
-                    - document_name (str)
-                    - results (list): Top N results for the document.
-                    - other_result_idx (list): Indices of remaining results for the document.
-                    - total_results (int): Total number of matching results for this document.
-                    - displayed_results (int): Number of results being shown.
-                    - additional_results (int): Number of results not displayed.
-                - message (str, optional): Error or warning message.
-        """
-        # Ensure user_query is a list for internal processing consistency
-        if isinstance(user_query, str):
-            # Basic split, might need refinement depending on expected query format
-            processed_query = user_query.split() 
-        else:
-            processed_query = user_query
-
-        # Use the optimized search method that returns results with children and counts
-        if strategy == SearchStrategy.TEXT:
-            search_results = self._text_search_with_counts(
-                processed_query,
-                source_names,
-                max_results_per_source,
-                get_children,
-                content_type,
-                section_filter,
-                demand_priority
-            )
-        elif strategy == SearchStrategy.EMBEDDING:
-            # For now, fall back to the old method for embedding search
-            # This can be optimized similarly in the future
-            initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
-            search_results = self._embedding_search(
-                processed_query,
-                source_names,
-                initial_limit,
-                content_type,
-                section_filter,
-                demand_priority
-            )
-            # Convert to new format
-            search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
-        else:  # HYBRID
-            # For now, fall back to the old method for hybrid search
-            initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
-            search_results = self._hybrid_search(
-                processed_query,
-                source_names,
-                initial_limit,
-                content_type,
-                section_filter,
-                demand_priority
-            )
-            # Convert to new format
-            search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
-
-        warning_message = None
-
-        # Handle case where specific sources were requested but yielded no results
-        if not search_results and source_names:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            check_query = f"""
-            SELECT DISTINCT name 
-            FROM {schema_app_data}.rag_document_blocks 
-            WHERE name IN ({placeholders})
-            """
-            existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
-            existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
-            requested_sources_set = set(source_names)
-            missing_sources = sorted(list(requested_sources_set - existing_sources_set))
-
-            if not missing_sources:
-                # All requested sources exist, but the query yielded no results within them.
-                return {
-                    "success": False,
-                    "message": "No relevant information found for the query in the specified document(s)."
-                }
-            else:
-                # Some requested sources don't exist
-                print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
-                warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
-
-                # Retry search across all documents
-                if strategy == SearchStrategy.TEXT:
-                    search_results = self._text_search_with_counts(
-                        processed_query,
-                        None,  # Search all documents
-                        max_results_per_source,
-                        get_children,
-                        content_type,
-                        section_filter,
-                        demand_priority
-                    )
-                else:
-                    # Fall back to old method for other strategies
-                    initial_limit = max(max_results_per_source * 5, 15)
-                    if strategy == SearchStrategy.EMBEDDING:
-                        search_results = self._embedding_search(
-                            processed_query,
-                            None,
-                            initial_limit,
-                            content_type,
-                            section_filter,
-                            demand_priority
-                        )
-                    else:
-                        search_results = self._hybrid_search(
-                            processed_query,
-                            None,
-                            initial_limit,
-                            content_type,
-                            section_filter,
-                            demand_priority
-                        )
-                    search_results = self._convert_to_counted_format(search_results, max_results_per_source, get_children)
-
-        # If still no results after potential retry, return failure
-        if not search_results:
-            return {
-                "success": False,
-                "message": warning_message or "No relevant information found in the documents."
-            }
-
-        # Construct the final success response
-        final_result = {
-            "success": True,
-            "results": search_results
-        }
-        if warning_message:
-            final_result["message"] = warning_message
-
-        return final_result
-    
     def get_blocks_by_idx(self, block_indices, source_name=None, get_children=False):
-        """
-        Get blocks by their block_idx values
-        
-        Args:
-            block_indices: List of block_idx values to retrieve
-            source_name: Name of the document to search in (optional)
-            get_children: Whether to also get children of these blocks
-            
-        Returns:
-            List of blocks matching the requested block indices
-        """
+        """Get blocks by their block_idx values"""
         if not block_indices:
             return []
         
-        # Convert single index to list
         if not isinstance(block_indices, list):
             block_indices = [block_indices]
         
         placeholders = ', '.join(['%s'] * len(block_indices))
         query = f"""
         SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            block_idx IN ({placeholders})
+            id, block_idx, content, name, page_idx, level, tag, block_class,
+            x0, y0, x1, y1, parent_idx
+        FROM {schema_app_data}.rag_document_blocks
+        WHERE block_idx IN ({placeholders})
         """
         
         params = block_indices.copy()
         
-        # Add source filter if specified
         if source_name:
             query += " AND name = %s"
             params.append(source_name)
@@ -1558,12 +617,11 @@ class RAGSystem:
                 "x1": row[10],
                 "y1": row[11],
                 "parent_idx": row[12],
-                "score": 1.0  # Default score for directly retrieved blocks
+                "score": 1.0
             }
             for row in results
         ]
         
-        # If get_children is True, also get children for each block
         if get_children:
             all_blocks = blocks.copy()
             for block in blocks:
@@ -1572,7 +630,8 @@ class RAGSystem:
             blocks = all_blocks
         
         return blocks
-    
+
+
     def get_annotations_by_indices(self, pdf_file, block_indices):
         """
         Convert block indices to PDF annotation objects for highlighting
