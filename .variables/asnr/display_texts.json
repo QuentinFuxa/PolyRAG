@@ -128,8 +128,11 @@
   "INVALID_EMAIL_FORMAT": "Seules les adresses e-mail @asnr.fr sont autorisées.",
   "LOGIN_FAILED": "Échec de la connexion. Veuillez vérifier votre e-mail et votre mot de passe.",
   "ACCOUNT_CREATION_FAILED": "La création du compte a échoué. Veuillez réessayer plus tard.",
-  "ACCOUNT_CREATED_SUCCESS": "Compte créé pour {email}. Un mot de passe temporaire a été [journalisé/serait envoyé par e-mail]. Veuillez l'utiliser pour vous connecter.",
+  "ACCOUNT_CREATED_SUCCESS": "Compte créé pour {email}. Un mot de passe vous a été envoyé par e-mail. Veuillez recliquer sur le bouton ci-dessus et vous connecter avec ce mot de passe.",
   "DEV_INFO_PASSWORD": "INFO_DEV : Le mot de passe pour {email} est {plain_pwd}",
   "EMAIL_DOMAIN": "@asnr.fr",
-  "LOGGED_AS": "Utilisateur"
+  "LOGGED_AS": "Utilisateur",
+  "PASSWORD_EMAIL_SUBJECT": "Mot de passe Siance Assistant",
+  "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : <strong>{new_password}</strong>.<br>En cas de problème, vous pouvez répondre à cet email."
+
 }
