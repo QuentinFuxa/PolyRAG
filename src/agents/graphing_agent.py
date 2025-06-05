@@ -208,6 +208,29 @@ Graph_Viewer(
     'site_name': 'Site'
   }
 )
+
+Example 6: Bar plot of comparison on several months:
+Input :{"graph_instructions":"Créer un graphique comparant le nombre de demandes prioritaires et non prioritaires entre janvier et mars 2025. Les données sont : Janvier - 24 prioritaires, 416 non prioritaires ; Février - 27 prioritaires, 639 non prioritaires ; Mars - 0 prioritaires, 18 non prioritaires.","language":"french","input_data":[{"mois":"Janvier","prioritaires":24,"non_prioritaires":416},{"mois":"Février","prioritaires":27,"non_prioritaires":639},{"mois":"Mars","prioritaires":0,"non_prioritaires":18}]}
+
+Output:
+Graph_Viewer(
+  data=[{"mois": "Janvier", "type": "prioritaires", "nombre": 24},
+    {"mois": "Janvier", "type": "non_prioritaires", "nombre": 416},
+    {"mois": "Février", "type": "prioritaires", "nombre": 27},
+    {"mois": "Février", "type": "non_prioritaires", "nombre": 639},
+    {"mois": "Mars", "type": "prioritaires", "nombre": 0},
+    {"mois": "Mars", "type": "non_prioritaires", "nombre": 18}],
+  chart_type="bar",
+  x_col="mois",
+  y_col="nombre",
+  color_col="type",
+  title="Comparaison des demandes prioritaires et non prioritaires (Janv–Mars 2025)",
+  labels={
+    "mois": "Mois",
+    "nombre": "Nombre de demandes",
+    "type": "Type de demande"
+  }
+)
 ```
 """
 

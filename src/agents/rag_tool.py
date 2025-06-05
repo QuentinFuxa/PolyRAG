@@ -35,7 +35,7 @@ def query_rag_func(
         content_type: Filter by content type: 'demand', 'section_header', or 'regular'
         section_filter: Filter by section types: e.g., ['synthesis', 'demands', 'observations']
         demand_priority: Filter demands by priority: 1 (prioritaires) or 2 (complémentaires)
-        count_only: If True, return only statistics instead of full results
+        count_only: If True, return only the count of matching blocks instead of the content.
 
     Returns:
         Dictionary containing:
@@ -50,31 +50,6 @@ def query_rag_func(
     if source_query and not source_query.strip().lower().startswith('select'):
         return {"error": "Invalid source_query: Must start with SELECT if provided."}
 
-    if count_only:
-        try:
-            # Call the RAG system's method to get the total count.
-            # This method in RAGSystem will need to be adapted to handle source_query correctly.
-            total_matching_blocks = rag_system._get_total_count( # This might need to be a public method
-                query=keywords,
-                source_names=source_names,
-                source_query=source_query, # Pass source_query string
-                content_type=content_type,
-                section_filter=section_filter,
-                demand_priority=demand_priority
-            )
-            # The original detailed breakdown for count_only is complex to replicate here
-            # when source_query is a subquery. For now, returning a simplified total.
-            # A full breakdown would require a dedicated RAG system method that can
-            # execute the source_query and then group by its results.
-            return {
-                "total_count": total_matching_blocks,
-                "by_document": "Detailed breakdown by document not available when using source_query with count_only in this version.",
-                "by_section": "Detailed breakdown by section not available when using source_query with count_only in this version.",
-                "by_priority": "Detailed breakdown by priority not available when using source_query with count_only in this version."
-            }
-        except Exception as e:
-            return {"error": f"Error during counting: {str(e)}"}
-    
     try:
         result = rag_system.query(
             user_query=keywords,
@@ -84,7 +59,8 @@ def query_rag_func(
             get_children=get_children,
             content_type=content_type,
             section_filter=section_filter,
-            demand_priority=demand_priority
+            demand_priority=demand_priority,
+            count_only=count_only
         )
         return result
     except Exception as e:

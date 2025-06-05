@@ -456,39 +456,24 @@ class RAGSystem:
         
         self.db_manager.execute_many(query, params_list)
 
-    def search(
-            self,
-            query,
-            source_names=None,
-            strategy=SearchStrategy.TEXT,
-            limit=5
-            ):
+    def query(self,
+              user_query: Union[str, List[str]],
+              source_query: Optional[str] = None,
+              source_names: Optional[List[str]] = None,
+              limit: int = 20,
+              offset: int = 0,
+              get_children: bool = True,
+              content_type: Optional[str] = None,
+              section_filter: Optional[List[str]] = None,
+              demand_priority: Optional[int] = None,
+              count_only: bool = False
+              ) -> Dict[str, Any]:
         """
-        Search rag_documents using specified strategy
-
-        Args:
-            query: The search query
-            source_names: List of document names to search in
-            strategy: SearchStrategy (TEXT, EMBEDDING, or HYBRID)
-            limit: Maximum number of results to return
-
-        Returns:
-            List of relevant blocks with metadata
+        Process a user query with simplified return format and single-query source handling.
         """
-        if strategy == SearchStrategy.EMBEDDING and not self.use_embeddings:
-            print("Warning: Embedding search requested but embeddings not enabled. Falling back to text search.")
-            strategy = SearchStrategy.TEXT
-        
-        if strategy == SearchStrategy.HYBRID and not self.use_embeddings:
-            print("Warning: Hybrid search requested but embeddings not enabled. Falling back to text search.")
-            strategy = SearchStrategy.TEXT
-        
-        if strategy == SearchStrategy.TEXT:
-            return self._text_search(query, source_names, limit)
-        elif strategy == SearchStrategy.EMBEDDING:
-            return self._embedding_search(query, source_names, limit)
-        elif strategy == SearchStrategy.HYBRID:
-            return self._hybrid_search(query, source_names, limit)
+        # Ensure user_query is a list
+        if isinstance(user_query, str):
+            processed_query = user_query.split()
         else:
             raise ValueError(f"Unknown search strategy: {strategy}")
         
@@ -553,297 +538,181 @@ class RAGSystem:
                 formatted_element = ' & '.join(sanitized_element.split())
                 formatted_elements.append(f"({formatted_element})")
             else:
-                formatted_elements.append(sanitized_element)
-        
-        if not formatted_elements:
-            print("Warning: No valid query terms after sanitization.")
-            return []
-
-        # 2. Try AND search first
-        ts_query_and = " & ".join(formatted_elements)
-        print(f"Attempting AND search with ts_query: {ts_query_and}")
-        search_query_and, params_and = build_search_query(ts_query_and, source_names)
-        results = self.db_manager.execute_query(search_query_and, params_and)
-
-        # 3. If AND search yields results, return them
-        if results:
-            print("AND search successful.")
-            return self._format_results(results)
-        
-        # 4. If AND search yields no results, try OR search
-        print("AND search yielded no results. Falling back to OR search.")
-        ts_query_or = " | ".join(formatted_elements)
-        print(f"Attempting OR search with ts_query: {ts_query_or}")
-        search_query_or, params_or = build_search_query(ts_query_or, source_names)
-        results = self.db_manager.execute_query(search_query_or, params_or)
-
-        # 5. Return results from OR search (might still be empty)
-        if results:
-            print("OR search successful.")
-        else:
-            print("OR search also yielded no results.")
-        return self._format_results(results)
-
-    def _embedding_search(self, query, source_names, limit=5):
-        """Search using vector embeddings"""
-        if not self.use_embeddings:
-            return [] # Correctly return empty list if embeddings are not used
-            
-        embedding = self.embedding_manager.compute_embedding(query)
-        
-        if not embedding:
-            return []
-        
-        # Updated search query for block_idx
-        search_query = f"""
-        SELECT 
-            name, 
-            block_idx,
-            content, 
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx,
-            1 - (embedding <=> %s) AS score
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE
-            embedding IS NOT NULL
-        """
-        
-        params = [embedding]
-        
-        # Add source filter if specified
-        if source_names and len(source_names) > 0:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            search_query += f" AND name IN ({placeholders})"
-            params.extend(source_names)
-        
-        # Add order by and limit
-        search_query += """
-        ORDER BY 
-            embedding <=> %s
-        LIMIT %s
-        """
-        params.extend([embedding, limit])
-        
-        results = self.db_manager.execute_query(search_query, params)
-        return self._format_results(results)
-    
-    def _hybrid_search(self, query, source_names, limit=5):
-        """Hybrid search combining text search and embedding search"""
-        text_results = self._text_search(query, source_names, limit)
-        embedding_results = self._embedding_search(query, source_names, limit)
-        
-        # Combine and deduplicate results - using block_idx as the key
-        combined = {}
-        for result in text_results:
-            block_idx = result["block_idx"]
-            combined[block_idx] = result
-        
-        for result in embedding_results:
-            block_idx = result["block_idx"]
-            if block_idx in combined:
-                # Average the scores
-                combined[block_idx]["score"] = (combined[block_idx]["score"] + result["score"]) / 2
-            else:
-                combined[block_idx] = result
-        
-        # Sort by score and limit
-        sorted_results = sorted(combined.values(), key=lambda x: x["score"], reverse=True)
-        return sorted_results[:limit]
-    
-    def _format_results(self, results):
-        """Format database results into a structured format"""
-        if not results:
-            return []
-        
-        formatted = []
-        for row in results:
-            formatted.append({
-                "name": row[0],
-                "block_idx": row[1],  # Now using block_idx instead of block_id
-                "content": row[2],
-                "page_idx": row[3],
-                "level": row[4],
-                "tag": row[5],
-                "block_class": row[6],
-                "x0": row[7],
-                "y0": row[8],
-                "x1": row[9],
-                "y1": row[10],
-                "parent_idx": row[11],  # Changed from parent_id to parent_idx
-                "score": row[12]
-            })
-        
-        return formatted
-    
-    def get_context(self, block_result, context_size=3):
-        """
-        Get contextual blocks for a given block
-        
-        Args:
-            block_result: A block result from search
-            context_size: Number of contextual blocks to include
-            
-        Returns:
-            List of blocks including the original and its context
-        """
-        context = [block_result]
-        
-        # Get parent blocks
-        if block_result["parent_idx"]:
-            parent = self._get_block(block_result["parent_idx"], block_result["name"])
-            if parent:
-                context.append(parent)
+                _after_from = _from_parts[1]
                 
-                # Get grandparent if exists
-                if parent["parent_idx"]:
-                    grandparent = self._get_block(parent["parent_idx"], parent["name"])
-                    if grandparent:
-                        context.append(grandparent)
+                # Extract table name (part after FROM, before WHERE or ORDER BY or LIMIT or OFFSET)
+                _table_name_part = re.split(r'\sWHERE\s|\sORDER BY\s|\sLIMIT\s|\sOFFSET\s', _after_from, 1, re.IGNORECASE)[0].strip()
+                table_name = _table_name_part
+
+                # Extract WHERE clause specific to the source_query
+                _where_match = re.search(r'\sWHERE\s(.*?)(?:\sORDER BY\s|\sLIMIT\s|\sOFFSET\s|$)', _after_from, re.IGNORECASE | re.DOTALL)
+                raw_where_from_source = _where_match.group(1).strip() if _where_match else ""
+
+                # Extract ORDER BY clause specific to the source_query
+                _orderby_match = re.search(r'\sORDER BY\s(.*?)(?:\sLIMIT\s|\sOFFSET\s|$)', _after_from, re.IGNORECASE | re.DOTALL)
+                raw_orderby_from_source = _orderby_match.group(1).strip() if _orderby_match else ""
+
+                if table_name:
+                    join_clause_str = f' JOIN {table_name} js ON r.name = js.name'
+
+                    if raw_where_from_source:
+                        prefixed_where = _prefix_columns_in_where_clause(raw_where_from_source, "js.")
+                        if prefixed_where:
+                            where_join_conditions_list.append(f"({prefixed_where})")
+                    
+                    if raw_orderby_from_source:
+                        order_by_join_clause_str = _prefix_columns_in_order_by_clause(raw_orderby_from_source, "js.")
         
-        # Get siblings (blocks with the same parent, same level, nearby positions)
-        siblings = self._get_siblings(
-            block_result["name"],
-            block_result["page_idx"],
-            block_result["level"],
-            block_result["block_idx"],
-            block_result["parent_idx"],
-            limit=context_size
-        )
-        context.extend(siblings)
+        # Define base SELECT clause based on FTS
+        if formatted_elements:
+            ts_query_for_format = " & ".join(formatted_elements) # Used for FTS AND search
+            select_base = f"""
+            SELECT 
+                r.name, r.block_idx, r.content, r.level, r.tag,
+                r.content_type, r.section_type, r.demand_priority, r.parent_idx,
+                ts_rank_cd(r.content_tsv, to_tsquery('{self.TS_QUERY_LANGUAGE}','{{ts_query}}')) AS score
+            """
+        else:
+            select_base = f"""
+            SELECT 
+                r.name, r.block_idx, r.content, r.level, r.tag,
+                r.content_type, r.section_type, r.demand_priority, r.parent_idx
+            """
         
-        # Get children if this is a header or section
-        if block_result["tag"] in ["header", "title", "section"]:
-            children = self._get_children(block_result["block_idx"], block_result["name"], limit=context_size)
-            context.extend(children)
+        from_r_clause = f"FROM {schema_app_data}.rag_document_blocks r"
+
+        # Build search_query parts
+        search_query_parts = [select_base, from_r_clause]
+        if join_clause_str:
+            search_query_parts.append(join_clause_str)
+
+        # Build count_query parts
+        count_query_parts = [f"SELECT COUNT(*) FROM {schema_app_data}.rag_document_blocks r"]
+        if join_clause_str:
+            count_query_parts.append(join_clause_str)
         
-        # Sort by page and position
-        context.sort(key=lambda x: (x["page_idx"], x["level"], x.get("y0", 0)))
+        where_conditions = []
+        if formatted_elements:
+            # ts_query variable for formatting is ts_query_for_format
+            where_conditions.append(f"r.content_tsv @@ to_tsquery('{self.TS_QUERY_LANGUAGE}', '{{ts_query}}')")
+
+        # Add conditions from source_query's WHERE clause
+        if where_join_conditions_list:
+            where_conditions.extend(where_join_conditions_list)
         
-        return context
-    
-    def _get_block(self, block_idx, name):
-        """Get a specific block by its block_idx"""
-        query = f"""
-        SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            block_idx = %s AND name = %s
-        """
+        # Original conditions (source_names, content_type, etc.)
+        # Ensure source_names is mutually exclusive with source_query logic for joins
+        if not source_query and source_names: # Only apply if source_query was not used
+            str_source_names = "', '".join(source_names)
+            where_conditions.append(f"r.name IN ('{str_source_names}')")
         
-        results = self.db_manager.execute_query(query, (block_idx, name))
-        if not results:
-            return None
+        if content_type:
+            where_conditions.append(f"r.content_type = '{content_type}'")
+        if section_filter:
+            str_section_filter = "', '".join(section_filter)
+            where_conditions.append(f"r.section_type IN ('{str_section_filter}')")
+        if demand_priority is not None:
+            where_conditions.append(f"r.demand_priority = {demand_priority}")
+
+        if where_conditions:
+            where_clause_full_str = " WHERE " + " AND ".join(where_conditions)
+            search_query_parts.append(where_clause_full_str)
+            count_query_parts.append(where_clause_full_str)
         
-        row = results[0]
-        return {
-            "id": row[0],
-            "block_idx": row[1],
-            "content": row[2],
-            "name": row[3],
-            "page_idx": row[4],
-            "level": row[5],
-            "tag": row[6],
-            "block_class": row[7],
-            "x0": row[8],
-            "y0": row[9],
-            "x1": row[10],
-            "y1": row[11],
-            "parent_idx": row[12],
-            "score": 1.0  # Default score for context blocks
-        }
-    
-    def _get_siblings(self, name, page_idx, level, block_idx, parent_idx, limit=3):
-        """Get sibling blocks (same parent, same level, nearby positions)"""
-        query = f"""
-        SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            name = %s
-            AND page_idx = %s
-            AND level = %s
-            AND block_idx != %s
-            AND (
-                (parent_idx = %s) OR
-                (%s IS NULL AND parent_idx IS NULL)
-            )
-            AND (block_idx BETWEEN %s - %s AND %s + %s)
-        ORDER BY
-            ABS(block_idx - %s)
-        LIMIT %s
-        """
+        # ORDER BY logic
+        final_order_by_clauses = []
+        if order_by_join_clause_str:
+            final_order_by_clauses.append(order_by_join_clause_str)
         
-        results = self.db_manager.execute_query(
-            query, 
-            (
-                name, 
-                page_idx, 
-                level, 
-                block_idx,
-                parent_idx, parent_idx,
-                block_idx, limit, block_idx, limit,
-                block_idx,
-                limit
-            )
-        )
+        if formatted_elements and (not order_by_join_clause_str or "score" not in order_by_join_clause_str.lower()):
+            final_order_by_clauses.append("score DESC")
         
-        if not results:
-            return []
+        # Add r.level DESC if not already covered by order_by_join_clause_str or if no FTS
+        if not order_by_join_clause_str or "r.level" not in order_by_join_clause_str.lower():
+             final_order_by_clauses.append("r.level DESC")
+        
+        # Fallback if no other ordering is present and no FTS
+        if not formatted_elements and not final_order_by_clauses:
+            final_order_by_clauses.append("r.block_idx")
+
+
+        if final_order_by_clauses:
+            # Filter out potential empty strings if some clauses were conditionally not added
+            valid_clauses = [clause for clause in final_order_by_clauses if clause and clause.strip()]
+            if valid_clauses:
+                 search_query_parts.append(" ORDER BY " + ", ".join(valid_clauses))
             
-        return [
-            {
-                "id": row[0],
-                "block_idx": row[1],
-                "content": row[2],
-                "name": row[3],
-                "page_idx": row[4],
-                "level": row[5],
-                "tag": row[6],
-                "block_class": row[7],
-                "x0": row[8],
-                "y0": row[9],
-                "x1": row[10],
-                "y1": row[11],
-                "parent_idx": row[12],
-                "score": 1.0  # Default score for context blocks
+        search_query = "\n".join(search_query_parts)
+        count_query = "\n".join(count_query_parts)
+
+        # Execute queries
+        _final_count_query = count_query.format(ts_query=ts_query_for_format)
+        count_result = self.db_manager.execute_query(_final_count_query)
+        
+        _final_search_query = search_query.format(ts_query=ts_query_for_format)
+        _final_search_query += f" LIMIT {limit} OFFSET {offset}"
+        if not count_only:
+            results = self.db_manager.execute_query(_final_search_query)
+        
+        total_count_to_return = count_result[0][0] if count_result and count_result[0] else 0
+
+        # If AND search returns no results, try OR search
+        if total_count_to_return == 0 and formatted_elements:
+            ts_query_or_for_format = " | ".join(formatted_elements) # OR version for FTS
+            
+            _final_count_query_or = count_query.format(ts_query=ts_query_or_for_format)
+            count_result_or = self.db_manager.execute_query(_final_count_query_or)
+            # Update total_count_to_return with the count from the OR search
+            total_count_to_return = count_result_or[0][0] if count_result_or and count_result_or[0] else 0
+
+            _final_search_query_or = search_query.format(ts_query=ts_query_or_for_format)
+            _final_search_query_or += f" LIMIT {limit} OFFSET {offset}"
+            if not count_only:
+                results = self.db_manager.execute_query(_final_search_query_or)
+        
+        # total_count = count_result[0][0] if count_result else 0 # This line is now handled by total_count_to_return
+        if count_only:
+            return {
+                "total_number_results": total_count_to_return,
             }
-            for row in results
-        ]
+        
+        # Format results
+        formatted_results = []
+        for row in results:
+            result = {
+                "document_name": row[0],
+                "idx": row[1],
+                "content": row[2],
+                "level": row[3],
+                "tag": row[4],
+                "content_type": row[5],
+                "section_type": row[6],
+                "demand_priority": row[7],
+                "parent_idx": row[8]
+            }
+            
+            # Add children if requested
+            if get_children:
+                children = self._get_children(row[1], row[0])
+                result["children"] = [
+                    {
+                        "idx": c["block_idx"],
+                        "content": c["content"],
+                        "level": c["level"],
+                        "tag": c["tag"],
+                        "parent_idx": c["parent_idx"]
+                    } for c in children
+                ]
+            else:
+                result["children"] = []
+            
+            formatted_results.append(result)
+
+        return {
+            "total_number_results": total_count_to_return,
+            "number_returned_results": len(formatted_results),
+            "results": formatted_results
+        }
     
     def _get_children(self, parent_idx, name, limit=5):
         """Get child blocks for a given parent"""
