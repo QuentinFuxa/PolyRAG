@@ -18,40 +18,10 @@ import json
 from frontend.pdf_viewer_with_annotations import display_pdf
 
 from db_manager import DatabaseManager
+from display_texts import dt
 import auth_service
 
 NO_AUTH = True
-
-class DotDict(dict):
-    """dot.notation access to dictionary attributes"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-    def __init__(self, *args, **kwargs):
-        super(DotDict, self).__init__(*args, **kwargs)
-        for k, v in self.items():
-            if isinstance(v, dict):
-                self[k] = DotDict(v)
-            elif isinstance(v, list):
-                self[k] = [DotDict(i) if isinstance(i, dict) else i for i in v]
-
-display_texts_json_path = os.getenv("DISPLAY_TEXTS_JSON_PATH", "display_texts.json") # Added default
-
-dt_data = {}
-try:
-    with open(display_texts_json_path, 'r', encoding='utf-8') as f:
-        dt_data = json.load(f)
-    dt = DotDict(dt_data)
-except FileNotFoundError:
-    st.error(f"FATAL: Display texts JSON file not found at '{display_texts_json_path}'. The application cannot start without it.")
-    raise
-except json.JSONDecodeError as e:
-    st.error(f"FATAL: Error decoding display texts JSON file at '{display_texts_json_path}': {e}. The application cannot start.")
-    raise
-except Exception as e:
-    st.error(f"FATAL: An unexpected error occurred while loading display texts from '{display_texts_json_path}': {e}. The application cannot start.")
-    raise
 
 
 APP_TITLE = dt.APP_TITLE
@@ -166,8 +136,8 @@ def login_ui():
                 new_user, plain_pwd = auth_service.register_new_user(db, email)
                 if new_user:
                     st.success(dt.ACCOUNT_CREATED_SUCCESS.format(email=email))
-                    if plain_pwd: # Should always be true if new_user is not None
-                         st.info(dt.DEV_INFO_PASSWORD.format(email=email, plain_pwd=plain_pwd)) # For dev purposes
+                    # if plain_pwd:
+                    #      st.info(dt.DEV_INFO_PASSWORD.format(email=email, plain_pwd=plain_pwd)) # For dev purposes
                 else:
                     st.error(dt.ACCOUNT_CREATION_FAILED)
             return False # Not logged in
