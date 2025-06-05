@@ -338,7 +338,8 @@ class RAGSystem:
               get_children: bool = True,
               content_type: Optional[str] = None,
               section_filter: Optional[List[str]] = None,
-              demand_priority: Optional[int] = None
+              demand_priority: Optional[int] = None,
+              count_only: bool = False
               ) -> Dict[str, Any]:
         """
         Process a user query with simplified return format and single-query source handling.
@@ -482,12 +483,13 @@ class RAGSystem:
         
         _final_search_query = search_query.format(ts_query=ts_query_for_format)
         _final_search_query += f" LIMIT {limit} OFFSET {offset}"
-        results = self.db_manager.execute_query(_final_search_query)
+        if not count_only:
+            results = self.db_manager.execute_query(_final_search_query)
         
         total_count_to_return = count_result[0][0] if count_result and count_result[0] else 0
 
         # If AND search returns no results, try OR search
-        if not results and formatted_elements:
+        if total_count_to_return == 0 and formatted_elements:
             ts_query_or_for_format = " | ".join(formatted_elements) # OR version for FTS
             
             _final_count_query_or = count_query.format(ts_query=ts_query_or_for_format)
@@ -497,10 +499,14 @@ class RAGSystem:
 
             _final_search_query_or = search_query.format(ts_query=ts_query_or_for_format)
             _final_search_query_or += f" LIMIT {limit} OFFSET {offset}"
-            results = self.db_manager.execute_query(_final_search_query_or)
+            if not count_only:
+                results = self.db_manager.execute_query(_final_search_query_or)
         
         # total_count = count_result[0][0] if count_result else 0 # This line is now handled by total_count_to_return
-
+        if count_only:
+            return {
+                "total_number_results": total_count_to_return,
+            }
         
         # Format results
         formatted_results = []
