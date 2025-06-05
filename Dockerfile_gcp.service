@@ -12,7 +12,6 @@ COPY pyproject.toml .
 COPY uv.lock .
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
-RUN pip install --no-cache-dir "cloud-sql-python-connector"
 COPY src/ .
 COPY .variables ./.variables
 

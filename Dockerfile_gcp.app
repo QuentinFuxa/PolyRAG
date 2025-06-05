@@ -8,8 +8,7 @@ ENV UV_COMPILE_BYTECODE=1
 COPY pyproject.toml .
 COPY uv.lock .
 RUN pip install --no-cache-dir uv
-# Only install the client dependencies
-RUN uv sync --frozen --only-group client
+RUN uv sync --frozen
 
 COPY .variables ./.variables
 COPY src/ .
