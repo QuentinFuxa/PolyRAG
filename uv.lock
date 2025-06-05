@@ -9,137 +9,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "PolyRag"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "duckduckgo-search" },
-    { name = "fastapi" },
-    { name = "grpcio" },
-    { name = "httpx" },
-    { name = "jiter" },
-    { name = "langchain-anthropic" },
-    { name = "langchain-aws" },
-    { name = "langchain-community" },
-    { name = "langchain-core" },
-    { name = "langchain-google-genai" },
-    { name = "langchain-groq" },
-    { name = "langchain-ollama" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-postgres" },
-    { name = "langgraph-checkpoint-sqlite" },
-    { name = "langgraph-supervisor" },
-    { name = "langsmith" },
-    { name = "llmsherpa" },
-    { name = "numexpr" },
-    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "openai" },
-    { name = "pandas" },
-    { name = "plotly" },
-    { name = "psycopg", extra = ["binary", "pool"] },
-    { name = "psycopg2-binary" },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyowm" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "setuptools" },
-    { name = "sqlalchemy" },
-    { name = "streamlit" },
-    { name = "streamlit-pdf-viewer" },
-    { name = "tiktoken" },
-    { name = "uuid" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-client = [
-    { name = "httpx" },
-    { name = "plotly" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "streamlit" },
-    { name = "streamlit-pdf-viewer" },
-]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-env" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "duckduckgo-search", specifier = ">=7.3.0" },
-    { name = "fastapi", specifier = "~=0.115.5" },
-    { name = "grpcio", specifier = ">=1.68.0" },
-    { name = "httpx", specifier = "~=0.27.2" },
-    { name = "jiter", specifier = "~=0.8.2" },
-    { name = "langchain-anthropic", specifier = "~=0.3.0" },
-    { name = "langchain-aws", specifier = "~=0.2.14" },
-    { name = "langchain-community", specifier = "~=0.3.16" },
-    { name = "langchain-core", specifier = "~=0.3.33" },
-    { name = "langchain-google-genai", specifier = "~=2.0.11" },
-    { name = "langchain-groq", specifier = "~=0.2.1" },
-    { name = "langchain-ollama", specifier = "~=0.2.3" },
-    { name = "langchain-openai", specifier = "~=0.3.0" },
-    { name = "langgraph", specifier = "~=0.3.5" },
-    { name = "langgraph-checkpoint-postgres", specifier = "~=2.0.13" },
-    { name = "langgraph-checkpoint-sqlite", specifier = "~=2.0.1" },
-    { name = "langgraph-supervisor", specifier = "~=0.0.8" },
-    { name = "langsmith", specifier = "~=0.1.145" },
-    { name = "llmsherpa", specifier = ">=0.1.0" },
-    { name = "numexpr", specifier = "~=2.10.1" },
-    { name = "numpy", marker = "python_full_version < '3.13'", specifier = "~=1.26.4" },
-    { name = "numpy", marker = "python_full_version >= '3.13'", specifier = "~=2.2.3" },
-    { name = "openai", specifier = ">=1.0.0" },
-    { name = "pandas", specifier = "~=2.2.3" },
-    { name = "plotly", specifier = ">=5.13.0" },
-    { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.2.4" },
-    { name = "psycopg2-binary", specifier = ">=2.9.5" },
-    { name = "pyarrow", specifier = ">=18.1.0" },
-    { name = "pydantic", specifier = "~=2.10.1" },
-    { name = "pydantic-settings", specifier = "~=2.6.1" },
-    { name = "pyowm", specifier = "~=3.3.0" },
-    { name = "python-dotenv", specifier = "~=1.0.1" },
-    { name = "python-multipart", specifier = "~=0.0.20" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "setuptools", specifier = "~=75.6.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.0" },
-    { name = "streamlit", specifier = "~=1.44.1" },
-    { name = "streamlit-pdf-viewer", specifier = ">=0.0.22" },
-    { name = "tiktoken", specifier = ">=0.8.0" },
-    { name = "uuid", specifier = ">=1.30" },
-    { name = "uvicorn", specifier = "~=0.32.1" },
-]
-
-[package.metadata.requires-dev]
-client = [
-    { name = "httpx", specifier = "~=0.27.2" },
-    { name = "plotly", specifier = ">=5.13.0" },
-    { name = "pydantic", specifier = "~=2.10.1" },
-    { name = "python-dotenv", specifier = "~=1.0.1" },
-    { name = "streamlit", specifier = "~=1.44.1" },
-    { name = "streamlit-pdf-viewer", specifier = "~=0.0.23" },
-]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-env" },
-    { name = "ruff" },
-]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -301,6 +170,25 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5a/b0/1367933a8532ee6ff8d63537de4f1177af4bff9f3e829baf7331f595bb24/attrs-25.3.0.tar.gz", hash = "sha256:75d7cefc7fb576747b2c81b4442d4d4a1ce0900973527c011d1030fd3bf4af1b", size = 812032 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/77/06/bb80f5f86020c4551da315d78b3ab75e8228f89f0162f2c3a819e407941a/attrs-25.3.0-py3-none-any.whl", hash = "sha256:427318ce031701fea540783410126f03899a97ffc6f61596ad581ac2e40e3bc3", size = 63815 },
+]
+
+[[package]]
+name = "bcrypt"
+version = "4.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/ae/3af7d006aacf513975fd1948a6b4d6f8b4a307f8a244e1a3d3774b297aad/bcrypt-4.0.1.tar.gz", hash = "sha256:27d375903ac8261cfe4047f6709d16f7d18d39b1ec92aaf72af989552a650ebd", size = 25498 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/d4/3b2657bd58ef02b23a07729b0df26f21af97169dbd0b5797afa9e97ebb49/bcrypt-4.0.1-cp36-abi3-macosx_10_10_universal2.whl", hash = "sha256:b1023030aec778185a6c16cf70f359cbb6e0c289fd564a7cfa29e727a1c38f8f", size = 473446 },
+    { url = "https://files.pythonhosted.org/packages/ec/0a/1582790232fef6c2aa201f345577306b8bfe465c2c665dec04c86a016879/bcrypt-4.0.1-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:08d2947c490093a11416df18043c27abe3921558d2c03e2076ccb28a116cb6d0", size = 583044 },
+    { url = "https://files.pythonhosted.org/packages/41/16/49ff5146fb815742ad58cafb5034907aa7f166b1344d0ddd7fd1c818bd17/bcrypt-4.0.1-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0eaa47d4661c326bfc9d08d16debbc4edf78778e6aaba29c1bc7ce67214d4410", size = 583189 },
+    { url = "https://files.pythonhosted.org/packages/aa/48/fd2b197a9741fa790ba0b88a9b10b5e88e62ff5cf3e1bc96d8354d7ce613/bcrypt-4.0.1-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ae88eca3024bb34bb3430f964beab71226e761f51b912de5133470b649d82344", size = 593473 },
+    { url = "https://files.pythonhosted.org/packages/7d/50/e683d8418974a602ba40899c8a5c38b3decaf5a4d36c32fc65dce454d8a8/bcrypt-4.0.1-cp36-abi3-manylinux_2_24_x86_64.whl", hash = "sha256:a522427293d77e1c29e303fc282e2d71864579527a04ddcfda6d4f8396c6c36a", size = 593249 },
+    { url = "https://files.pythonhosted.org/packages/fb/a7/ee4561fd9b78ca23c8e5591c150cc58626a5dfb169345ab18e1c2c664ee0/bcrypt-4.0.1-cp36-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:fbdaec13c5105f0c4e5c52614d04f0bca5f5af007910daa8b6b12095edaa67b3", size = 583586 },
+    { url = "https://files.pythonhosted.org/packages/64/fe/da28a5916128d541da0993328dc5cf4b43dfbf6655f2c7a2abe26ca2dc88/bcrypt-4.0.1-cp36-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ca3204d00d3cb2dfed07f2d74a25f12fc12f73e606fcaa6975d1f7ae69cacbb2", size = 593659 },
+    { url = "https://files.pythonhosted.org/packages/dd/4f/3632a69ce344c1551f7c9803196b191a8181c6a1ad2362c225581ef0d383/bcrypt-4.0.1-cp36-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:089098effa1bc35dc055366740a067a2fc76987e8ec75349eb9484061c54f535", size = 613116 },
+    { url = "https://files.pythonhosted.org/packages/87/69/edacb37481d360d06fc947dab5734aaf511acb7d1a1f9e2849454376c0f8/bcrypt-4.0.1-cp36-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:e9a51bbfe7e9802b5f3508687758b564069ba937748ad7b9e890086290d2f79e", size = 624290 },
+    { url = "https://files.pythonhosted.org/packages/aa/ca/6a534669890725cbb8c1fb4622019be31813c8edaa7b6d5b62fc9360a17e/bcrypt-4.0.1-cp36-abi3-win32.whl", hash = "sha256:2caffdae059e06ac23fce178d31b4a702f2a3264c20bfb5ff541b338194d8fab", size = 159428 },
+    { url = "https://files.pythonhosted.org/packages/46/81/d8c22cd7e5e1c6a7d48e41a1d1d46c92f17dae70a54d9814f746e6027dec/bcrypt-4.0.1-cp36-abi3-win_amd64.whl", hash = "sha256:8a68f4341daf7522fe8d73874de8906f3a339048ba406be6ddc1b3ccb16fc0d9", size = 152930 },
 ]
 
 [[package]]
@@ -534,6 +422,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/1f/8a66088ae1d7a68f40db9890642435cfff2b54701f47f19d5cc9404d5f65/duckduckgo_search-8.0.1.tar.gz", hash = "sha256:1d40d4425062a33dc72d19603e25ebf36b212bd8ef0662bff39fd47598226f6f", size = 21932 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/83/a2/66adca41164860dee6d2d47b506fef3262c8879aab727b687c798d67313f/duckduckgo_search-8.0.1-py3-none-any.whl", hash = "sha256:87ea18d9abb1cd5dc8f63fc70ac867996acce2cb5e0129d191b9491c202420be", size = 18125 },
+]
+
+[[package]]
+name = "ecdsa"
+version = "0.19.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/1f/924e3caae75f471eae4b26bd13b698f6af2c44279f67af317439c2f4c46a/ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61", size = 201793 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3", size = 150607 },
 ]
 
 [[package]]
@@ -1861,6 +1761,15 @@ wheels = [
 ]
 
 [[package]]
+name = "passlib"
+version = "1.7.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/06/9da9ee59a67fae7761aab3ccc84fa4f3f33f125b370f1ccdb915bf967c11/passlib-1.7.4.tar.gz", hash = "sha256:defd50f72b65c5402ab2c573830a6978e5f202ad0d984793c8dde2c4152ebe04", size = 689844 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/a4/ab6b7589382ca3df236e03faa71deac88cae040af60c071a78d254a62172/passlib-1.7.4-py2.py3-none-any.whl", hash = "sha256:aa6bca462b8d8bda89c70b382f0c298a20b5560af6cbfa2dce410c0a2fb669f1", size = 525554 },
+]
+
+[[package]]
 name = "pillow"
 version = "11.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1948,6 +1857,149 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/96/2d/02d4312c973c6050a18b314a5ad0b3210edb65a906f868e31c111dede4a6/pluggy-1.5.0.tar.gz", hash = "sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1", size = 67955 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/5f/e351af9a41f866ac3f1fac4ca0613908d9a41741cfcf2228f4ad853b697d/pluggy-1.5.0-py3-none-any.whl", hash = "sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669", size = 20556 },
+]
+
+[[package]]
+name = "polyrag"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "bcrypt" },
+    { name = "duckduckgo-search" },
+    { name = "ecdsa" },
+    { name = "fastapi" },
+    { name = "grpcio" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-aws" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-groq" },
+    { name = "langchain-ollama" },
+    { name = "langchain-openai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "langgraph-supervisor" },
+    { name = "langsmith" },
+    { name = "llmsherpa" },
+    { name = "numexpr" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "openai" },
+    { name = "pandas" },
+    { name = "passlib" },
+    { name = "plotly" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "psycopg2-binary" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyowm" },
+    { name = "python-dotenv" },
+    { name = "python-http-client" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "sendgrid" },
+    { name = "setuptools" },
+    { name = "sqlalchemy" },
+    { name = "streamlit" },
+    { name = "streamlit-pdf-viewer" },
+    { name = "tiktoken" },
+    { name = "uuid" },
+    { name = "uvicorn" },
+    { name = "werkzeug" },
+]
+
+[package.dev-dependencies]
+client = [
+    { name = "httpx" },
+    { name = "plotly" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "streamlit" },
+    { name = "streamlit-pdf-viewer" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bcrypt", specifier = "==4.0.1" },
+    { name = "duckduckgo-search", specifier = ">=7.3.0" },
+    { name = "ecdsa", specifier = "==0.19.1" },
+    { name = "fastapi", specifier = "~=0.115.5" },
+    { name = "grpcio", specifier = ">=1.68.0" },
+    { name = "httpx", specifier = "~=0.27.2" },
+    { name = "jiter", specifier = "~=0.8.2" },
+    { name = "langchain-anthropic", specifier = "~=0.3.0" },
+    { name = "langchain-aws", specifier = "~=0.2.14" },
+    { name = "langchain-community", specifier = "~=0.3.16" },
+    { name = "langchain-core", specifier = "~=0.3.33" },
+    { name = "langchain-google-genai", specifier = "~=2.0.11" },
+    { name = "langchain-groq", specifier = "~=0.2.1" },
+    { name = "langchain-ollama", specifier = "~=0.2.3" },
+    { name = "langchain-openai", specifier = "~=0.3.0" },
+    { name = "langgraph", specifier = "~=0.3.5" },
+    { name = "langgraph-checkpoint-postgres", specifier = "~=2.0.13" },
+    { name = "langgraph-checkpoint-sqlite", specifier = "~=2.0.1" },
+    { name = "langgraph-supervisor", specifier = "~=0.0.8" },
+    { name = "langsmith", specifier = "~=0.1.145" },
+    { name = "llmsherpa", specifier = ">=0.1.0" },
+    { name = "numexpr", specifier = "~=2.10.1" },
+    { name = "numpy", marker = "python_full_version < '3.13'", specifier = "~=1.26.4" },
+    { name = "numpy", marker = "python_full_version >= '3.13'", specifier = "~=2.2.3" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "pandas", specifier = "~=2.2.3" },
+    { name = "passlib", specifier = "==1.7.4" },
+    { name = "plotly", specifier = ">=5.13.0" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.2.4" },
+    { name = "psycopg2-binary", specifier = ">=2.9.5" },
+    { name = "pyarrow", specifier = ">=18.1.0" },
+    { name = "pydantic", specifier = "~=2.10.1" },
+    { name = "pydantic-settings", specifier = "~=2.6.1" },
+    { name = "pyowm", specifier = "~=3.3.0" },
+    { name = "python-dotenv", specifier = "~=1.0.1" },
+    { name = "python-http-client", specifier = "==3.3.7" },
+    { name = "python-multipart", specifier = "~=0.0.20" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "sendgrid", specifier = "==6.12.3" },
+    { name = "setuptools", specifier = "~=75.6.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "streamlit", specifier = "~=1.44.1" },
+    { name = "streamlit-pdf-viewer", specifier = ">=0.0.22" },
+    { name = "tiktoken", specifier = ">=0.8.0" },
+    { name = "uuid", specifier = ">=1.30" },
+    { name = "uvicorn", specifier = "~=0.32.1" },
+    { name = "werkzeug", specifier = "==3.1.3" },
+]
+
+[package.metadata.requires-dev]
+client = [
+    { name = "httpx", specifier = "~=0.27.2" },
+    { name = "plotly", specifier = ">=5.13.0" },
+    { name = "pydantic", specifier = "~=2.10.1" },
+    { name = "python-dotenv", specifier = "~=1.0.1" },
+    { name = "streamlit", specifier = "~=1.44.1" },
+    { name = "streamlit-pdf-viewer", specifier = "~=0.0.23" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "ruff" },
 ]
 
 [[package]]
@@ -2453,6 +2505,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-http-client"
+version = "3.3.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/fa/284e52a8c6dcbe25671f02d217bf2f85660db940088faf18ae7a05e97313/python_http_client-3.3.7.tar.gz", hash = "sha256:bf841ee45262747e00dec7ee9971dfb8c7d83083f5713596488d67739170cea0", size = 9377 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/29/31/9b360138f4e4035ee9dac4fe1132b6437bd05751aaf1db2a2d83dc45db5f/python_http_client-3.3.7-py3-none-any.whl", hash = "sha256:ad371d2bbedc6ea15c26179c6222a78bc9308d272435ddf1d5c84f068f249a36", size = 8352 },
+]
+
+[[package]]
 name = "python-multipart"
 version = "0.0.20"
 source = { registry = "https://pypi.org/simple" }
@@ -2722,6 +2783,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fc/9e/73b14aed38ee1f62cd30ab93cd0072dec7fb01f3033d116875ae3e7b8b44/s3transfer-0.12.0.tar.gz", hash = "sha256:8ac58bc1989a3fdb7c7f3ee0918a66b160d038a147c7b5db1500930a607e9a1c", size = 149178 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/89/64/d2b49620039b82688aeebd510bd62ff4cdcdb86cbf650cc72ae42c5254a3/s3transfer-0.12.0-py3-none-any.whl", hash = "sha256:35b314d7d82865756edab59f7baebc6b477189e6ab4c53050e28c1de4d9cce18", size = 84773 },
+]
+
+[[package]]
+name = "sendgrid"
+version = "6.12.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ecdsa" },
+    { name = "python-http-client" },
+    { name = "werkzeug" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/47/13521678a980c614ab007ec0a1bc805cd2db48b7ed858ee2ec26077ab423/sendgrid-6.12.3.tar.gz", hash = "sha256:d0cb7bf92cb5cc9fc4466074d6a40fd474332bbb52914a93620f566f26060ac7", size = 50260 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/5a/3a2eff65d2c1cfca5be93b2ce9bdf9017618de911d9f8b8b0efb33d78fac/sendgrid-6.12.3-py3-none-any.whl", hash = "sha256:b5fc32c8a3b4bd20a46cdde1d7592a32e97165c4179354fe720850c2e8055d16", size = 102113 },
 ]
 
 [[package]]
@@ -3057,6 +3132,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/07/f6/d0e5b343768e8bcb4cda79f0f2f55051bf26177ecd5651f84c07567461cf/watchdog-6.0.0-py3-none-win32.whl", hash = "sha256:07df1fdd701c5d4c8e55ef6cf55b8f0120fe1aef7ef39a1c6fc6bc2e606d517a", size = 79065 },
     { url = "https://files.pythonhosted.org/packages/db/d9/c495884c6e548fce18a8f40568ff120bc3a4b7b99813081c8ac0c936fa64/watchdog-6.0.0-py3-none-win_amd64.whl", hash = "sha256:cbafb470cf848d93b5d013e2ecb245d4aa1c8fd0504e863ccefa32445359d680", size = 79070 },
     { url = "https://files.pythonhosted.org/packages/33/e8/e40370e6d74ddba47f002a32919d91310d6074130fe4e17dabcafc15cbf1/watchdog-6.0.0-py3-none-win_ia64.whl", hash = "sha256:a1914259fa9e1454315171103c6a30961236f508b9b623eae470268bbcc6a22f", size = 79067 },
+]
+
+[[package]]
+name = "werkzeug"
+version = "3.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/69/83029f1f6300c5fb2471d621ab06f6ec6b3324685a2ce0f9777fd4a8b71e/werkzeug-3.1.3.tar.gz", hash = "sha256:60723ce945c19328679790e3282cc758aa4a6040e4bb330f53d30fa546d44746", size = 806925 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/24/ab44c871b0f07f491e5d2ad12c9bd7358e527510618cb1b803a88e986db1/werkzeug-3.1.3-py3-none-any.whl", hash = "sha256:54b78bf3716d19a65be4fceccc0d1d7b89e608834989dfae50ea87564639213e", size = 224498 },
 ]
 
 [[package]]
