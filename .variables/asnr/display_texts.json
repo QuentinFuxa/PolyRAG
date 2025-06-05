@@ -82,6 +82,12 @@
       "suggested_command_text": "A-t-on observé des LDS qui parlent de fraude en 2024 ?",
       "icon": ":material/analytics:",
       "key": "btn_ex_lds_fraude"
+    },
+    {
+      "button_text": "Génère un graphique du nombre de demandes prioritaires vs non prioritaires entre janvier et mars 2025",
+      "suggested_command_text": "A-t-on observé des LDS qui parlent de fraude en 2024 ?",
+      "icon": ":material/bar_chart:",
+      "key": "btn_ex_demand_count"
     }
   ],
   "CHAT_INPUT_PLACEHOLDER": "Votre message",
@@ -133,6 +139,6 @@
   "EMAIL_DOMAIN": "@asnr.fr",
   "LOGGED_AS": "Utilisateur",
   "PASSWORD_EMAIL_SUBJECT": "Mot de passe Siance Assistant",
-  "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : <strong>{new_password}</strong>.<br>En cas de problème, vous pouvez répondre à cet email."
+  "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : {new_password}<br>En cas de problème, vous pouvez répondre à cet email."
 
 }
