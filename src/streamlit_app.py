@@ -21,7 +21,7 @@ from db_manager import DatabaseManager
 from display_texts import dt
 import auth_service
 
-NO_AUTH = True
+NO_AUTH = False
 
 
 APP_TITLE = dt.APP_TITLE
