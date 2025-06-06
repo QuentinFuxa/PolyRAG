@@ -27,7 +27,8 @@ def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str
 
     sql_keywords = {'AND', 'OR', 'NOT', 'NULL', 'TRUE', 'FALSE', 'IS', 'IN', 'LIKE', 'BETWEEN', 'EXISTS',
                     'SELECT', 'FROM', 'WHERE', 'GROUP', 'ORDER', 'BY', 'LIMIT', 'OFFSET', 'AS',
-                    'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'}
+                    'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'EXTRACT', 'CAST', 'CONVERT',
+                    'UNION', 'INTERSECT', 'EXCEPT', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER'}
 
     parts = re.split(r'(\s+AND\s+|\s+OR\s+)', clause_str, flags=re.IGNORECASE)
     
