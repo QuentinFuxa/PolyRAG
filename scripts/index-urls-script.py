@@ -91,7 +91,7 @@ def index_pdf_from_url(pdf_url, db_manager, rag_system, temp_dir):
 def main():
     parser = argparse.ArgumentParser(description="Index PDFs from URLs stored in a database table.")
     parser.add_argument("--schema", required=False, default="public", help="Database schema name")
-    parser.add_argument("--table", required=False, help="Database table name containing URLs", default="arxiv_qbio_metadata_2025")
+    parser.add_argument("--table", required=False, help="Database table name containing URLs", default="arxiv_qbio")
     parser.add_argument("--column", required=False, help="Column name containing PDF URLs", default="pdf_url")
     parser.add_argument("--embeddings", action="store_true", help="Generate embeddings (requires OpenAI API key)")
 

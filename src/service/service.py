@@ -1,3 +1,4 @@
+import os
 import inspect
 import json
 import logging
@@ -525,7 +526,7 @@ async def upload_file(
         )
         
         if thread_id and text_content:
-            agent: CompiledStateGraph = get_agent(agent_id)            
+            agent: Pregel = get_agent(agent_id)            
             config = RunnableConfig(
                 configurable={"thread_id": thread_id}
             )
@@ -533,7 +534,7 @@ async def upload_file(
             try:
                 state = await agent.aget_state(config=config)                
                 file_message = SystemMessage(
-                    content=f"Contenu du fichier {file.filename}:\n\n{text_content}"
+                    content=f"<CONTENT OF UPLOADED FILE {file.filename}>\n\n{text_content}\n\n</CONTENT OF UPLOADED FILE {file.filename}>",
                 )
                 
                 new_messages = list(state.values.get("messages", []))
