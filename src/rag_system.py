@@ -15,10 +15,70 @@ load_dotenv()
 
 TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
 
-class SearchStrategy(Enum):
-    TEXT = "text"
-    EMBEDDING = "embedding"
-    HYBRID = "hybrid"
+
+def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str:
+    if not clause_str:
+        return ""
+
+    sql_keywords = {'AND', 'OR', 'NOT', 'NULL', 'TRUE', 'FALSE', 'IS', 'IN', 'LIKE', 'BETWEEN', 'EXISTS',
+                    'SELECT', 'FROM', 'WHERE', 'GROUP', 'ORDER', 'BY', 'LIMIT', 'OFFSET', 'AS',
+                    'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'EXTRACT', 'CAST', 'CONVERT',
+                    'UNION', 'INTERSECT', 'EXCEPT', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER'}
+
+    parts = re.split(r'(\s+AND\s+|\s+OR\s+)', clause_str, flags=re.IGNORECASE)
+    
+    processed_parts = []
+    for part_idx, part_content in enumerate(parts):
+        stripped_part_content = part_content.strip()
+        
+        # If it's a delimiter (AND/OR), keep it
+        if part_idx % 2 == 1: # Delimiters are at odd indices
+            processed_parts.append(part_content)
+            continue
+
+        # Attempt to identify "column operator value" like structures
+        match = re.match(r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(.*)", stripped_part_content, re.IGNORECASE)
+        
+        if match:
+            column_candidate = match.group(1)
+            rest_of_condition = match.group(2)
+
+            # Check if it's a keyword, already prefixed, a function call, or a literal string/number
+            if (column_candidate.upper() not in sql_keywords and
+                '.' not in column_candidate and
+                '(' not in column_candidate and # Simple check for function
+                not (column_candidate.startswith("'") and column_candidate.endswith("'")) and # String literal
+                not (column_candidate.startswith('"') and column_candidate.endswith('"')) and # String literal
+                not column_candidate.replace('.', '', 1).isdigit() and # Number
+                column_candidate.upper() != 'TRUE' and column_candidate.upper() != 'FALSE' and column_candidate.upper() != 'NULL'
+               ):
+                processed_parts.append(f"{prefix}{column_candidate}{rest_of_condition}")
+            else:
+                processed_parts.append(part_content) # No change
+        else:
+            processed_parts.append(part_content) # No change if no word-like start
+            
+    return "".join(processed_parts)
+
+# Helper function to prefix column names in an ORDER BY clause string
+def _prefix_columns_in_order_by_clause(clause_str: str, prefix: str = "js.") -> str:
+    if not clause_str:
+        return ""
+    
+    terms = clause_str.split(',')
+    prefixed_terms = []
+    for term_str in terms:
+        term_str = term_str.strip()
+        # Split term into column and direction (ASC/DESC)
+        parts = term_str.split() # e.g. ["date", "DESC"] or ["name"]
+        if parts:
+            col_name = parts[0]
+            # Avoid prefixing if already prefixed or is a function call (simple check)
+            if '.' not in col_name and '(' not in col_name:
+                parts[0] = f"{prefix}{col_name}"
+            prefixed_terms.append(" ".join(parts))
+    return ", ".join(prefixed_terms)
+
 
 @dataclass
 class BlockMetadata:

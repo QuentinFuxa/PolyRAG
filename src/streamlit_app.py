@@ -79,12 +79,12 @@ def user_modal():
     if st.button("Logout", key="logout_button_modal", type='primary'):
         logout()
         
-@st.dialog('Commentaire/Suggestion', width="small")
+@st.dialog(dt.FEEDBACK_BUTTON, width="small")
 def user_feedback_modal():
-    st.markdown("Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.")
+    st.markdown(dt.FEEDBACK_DIALOG)
     
-    feedback_text = st.text_area("Votre commentaire", key="feedback_text_area")
-    if st.button("Soumettre", key="submit_feedback_button"):
+    feedback_text = st.text_area("", key="feedback_text_area")
+    if st.button(label="", icon=":material/send:", key="submit_feedback_button"):
         if feedback_text:
 
             try:
@@ -383,9 +383,9 @@ async def main() -> None:
             else:
                 st.warning("Example prompts are not configured or dt.EXAMPLE_PROMPTS is missing.")
             with st.container(border=False):
-                st.markdown("""
-                <div style="padding: 10px; margin-top: 150px; border-radius: 10px; text-size: 0.6rem; background-color: #f8f9fa; border: 1px solid #dee2e6;">
-                    <i><strong>Attention:</strong> Ne pas communiquer de données sensibles dans les messages, car ils peuvent être stockés et utilisés pour améliorer le modèle. Évitez de partager des informations personnelles ou confidentielles.</i>
+                st.markdown(f"""
+                <div style="padding: 10px; border-radius: 10px; text-size: 0.6rem; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                    {dt.WARNING_MESSAGE}
                 </div>
                 """, unsafe_allow_html=True)
 
