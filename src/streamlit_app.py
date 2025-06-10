@@ -259,7 +259,6 @@ async def main() -> None:
 
         model_idx = agent_client.info.models.index(agent_client.info.default_model)
         model = 'gpt-4o'
-        print(model)
 
         # st.markdown(dt.SIDEBAR_HEADER)
         if st.button(dt.NEW_CONVERSATION_BUTTON, use_container_width=False, icon=":material/add:", type="tertiary", disabled=False): #len(st.session_state.messages) == 0):
