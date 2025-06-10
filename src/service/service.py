@@ -486,21 +486,35 @@ async def upload_file(
                 pdf_filename = file.filename
                 pdf_storage_path = os.path.join(storage_dir, pdf_filename)
                 
-                with open(pdf_storage_path, "wb") as pdf_file:
-                    pdf_file.write(contents)
+                with open(pdf_storage_path, "wb") as pdf_file_handle:
+                    pdf_file_handle.write(contents)
                 
-                if 'nlm-ingestor' in pdf_parser:                    
+                if pdf_parser and 'nlm-ingestor' in pdf_parser:
                     rag_system.index_document(
                         pdf_path=pdf_storage_path, 
-                        title=file.filename[:-4], 
+                        title=pdf_filename[:-4] if pdf_filename.endswith('.pdf') else pdf_filename,
                         table_name='uploaded_document_blocks'
                     )
-                                    
-                    logger.info(f"PDF processed and stored at: {pdf_storage_path}")
+                    logger.info(f"PDF '{pdf_filename}' processed with 'nlm-ingestor' and stored at: {pdf_storage_path}")
+                elif pdf_parser and "pypdf" in pdf_parser:
+                    from pypdf import PdfReader
+                    reader = PdfReader(pdf_storage_path)
+                    text_content = ""
+                    for page in reader.pages:
+                        text_content += page.extract_text() or ""
                 else:
-                    logger.warning("The only supported PDF parser for now is 'nlm-ingestor'")
+                    if pdf_parser:
+                        logger.warning(
+                            f"Unsupported PDF parser configured: '{pdf_parser}'. "
+                            f"PDF '{pdf_filename}' stored at '{pdf_storage_path}' but not processed for text content."
+                        )
+                    else:
+                        logger.info(
+                            f"No PDF parser configured (UPLOADED_PDF_PARSER not set). "
+                            f"PDF '{pdf_filename}' stored at '{pdf_storage_path}' but not processed for text content."
+                        )
             else:
-                print(f"Unsupported file type: {file.content_type}")
+                logger.warning(f"Unsupported file type: {file.content_type} for file '{file.filename}'. Content not extracted.")
         except Exception as e:
             logger.warning(f"Impossible to extract file content: {e}")
                 
