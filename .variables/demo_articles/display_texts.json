@@ -3,7 +3,7 @@
   "APP_ICON": ":material/experiment:",
   "AI_ICON": ":material/flare:",
   "USER_ICON": ":material/person:",
-  "CAPTION": "Made with :material/favorite: by [Joshua](https://www.linkedin.com/in/joshua-k-carroll/) in Oakland. Augmented by [Quentin](https://www.linkedin.com/in/quentin-fuxa/) in Paris :material/cell_tower: .",
+  "CAPTION": "For any bug, you can create an issue here: https://github.com/QuentinFuxa/PolyRAG :material/cell_tower: .",
   "PDF_DIALOG_TITLE": "Document",
   "PDF_DIALOG_DEBUG_PREFIX": "/debug",
   "PDF_DIALOG_NO_PDF_ERROR": "No PDF selected for viewing.",
@@ -146,6 +146,7 @@
   "PASSWORD_EMAIL_SUBJECT": "Demo Assistant Password",
   "PASSWORD_EMAIL_BODY": "Hello,<br>Your PolyRAG password is: {new_password}<br>If you have any issues, you can reply to this email.",
   "WARNING_MESSAGE": "<i><strong>Warning:</strong> Do not share sensitive data in messages, as they may be stored and used to improve the model. Avoid sharing personal or confidential information.</i>",
-  "FEEDBACK_BUTTON": "Feedback/Suggestion",
-  "FEEDBACK_DIALOG": "Please leave your comments or suggestions to improve the application."
+  "FEEDBACK_BUTTON": "Feedbacks",
+  "FEEDBACK_DIALOG": "Please leave your comments or suggestions to improve the application.",
+  "LOGO": "https://raw.githubusercontent.com/QuentinFuxa/PolyRAG/refs/heads/main/media/polyrag.svg"
 }
