@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from langgraph.pregel import Pregel
 
 try:
-    from src.schema import AgentInfo
-except:
     from schema import AgentInfo
+except:
+    from src.schema import AgentInfo
 
 try:
     from agents.pg_rag_assistant import pg_rag_assistant
