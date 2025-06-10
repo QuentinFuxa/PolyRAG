@@ -42,7 +42,8 @@ class GraphStore:
     
     def _cleanup_expired(self):
         """Calls the database manager to delete expired graphs."""
-        self.db_manager.delete_expired_graphs()
+        # self.db_manager.delete_expired_graphs()
+        # We actually don't want to delete expired graphs
     
     def _start_cleanup_timer(self):
         self._cleanup_expired()
