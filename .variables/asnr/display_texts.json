@@ -32,7 +32,7 @@
   "WELCOME_CHATBOT": "Hello! I'm a simple chatbot. Ask me anything!",
   "WELCOME_INTERRUPT": "Hello! I'm an interrupt agent. Tell me your birthday and I will predict your personality!",
   "WELCOME_RESEARCH": "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!",
-  "WELCOME_PG_RAG": "Bonjour ! Je suis un assistant de l'ASNR développé pour vous aider à analyser les lettres de suite. Posez-moi n'importe quelle question !",
+  "WELCOME_PG_RAG": "Bonjour ! Je suis un assistant de l'ASNR conçu pour vous aider à analyser les lettres de suite. Posez-moi n'importe quelle question !",
   "WELCOME_DEFAULT": "Hello! I'm an AI agent. Ask me anything!",
   "PROMPT_BUTTON_DB_QUERY": "Fais moi une synthèse monographique des demandes prioritaires depuis début 2025",
   "PROMPT_SUGGESTED_DB_QUERY": "Fais moi une synthèse monographique des demandes prioritaires depuis début 2025",
@@ -148,6 +148,7 @@
   "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : {new_password}<br>En cas de problème, vous pouvez répondre à cet email.",
   "WARNING_MESSAGE": "<i><strong>Attention:</strong> Ne pas communiquer de données sensibles dans les messages, car ils peuvent être stockés et utilisés pour améliorer le modèle. Évitez de partager des informations personnelles ou confidentielles.</i>",
   "FEEDBACK_BUTTON": "Suggestions",
-  "FEEDBACK_DIALOG": "Veuillez laisser vos commentaires ou suggestions pour améliorer l'application."
+  "FEEDBACK_DIALOG": "Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.",
+  "LOGO": "https://github.com/QuentinFuxa/PolyRAG/blob/asnr/media/logo_siance.png?raw=true"
 
 }
