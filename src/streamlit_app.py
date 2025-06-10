@@ -153,6 +153,8 @@ def logout():
 
 async def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, menu_items={})
+    if dt.LOGO:
+        st.logo(image=dt.LOGO, size="large")
 
     custom_css = """
     <style>
@@ -234,10 +236,12 @@ async def main() -> None:
         st.session_state.thread_id = thread_id
 
     with st.sidebar:
-        st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
+        if not dt.LOGO:
+            st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
         
         current_user_email = st.session_state.get("current_user_email", "")
         username = current_user_email.split("@")[0] if current_user_email else "User"
+        username = username.replace('.', ' ').title()
 
         col1, col2 = st.columns([0.4, 0.6])
         with col1:
@@ -250,9 +254,8 @@ async def main() -> None:
                 user_modal()
         with col2:
             if st.button(
-                f"Commentaire/Suggestion",
+                dt.FEEDBACK_BUTTON,
                 key="user_settings_button",
-                help="Commentaire/Suggestion",
                 icon=":material/comment:"
             ):
                 user_feedback_modal()
