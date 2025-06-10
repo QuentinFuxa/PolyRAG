@@ -1,15 +1,20 @@
 import json
 import os
+import re
 from dataclasses import dataclass
-from enum import Enum
 from typing import Dict, List, Optional, Any, Union, Tuple
 
-import psycopg2
-from psycopg2 import pool
 from llmsherpa.readers import LayoutPDFReader
 from dotenv import load_dotenv
-from db_manager import DatabaseManager, schema_app_data
 
+try:
+    from .db_manager import DatabaseManager, schema_app_data
+    from .content_classifiers import ContentClassifier, ContentType
+except ImportError:
+    from db_manager import DatabaseManager, schema_app_data
+    from content_classifiers import ContentClassifier, ContentType
+
+    
 # Load environment variables
 load_dotenv()
 
@@ -93,51 +98,10 @@ class BlockMetadata:
 @dataclass
 class DocumentBlock:
     """Representation of a document block with content and metadata"""
-    # Using block_idx as the primary identifier instead of id string
     block_idx: int
     content: str
     metadata: BlockMetadata
-    parent_idx: Optional[int] = None  # Changed from parent_id to parent_idx
-    embedding: Optional[List[float]] = None
-
-class EmbeddingManager:
-    """Manager for embedding operations (optional)"""
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(EmbeddingManager, cls).__new__(cls)
-            # Check if OpenAI API key is available
-            cls._instance.api_key = os.getenv("OPENAI_API_KEY")
-            cls._instance.enabled = cls._instance.api_key is not None
-            if cls._instance.enabled:
-                from openai import OpenAI
-                cls._instance.client = OpenAI(api_key=cls._instance.api_key)
-                cls._instance.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-                cls._instance.embedding_dim = 1536  # Default for Ada
-        return cls._instance
-    
-    def is_enabled(self):
-        return self.enabled
-    
-    def compute_embedding(self, text):
-        """Compute embedding for a given text using OpenAI API"""
-        if not self.enabled:
-            return None
-        
-        try:
-            response = self.client.embeddings.create(
-                input=text,
-                model=self.embedding_model
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            print(f"Error computing embedding: {e}")
-            return None
-    
-    def get_embedding_dimension(self):
-        """Returns the dimension of embeddings used"""
-        return self.embedding_dim if self.enabled else 0
+    parent_idx: Optional[int] = None
 
 class SherpaDocumentProcessor:
     """Processor for rag_documents from llmsherpa"""
@@ -150,36 +114,31 @@ class SherpaDocumentProcessor:
         self.pdf_reader = LayoutPDFReader(self.sherpa_api_url)
     
     def process_pdf(self, pdf_path):
-        """Process a PDF file and return structured content"""
         """Process a PDF file using llmsherpa and return DocumentBlock objects"""
         sherpa_data = self.pdf_reader.read_pdf(pdf_path).json
-        return self._process_sherpa_data(sherpa_data) # Call internal processing method
+        return self._process_sherpa_data(sherpa_data)
 
     def _process_sherpa_data(self, sherpa_data):
         """Process raw llmsherpa output (JSON) and convert to DocumentBlock objects"""
         blocks = []
 
-        # Convert string to JSON if necessary
         if isinstance(sherpa_data, str):
             try:
                 sherpa_data = json.loads(sherpa_data)
             except json.JSONDecodeError:
                 raise ValueError("Invalid JSON data from llmsherpa")
         
-        # Process each block
         for block_data in sherpa_data:
             # Extract content from sentences
             content = ""
             if "sentences" in block_data:
                 sentences = block_data["sentences"]
                 if isinstance(sentences, list):
-                    # Handle different sentence formats
                     if sentences and isinstance(sentences[0], dict) and "text" in sentences[0]:
                         content = " ".join(s["text"] for s in sentences)
                     elif sentences and isinstance(sentences[0], str):
                         content = " ".join(sentences)
             elif "table_rows" in block_data:
-                # Handle table rows if present
                 for row in block_data["table_rows"]:
                     try:
                         cells = row.get("cells", [])
@@ -194,7 +153,6 @@ class SherpaDocumentProcessor:
             else:
                 raise ValueError("Invalid block data format")
             
-            # Create metadata
             metadata = BlockMetadata(
                 block_idx=block_data.get("block_idx", 0),
                 level=block_data.get("level", 0),
@@ -204,7 +162,6 @@ class SherpaDocumentProcessor:
                 bbox=block_data.get("bbox", [0, 0, 0, 0])
             )
             
-            # Create block - using block_idx directly as the identifier
             block = DocumentBlock(
                 block_idx=metadata.block_idx,
                 content=content,
@@ -213,141 +170,48 @@ class SherpaDocumentProcessor:
             
             blocks.append(block)
         
-        # Establish parent-child relationships based on hierarchy
         self._establish_hierarchy(blocks)
-        
         return blocks
     
     def _establish_hierarchy(self, blocks):
         """Establish parent-child relationships based on level and position"""
-        # Sort blocks by page and vertical position
         sorted_blocks = sorted(blocks, key=lambda b: (b.metadata.page_idx, b.metadata.bbox[1]))
-        
-        # Create a map for quick access
-        block_map = {block.block_idx: block for block in blocks}
-        
-        # Stack to track the current hierarchy
         hierarchy_stack = []
         
         for block in sorted_blocks:
-            # Pop from stack until we find a parent of higher level
             while hierarchy_stack and hierarchy_stack[-1].metadata.level >= block.metadata.level:
                 hierarchy_stack.pop()
             
-            # Set parent if available
             if hierarchy_stack:
                 block.parent_idx = hierarchy_stack[-1].block_idx
             
-            # Add current block to stack
             hierarchy_stack.append(block)
 
 
-class PyMuPDFDocumentProcessor:
-    """Processor for documents using PyMuPDF"""
-
-    def process_pdf(self, pdf_path):
-        import pymupdf
-        """Process a PDF file using PyMuPDF and return DocumentBlock objects"""
-        blocks = []
-        try:
-            doc = pymupdf.open(pdf_path)
-        except Exception as e:
-            print(f"Error opening PDF with PyMuPDF: {e}")
-            return []
-
-        block_counter = 0
-        for page_num, page in enumerate(doc):
-            page_dict = page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT) # Get detailed block info
-            page_width = page.rect.width
-            page_height = page.rect.height
-
-            for block_data in page_dict.get("blocks", []):
-                # We are interested in text blocks ('type' == 0)
-                if block_data.get("type") == 0:
-                    block_text = ""
-                    # Consolidate lines within the block
-                    for line in block_data.get("lines", []):
-                        for span in line.get("spans", []):
-                            block_text += span.get("text", "") + " "
-                        block_text += "\n" # Add newline after each line like llmsherpa might
-
-                    block_text = block_text.strip()
-                    if not block_text:
-                        continue
-
-                    bbox = block_data.get("bbox", [0, 0, 0, 0])
-
-                    # Basic heuristic for tag (can be improved)
-                    # Assuming larger fonts might be headers, but default to 'para'
-                    tag = 'para'
-                    if block_data.get("lines"):
-                         first_line = block_data["lines"][0]
-                         if first_line.get("spans"):
-                             first_span = first_line["spans"][0]
-                             if first_span.get("size", 10) > 14: # Arbitrary threshold for header
-                                 tag = 'header'
-
-                    metadata = BlockMetadata(
-                        block_idx=block_counter,
-                        level=0,  # PyMuPDF doesn't provide semantic levels easily
-                        page_idx=page_num,
-                        tag=tag, # Default tag, could add heuristics
-                        block_class="", # PyMuPDF doesn't provide this
-                        bbox=list(bbox)
-                    )
-
-                    block = DocumentBlock(
-                        block_idx=block_counter,
-                        content=block_text,
-                        metadata=metadata,
-                        parent_idx=None # PyMuPDF doesn't provide hierarchy easily
-                    )
-                    blocks.append(block)
-                    block_counter += 1
-        
-        doc.close()
-        # Note: PyMuPDF doesn't inherently provide hierarchy like llmsherpa.
-        # The _establish_hierarchy method is specific to llmsherpa's output structure.
-        return blocks
-
-
 class RAGSystem:
-    """RAG system with flexible search strategies and PDF backends"""
+    """RAG system with text search and PDF backends"""
 
-    def __init__(self, use_embeddings=False):
+    def __init__(self):
         self.db_manager = DatabaseManager()
-
+        self.TS_QUERY_LANGUAGE = TS_QUERY_LANGUAGE
+        
         # Determine PDF parsing backend
         pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
         if pdf_parser_backend == "pymupdf":
-            print("Using PyMuPDF backend for PDF processing.")
+            from .pymupdf_processor import PyMuPDFDocumentProcessor
             self.processor = PyMuPDFDocumentProcessor()
-        elif pdf_parser_backend == "nlm-ingestor":
-            print("Using NLM Ingestor (llmsherpa) backend for PDF processing.")
-            self.processor = SherpaDocumentProcessor()
         else:
-            print(f"Warning: Unknown PDF_PARSER '{pdf_parser_backend}'. Defaulting to nlm-ingestor.")
             self.processor = SherpaDocumentProcessor()
 
-        # Initialize embedding manager if enabled
-        self.use_embeddings = use_embeddings
-        if use_embeddings:
-            self.embedding_manager = EmbeddingManager()
-            if not self.embedding_manager.is_enabled():
-                print("Warning: Embeddings requested but OpenAI API key not found. Falling back to text search.")
-                self.use_embeddings = False
-        
-        # Create necessary database schema
+        self.content_classifier = ContentClassifier()
         self._ensure_schema()
     
     def _ensure_schema(self):
         """Create necessary database schema if it doesn't exist"""
-        # Base schema - updated to use block_idx as primary identifier
         schema = f"""        
-        -- Document blocks table
         CREATE TABLE IF NOT EXISTS {schema_app_data}.rag_document_blocks (
             id SERIAL PRIMARY KEY,
-            block_idx INTEGER NOT NULL,  -- This is now our primary block identifier
+            block_idx INTEGER NOT NULL,
             name TEXT NOT NULL,
             content TEXT,
             level INTEGER NOT NULL,
@@ -358,161 +222,111 @@ class RAGSystem:
             y0 FLOAT,
             x1 FLOAT,
             y1 FLOAT,
-            parent_idx INTEGER,  -- Changed from parent_id to parent_idx
-            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED, -- Added generated TSVECTOR column
-            UNIQUE(name, block_idx)  -- Changed unique constraint
+            parent_idx INTEGER,
+            content_type TEXT DEFAULT 'regular',
+            section_type TEXT,
+            demand_priority INTEGER,
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED,
+            UNIQUE(name, block_idx)
         );
         
-        -- Text search index on the generated column
         CREATE INDEX IF NOT EXISTS idx_document_blocks_content_tsv ON {schema_app_data}.rag_document_blocks 
         USING gin(content_tsv);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_content_type 
+        ON {schema_app_data}.rag_document_blocks(content_type);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_section_type 
+        ON {schema_app_data}.rag_document_blocks(section_type);
+        
+        CREATE INDEX IF NOT EXISTS idx_rag_blocks_demand_priority 
+        ON {schema_app_data}.rag_document_blocks(demand_priority);
         """
         
         self.db_manager.execute_query(schema)
-        
-        # Add embedding column and index if embeddings are enabled
-        if self.use_embeddings:
-            try:
-                # Check if vector extension is available
-                extension_query = "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
-                result = self.db_manager.execute_query(extension_query)
-                
-                if not result:
-                    # Create vector extension if not exists
-                    self.db_manager.execute_query("CREATE EXTENSION IF NOT EXISTS vector")
-                
-                # Add embedding column if not exists
-                col_exists_query = f"""
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'rag_document_blocks' 
-                AND table_schema = '{schema_app_data}'
-                AND column_name = 'embedding'
-                """
-                col_exists = self.db_manager.execute_query(col_exists_query)
-                
-                if not col_exists:
-                    dim = self.embedding_manager.get_embedding_dimension()
-                    embedding_schema = f"""
-                    ALTER TABLE {schema_app_data}.rag_document_blocks ADD COLUMN IF NOT EXISTS embedding vector({dim});
-                    CREATE INDEX IF NOT EXISTS idx_document_blocks_embedding ON {schema_app_data}.rag_document_blocks 
-                    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-                    """
-                    self.db_manager.execute_query(embedding_schema)
-            except Exception as e:
-                print(f"Warning: Could not create vector extension or embedding column: {e}")
-                print("Falling back to text search only.")
-                self.use_embeddings = False
     
     def index_document(self, pdf_path, document_name_override: Optional[str] = None, existing_sherpa_data=None, table_name=f"{schema_app_data}.rag_document_blocks"):
-        """
-        Index a PDF document from a given path.
-        Uses pdf_path as the unique identifier (name) by default, but can be overridden.
-        Optionally accepts pre-processed sherpa data.
-
-        Args:
-            pdf_path: Path to the PDF file to process.
-            document_name_override: If provided, use this string as the unique 'name' identifier
-                                     when storing blocks, instead of pdf_path. Useful for URLs
-                                     where the path is temporary.
-            existing_sherpa_data: Pre-processed data from llmsherpa (optional).
-            table_name: The database table to insert blocks into.
-        """
+        """Index a PDF document from a given path."""
         document_name = document_name_override if document_name_override is not None else pdf_path
 
-        # Process the document using the selected processor
-        # existing_sherpa_data is specific to llmsherpa, so we ignore it if using pymupdf
-        pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
-        if pdf_parser_backend == "pymupdf":
-             blocks = self.processor.process_pdf(pdf_path)
-        elif pdf_parser_backend == "nlm-ingestor":
-             if existing_sherpa_data is None:
-                 # Sherpa processor's process_pdf now returns blocks directly
-                 blocks = self.processor.process_pdf(pdf_path)
-             else:
-                 # If sherpa data is provided, process it (specific to sherpa)
-                 blocks = self.processor._process_sherpa_data(existing_sherpa_data) # Use renamed internal method
-        else: # Default case
-             blocks = self.processor.process_pdf(pdf_path)
+        if existing_sherpa_data is None:
+            blocks = self.processor.process_pdf(pdf_path)
+        else:
+            blocks = self.processor._process_sherpa_data(existing_sherpa_data)
+        
+        # Check if this is a "lettre de suite" based on content patterns
+        blocks_content = [block.content for block in blocks if block.content]
+        is_letter_de_suite = self.content_classifier.is_letter_de_suite(blocks_content)
+        
+        if is_letter_de_suite:
+            print(f"Document {document_name} detected as 'lettre de suite'. Classifying blocks...")
+            self._classify_blocks(blocks)
 
-        # Compute embeddings if enabled
-        if self.use_embeddings:
-            for block in blocks:
-                if block.content:
-                    block.embedding = self.embedding_manager.compute_embedding(block.content)
-        
-        # Insert blocks using the document_name (pdf_path)
         self._insert_blocks(document_name, blocks, table_name)
+        return document_name
+    
+    def _classify_blocks(self, blocks):
+        """Classify blocks for content type, section type, and demand priority."""
+        current_section = None
         
-        return document_name # Return the name used for indexing
+        for block in blocks:
+            if not block.content:
+                continue
+            
+            content_type, section_type, demand_priority = self.content_classifier.classify_block(
+                block.content, current_section
+            )
+            
+            if content_type == ContentType.SECTION_HEADER:
+                current_section = section_type
+            
+            block.content_type = content_type.value
+            block.section_type = section_type.value if section_type else None
+            block.demand_priority = demand_priority
     
     def _insert_blocks(self, name, blocks, table_name=f"{schema_app_data}.rag_document_blocks"):
         """Insert blocks into database"""
         params_list = []
         
         for block in blocks:
-            # Extract bbox coordinates
             bbox = block.metadata.bbox
             x0 = bbox[0] if len(bbox) > 0 else None
             y0 = bbox[1] if len(bbox) > 1 else None
             x1 = bbox[2] if len(bbox) > 2 else None
             y1 = bbox[3] if len(bbox) > 3 else None
             
-            # Create parameter tuple - now using block_idx directly 
+            content_type = getattr(block, 'content_type', 'regular')
+            section_type = getattr(block, 'section_type', None)
+            demand_priority = getattr(block, 'demand_priority', None)
+            
             params = (
-                block.block_idx,  # Use block_idx as primary identifier
-                name,
-                block.content,
-                block.metadata.level,
-                block.metadata.page_idx,
-                block.metadata.tag,
-                block.metadata.block_class,
-                x0, y0, x1, y1,
-                block.parent_idx  # Changed from parent_id to parent_idx
+                block.block_idx, name, block.content, block.metadata.level,
+                block.metadata.page_idx, block.metadata.tag, block.metadata.block_class,
+                x0, y0, x1, y1, block.parent_idx, content_type, section_type, demand_priority
             )
             
             params_list.append(params)
         
-        # Insert all blocks - schema updated for block_idx
-        if self.use_embeddings:
-            query = f"""
-            INSERT INTO {table_name}
-            (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (name, block_idx) DO UPDATE SET
-            content = EXCLUDED.content,
-            level = EXCLUDED.level,
-            page_idx = EXCLUDED.page_idx,
-            tag = EXCLUDED.tag,
-            block_class = EXCLUDED.block_class,
-            x0 = EXCLUDED.x0,
-            y0 = EXCLUDED.y0,
-            x1 = EXCLUDED.x1,
-            y1 = EXCLUDED.y1,
-            parent_idx = EXCLUDED.parent_idx,
-            embedding = EXCLUDED.embedding
-            """
-            
-            # Add embedding to params
-            params_list = [(p + (block.embedding,)) for p, block in zip(params_list, blocks)]
-        else:
-            query = f"""
-            INSERT INTO {table_name}
-            (block_idx, name, content, level, page_idx, tag, block_class, 
-             x0, y0, x1, y1, parent_idx)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (name, block_idx) DO UPDATE SET
-            content = EXCLUDED.content,
-            level = EXCLUDED.level,
-            page_idx = EXCLUDED.page_idx,
-            tag = EXCLUDED.tag,
-            block_class = EXCLUDED.block_class,
-            x0 = EXCLUDED.x0,
-            y0 = EXCLUDED.y0,
-            x1 = EXCLUDED.x1,
-            y1 = EXCLUDED.y1,
-            parent_idx = EXCLUDED.parent_idx
-            """
+        query = f"""
+        INSERT INTO {table_name}
+        (block_idx, name, content, level, page_idx, tag, block_class, 
+         x0, y0, x1, y1, parent_idx, content_type, section_type, demand_priority)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (name, block_idx) DO UPDATE SET
+        content = EXCLUDED.content,
+        level = EXCLUDED.level,
+        page_idx = EXCLUDED.page_idx,
+        tag = EXCLUDED.tag,
+        block_class = EXCLUDED.block_class,
+        x0 = EXCLUDED.x0,
+        y0 = EXCLUDED.y0,
+        x1 = EXCLUDED.x1,
+        y1 = EXCLUDED.y1,
+        parent_idx = EXCLUDED.parent_idx,
+        content_type = EXCLUDED.content_type,
+        section_type = EXCLUDED.section_type,
+        demand_priority = EXCLUDED.demand_priority
+        """
         
         self.db_manager.execute_many(query, params_list)
 
@@ -535,68 +349,27 @@ class RAGSystem:
         if isinstance(user_query, str):
             processed_query = user_query.split()
         else:
-            raise ValueError(f"Unknown search strategy: {strategy}")
-        
-    def _text_search(self, query: List[str], source_names: Optional[List[str]], limit: int = 5):
-        """
-        Search using PostgreSQL full-text search with AND/OR fallback logic.
-        First tries to find results where all terms match (AND), 
-        then falls back to results where any term matches (OR) if AND yields nothing.
-        """
-        
-        # Helper function to build the base query and common parts
-        def build_search_query(ts_query_str: str, source_names: Optional[List[str]]) -> Tuple[str, List[Any]]:
-            base_query = f"""
-            SELECT 
-                name, 
-                block_idx,
-                content, 
-                page_idx, 
-                level,
-                tag,
-                block_class,
-                x0, 
-                y0, 
-                x1, 
-                y1,
-                parent_idx,
-                ts_rank_cd(content_tsv, to_tsquery('{TS_QUERY_LANGUAGE}', %s)) AS score,
-                CASE WHEN tag = 'header' THEN 1 ELSE 0 END AS is_header
-            FROM 
-                {schema_app_data}.rag_document_blocks
-            WHERE 
-                content_tsv @@ to_tsquery('{TS_QUERY_LANGUAGE}', %s)
-            """
-            params = [ts_query_str, ts_query_str]
+            processed_query = user_query
 
-            # Add source filter if specified
-            if source_names and len(source_names) > 0:
-                placeholders = ', '.join(['%s'] * len(source_names))
-                base_query += f" AND name IN ({placeholders})"
-                params.extend(source_names)
-            
-            # Add order by and limit
-            base_query += """
-            ORDER BY
-                is_header DESC,
-                level DESC,
-                score DESC
-            LIMIT %s
-            """
-            params.append(limit)
-            return base_query, params
-
-        # 1. Prepare base formatted elements (handle spaces within terms)
+        # Clean and format query terms
         formatted_elements = []
-        for element in query:
-            # Sanitize element: remove potential tsquery operators to avoid injection
-            sanitized_element = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
-            if not sanitized_element:
-                continue
-            if ' ' in sanitized_element:
-                # If element contains spaces, treat it as a phrase search within the term
-                formatted_element = ' & '.join(sanitized_element.split())
-                formatted_elements.append(f"({formatted_element})")
+        for element in processed_query:
+            sanitized = element.replace('|', '').replace('!', '').replace('(', '').replace(')', '').strip()
+            if sanitized:
+                formatted_elements.append(f"({' & '.join(sanitized.split())})" if ' ' in sanitized else sanitized)
+
+        join_clause_str = ""
+        where_join_conditions_list = []
+        order_by_join_clause_str = ""
+        ts_query_for_format = "" # Initialize for .format() later
+
+        if source_query:
+            # Parse source_query using regex for more robustness
+            _from_parts = re.split(r'\sFROM\s', source_query, 1, re.IGNORECASE)
+            if len(_from_parts) < 2:
+                # Log or handle error: source_query must contain FROM clause
+                # For now, we'll let it proceed, and it might result in an SQL error or empty results
+                pass # Or raise ValueError("source_query must contain FROM clause")
             else:
                 _after_from = _from_parts[1]
                 
@@ -778,34 +551,16 @@ class RAGSystem:
         """Get child blocks for a given parent"""
         query = f"""
         SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            parent_idx = %s
-            AND name = %s
-        ORDER BY
-            page_idx, block_idx
+            id, block_idx, content, name, page_idx, level, tag, block_class,
+            x0, y0, x1, y1, parent_idx
+        FROM {schema_app_data}.rag_document_blocks
+        WHERE parent_idx = %s AND name = %s
+        ORDER BY page_idx, block_idx
         LIMIT %s
         """
         
         results = self.db_manager.execute_query(query, (parent_idx, name, limit))
         
-        if not results:
-            return []
-            
         return [
             {
                 "id": row[0],
@@ -821,258 +576,30 @@ class RAGSystem:
                 "x1": row[10],
                 "y1": row[11],
                 "parent_idx": row[12],
-                "score": 1.0  # Default score for context blocks
+                "score": 1.0
             }
-            for row in results
+            for row in results 
         ]
     
-    def get_pdf_highlights(self, context_blocks):
-        """
-        Prepare highlighting annotations for a PDF based on context blocks
-        
-        Returns:
-            List of annotation objects compatible with the graph display
-        """
-        annotations = []
-        
-        # Process each block
-        for block in context_blocks:
-            # Skip blocks without coordinates
-            if block["x0"] is None or block["y0"] is None or block["x1"] is None or block["y1"] is None:
-                continue
-            
-            # Create highlight annotation in the required format
-            annotation = {
-                "page": block["page_idx"] + 1,  # Convert to 1-indexed page numbering
-                "x": block["x0"],
-                "y": block["y0"],
-                "height": block["y1"] - block["y0"],
-                "width": block["x1"] - block["x0"],
-                "color": "red",
-            }
-            
-            annotations.append(annotation)
-        
-        return annotations
-    
-    def query(self,
-              user_query: Union[str, List[str]], # Accept string or list for query
-              source_names: Optional[List[str]] = None,
-              max_results_per_source: int = 3,
-              get_children: bool = True,
-              strategy: SearchStrategy = SearchStrategy.TEXT # Allow specifying strategy
-              ) -> Dict[str, Any]:
-        """
-        Process a user query, group results by document, limit results per document,
-        and optionally fetch children.
-
-        Args:
-            user_query: The user's question (string or list of keywords).
-            source_names: List of document names to search within (optional).
-            max_results_per_source: Max number of top results per document (default: 3).
-            get_children: Whether to fetch child blocks for the results (default: True).
-            strategy: Search strategy to use (TEXT, EMBEDDING, HYBRID).
-
-        Returns:
-            Dictionary containing:
-                - success (bool): True if results were found.
-                - results (list): List of dictionaries, one per document, containing:
-                    - document_name (str)
-                    - results (list): Top N results for the document.
-                    - other_result_idx (list): Indices of remaining results for the document.
-                - message (str, optional): Error or warning message.
-        """
-        # Ensure user_query is a list for internal processing consistency
-        if isinstance(user_query, str):
-            # Basic split, might need refinement depending on expected query format
-            processed_query = user_query.split() 
-        else:
-            processed_query = user_query
-
-        # Determine the overall limit for the initial search.
-        # Fetch more initially to allow for better distribution across documents.
-        initial_limit = max(max_results_per_source * (len(source_names) if source_names else 5), 15)
-
-        search_results = self.search(
-            processed_query, # Use processed query list
-            source_names,
-            strategy=strategy,
-            limit=initial_limit
-        )
-
-        warning_message = None
-        final_results_by_doc = {}
-
-        # Handle case where specific sources were requested but yielded no results
-        if not search_results and source_names:
-            placeholders = ', '.join(['%s'] * len(source_names))
-            check_query = f"""
-            SELECT DISTINCT name 
-            FROM {schema_app_data}.rag_document_blocks 
-            WHERE name IN ({placeholders})
-            """
-            existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
-            existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
-            requested_sources_set = set(source_names)
-            missing_sources = sorted(list(requested_sources_set - existing_sources_set))
-
-            # Check if the requested source documents actually exist in the DB
-            placeholders = ', '.join(['%s'] * len(source_names))
-            check_query = f"""
-            SELECT DISTINCT name
-            FROM {schema_app_data}.rag_document_blocks
-            WHERE name IN ({placeholders})
-            """
-            try:
-                existing_sources_tuples = self.db_manager.execute_query(check_query, source_names)
-                existing_sources_set = {row[0] for row in existing_sources_tuples} if existing_sources_tuples else set()
-                requested_sources_set = set(source_names)
-                missing_sources = sorted(list(requested_sources_set - existing_sources_set))
-
-                if not missing_sources:
-                    # All requested sources exist, but the query yielded no results within them.
-                    return {
-                        "success": False,
-                        "message": "No relevant information found for the query in the specified document(s)."
-                    }
-                else:
-                    # Some requested sources don't exist
-                    print(f"Warning: Source document(s) not found: {', '.join(missing_sources)}. Retrying search across all documents.")
-                    warning_message = f"Source document(s) not found: {', '.join(missing_sources)}. Showing results from all documents."
-
-                    # Retry search across all documents
-                    search_results = self.search(
-                        processed_query,
-                        source_names=None, # Search all documents
-                        strategy=strategy,
-                        limit=initial_limit
-                    )
-            except Exception as e:
-                 return {"success": False, "message": f"Database error checking sources: {e}"}
-
-
-        # If still no results after potential retry, return failure
-        if not search_results:
-             return {
-                 "success": False,
-                 "message": warning_message or "No relevant information found in the documents."
-             }
-
-        # Group results by document name
-        grouped_results = {}
-        for block in search_results:
-            doc_name = block["name"]
-            if doc_name not in grouped_results:
-                grouped_results[doc_name] = []
-            grouped_results[doc_name].append(block)
-
-        # Process each document's results
-        final_output_list = []
-        for doc_name, blocks in grouped_results.items():
-            # Sort blocks within the document (assuming higher score is better)
-            blocks.sort(key=lambda x: x.get("score", 0), reverse=True)
-
-            # Select top N results
-            top_results = blocks[:max_results_per_source]
-            other_results = blocks[max_results_per_source:]
-            other_result_idx = [b["block_idx"] for b in other_results]
-
-            # Fetch children if requested
-            processed_top_results = []
-            for block in top_results:
-                 # Format the block according to the desired output structure
-                 formatted_block = {
-                     "idx": block["block_idx"],
-                     "content": block["content"],
-                     "page": block["page_idx"],
-                     "parent_idx": block["parent_idx"],
-                     "level": block["level"],
-                     "tag": block["tag"],
-                     # Add other relevant fields if needed, e.g., score?
-                     # "score": block.get("score")
-                 }
-                 if get_children:
-                     # Fetch children using the internal _get_children method
-                     children = self._get_children(block["block_idx"], doc_name) # Limit can be added here if needed
-                     # Format children similarly or as needed
-                     formatted_children = [
-                         {
-                             "idx": c["block_idx"],
-                             "content": c["content"],
-                             "page": c["page_idx"],
-                             "parent_idx": c["parent_idx"],
-                             "level": c["level"],
-                             "tag": c["tag"],
-                         } for c in children
-                     ]
-                     formatted_block["children"] = formatted_children
-                 else:
-                     formatted_block["children"] = [] # Ensure key exists
-
-                 processed_top_results.append(formatted_block)
-
-
-            # Add to the final list
-            final_output_list.append({
-                "document_name": doc_name,
-                "results": processed_top_results,
-                "other_result_idx": other_result_idx
-            })
-
-        # Construct the final success response
-        final_result = {
-            "success": True,
-            "results": final_output_list
-        }
-        if warning_message:
-            final_result["message"] = warning_message # Use 'message' key for warnings/errors
-
-        return final_result
-    
     def get_blocks_by_idx(self, block_indices, source_name=None, get_children=False):
-        """
-        Get blocks by their block_idx values
-        
-        Args:
-            block_indices: List of block_idx values to retrieve
-            source_name: Name of the document to search in (optional)
-            get_children: Whether to also get children of these blocks
-            
-        Returns:
-            List of blocks matching the requested block indices
-        """
+        """Get blocks by their block_idx values"""
         if not block_indices:
             return []
         
-        # Convert single index to list
         if not isinstance(block_indices, list):
             block_indices = [block_indices]
         
         placeholders = ', '.join(['%s'] * len(block_indices))
         query = f"""
         SELECT 
-            id,
-            block_idx,
-            content, 
-            name,
-            page_idx, 
-            level,
-            tag,
-            block_class,
-            x0, 
-            y0, 
-            x1, 
-            y1,
-            parent_idx
-        FROM 
-            {schema_app_data}.rag_document_blocks
-        WHERE 
-            block_idx IN ({placeholders})
+            id, block_idx, content, name, page_idx, level, tag, block_class,
+            x0, y0, x1, y1, parent_idx
+        FROM {schema_app_data}.rag_document_blocks
+        WHERE block_idx IN ({placeholders})
         """
         
         params = block_indices.copy()
         
-        # Add source filter if specified
         if source_name:
             query += " AND name = %s"
             params.append(source_name)
@@ -1097,12 +624,11 @@ class RAGSystem:
                 "x1": row[10],
                 "y1": row[11],
                 "parent_idx": row[12],
-                "score": 1.0  # Default score for directly retrieved blocks
+                "score": 1.0
             }
             for row in results
         ]
         
-        # If get_children is True, also get children for each block
         if get_children:
             all_blocks = blocks.copy()
             for block in blocks:
@@ -1111,7 +637,8 @@ class RAGSystem:
             blocks = all_blocks
         
         return blocks
-    
+
+
     def get_annotations_by_indices(self, pdf_file, block_indices):
         """
         Convert block indices to PDF annotation objects for highlighting
