@@ -11,22 +11,35 @@ from db_manager import DatabaseManager
 graph_store = GraphStore()
 db_manager = DatabaseManager()
 
+SUPPORTED_CHART_TYPES = ['bar', 'scatter', 'line', 'pie']
+
 def create_graph(
-    query: Optional[str] = None, # SQL query to fetch data (use either query or data)
-    data: Optional[List[Dict[str, Any]]] = None, # Direct data input as list of dicts (use either query or data)
-    chart_type: str ='bar',      # chart type (bar, scatter, line, pie, etc.)
-    x_col: str = None,            # column name for the X-axis
-    y_col: str = None,            # column name for the Y-axis
-    color_col: str = None,        # column name for color encoding (categories)
-    size_col: str = None,         # column name for size encoding (e.g., scatter bubble chart)
-    title: str='My Graph',      # chart title
-    width: int =800,             # chart width
-    height: int=600,            # chart height
-    orientation:str='v',       # orientation 'v' or 'h' for bar charts
-    labels: dict=None,           # dictionary for renaming axis labels or legend labels
-    template: str='plotly_white', # chart style template
-    markers: bool = False,        # whether to show markers on line charts
-    preprocess: Optional[Dict[str, Union[bool, str, List[str]]]] = None  # preprocessing instructions
+    query: Optional[str] = None,
+    data: Optional[List[Dict[str, Any]]] = None,
+    chart_type: str = 'bar',
+    x_col: Optional[str] = None,
+    y_col: Optional[str] = None,
+    color_col: Optional[str] = None,
+    size_col: Optional[str] = None,
+    symbol_col: Optional[str] = None,
+    hover_data: Optional[List[str]] = None,
+    text_auto: Union[bool, str] = False,
+    facet_row: Optional[str] = None,
+    facet_col: Optional[str] = None,
+    trendline: Optional[str] = None,
+    log_x: bool = False,
+    log_y: bool = False,
+    line_group: Optional[str] = None,
+    line_dash: Optional[str] = None,
+    barmode: Optional[str] = None,
+    title: str = 'My Graph',
+    width: int = 800,
+    height: int = 600,
+    orientation: str = 'v',
+    labels: Optional[Dict[str, str]] = None,
+    template: str = 'plotly_white',
+    markers: bool = False,
+    preprocess: Optional[Dict[str, Union[bool, str, List[str], Dict[str, Any]]]] = None
 ):
     """
     Generates a Plotly chart as JSON from either a SQL query or directly provided data.
@@ -38,26 +51,37 @@ def create_graph(
     Args:
         query (Optional[str]): A valid SQL query to fetch data. Provide either 'query' or 'data'.
         data (Optional[List[Dict[str, Any]]]): Data provided directly as a list of dictionaries. Provide either 'query' or 'data'.
-        chart_type (str): The type of chart to generate (bar, scatter, line, pie, etc.)
-        x_col (str): The column name for the X-axis.
-        y_col (str): The column name for the Y-axis.
-        color_col (str): The column name for color encoding (categories)
-        size_col (str): The column name for size encoding (e.g., scatter bubble chart)
-        title (str): The chart title
-        width (int): The chart width
-        height (int): The chart height
-        orientation (str): The orientation for bar charts ('v' or 'h')
-        labels (dict): Dictionary for renaming axis labels or legend labels
-        template (str): The chart style template
-        markers (bool): Whether to show markers on line charts (default: False)
+        chart_type (str): Type of chart. Supported: 'bar', 'scatter', 'line', 'pie'. Default: 'bar'.
+        x_col (Optional[str]): Column name for the X-axis.
+        y_col (Optional[str]): Column name for the Y-axis.
+        color_col (Optional[str]): Column name for color encoding (categories).
+        size_col (Optional[str]): Column name for size encoding (e.g., scatter bubble chart).
+        symbol_col (Optional[str]): Column name for symbol encoding (scatter, line charts).
+        hover_data (Optional[List[str]]): List of column names to include in hover tooltips.
+        text_auto (Union[bool, str]): If True, display values on bars/markers. If str (e.g., '.2s'), use d3-format. Default: False.
+        facet_row (Optional[str]): Column name to create faceted subplots (rows).
+        facet_col (Optional[str]): Column name to create faceted subplots (columns).
+        trendline (Optional[str]): For scatter plots, adds a trendline (e.g., 'ols').
+        log_x (bool): If True, set X-axis to logarithmic scale. Default: False.
+        log_y (bool): If True, set Y-axis to logarithmic scale. Default: False.
+        line_group (Optional[str]): For line charts, column to group data for drawing separate lines.
+        line_dash (Optional[str]): For line charts, column to map to different dash styles.
+        barmode (Optional[str]): For bar charts, mode of bar display ('group', 'stack', 'relative', 'overlay'). Default: 'relative' (like 'stack').
+        title (str): Chart title. Default: 'My Graph'.
+        width (int): Chart width in pixels. Default: 800.
+        height (int): Chart height in pixels. Default: 600.
+        orientation (str): Orientation for bar charts ('v' or 'h'). Default: 'v'.
+        labels (Optional[Dict[str, str]]): Dictionary for renaming axis labels or legend titles.
+        template (str): Plotly chart style template. Default: 'plotly_white'.
+        markers (bool): Whether to show markers on line charts. Default: False.
         preprocess (Optional[Dict]): Preprocessing instructions for data transformation. Supported options:
-            - create_date: Set to 'from_year_month' to create a 'date' column from 'year' and 'month'
-            - use_date_for_x: Set to True to use the created 'date' column as x-axis (default: True)
+            - create_date: Set to 'from_year_month' to create a 'date' column from 'year' and 'month'.
+            - use_date_for_x: Set to True to use the created 'date' column as x-axis (default: True).
             - aggregate: Dict with settings for data aggregation:
-                - group_by: Column to group by
-                - column: Column to aggregate
-                - function: Aggregation function ('sum', 'mean', etc.)
-                - new_column: Name for the aggregated column (default: {column}_{function})
+                - group_by (str or List[str]): Column(s) to group by.
+                - column (str): Column to aggregate.
+                - function (str): Aggregation function ('sum', 'mean', etc.).
+                - new_column (str): Name for the aggregated column (default: {column}_{function}).
     """
 
     # print('Graph with the following parameters:')
@@ -79,6 +103,9 @@ def create_graph(
         raise ValueError("Provide either 'query' or 'data', not both.")
     if not query and not data:
         raise ValueError("Must provide either 'query' or 'data'.")
+    
+    if chart_type not in SUPPORTED_CHART_TYPES:
+        raise ValueError(f"Unsupported chart_type: '{chart_type}'. Supported types are: {SUPPORTED_CHART_TYPES}")
 
     # 1) Load data into DataFrame
     if data:
@@ -182,6 +209,27 @@ def create_graph(
         if size_col and size_col not in df.columns:
             columns_str = ", ".join(df.columns)
             raise ValueError(f"Data Error: Column '{size_col}' for size not found. Available columns: {columns_str}")
+        if symbol_col and symbol_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{symbol_col}' for symbol not found. Available columns: {columns_str}")
+        if facet_row and facet_row not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{facet_row}' for facet_row not found. Available columns: {columns_str}")
+        if facet_col and facet_col not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{facet_col}' for facet_col not found. Available columns: {columns_str}")
+        if line_group and line_group not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{line_group}' for line_group not found. Available columns: {columns_str}")
+        if line_dash and line_dash not in df.columns:
+            columns_str = ", ".join(df.columns)
+            raise ValueError(f"Data Error: Column '{line_dash}' for line_dash not found. Available columns: {columns_str}")
+        if hover_data:
+            for h_col in hover_data:
+                if h_col not in df.columns:
+                    columns_str = ", ".join(df.columns)
+                    raise ValueError(f"Data Error: Column '{h_col}' in hover_data not found. Available columns: {columns_str}")
+
     elif 'df' not in locals() or df.empty:
         # This case should ideally be caught earlier, but as a safeguard:
         # If df doesn't exist or is empty, we can't proceed with plotting.
@@ -205,7 +253,14 @@ def create_graph(
             title=title,
             template=template,
             width=width,
-            height=height
+            height=height,
+            barmode=barmode,
+            text_auto=text_auto,
+            facet_row=facet_row,
+            facet_col=facet_col,
+            log_x=log_x,
+            log_y=log_y,
+            hover_data=hover_data
         )
     elif chart_type == 'scatter':
         # Scatter (point cloud)
@@ -215,11 +270,19 @@ def create_graph(
             y=y_col,
             color=color_col,
             size=size_col,
+            symbol=symbol_col,
             labels=labels,
             title=title,
             template=template,
             width=width,
-            height=height
+            height=height,
+            hover_data=hover_data,
+            facet_row=facet_row,
+            facet_col=facet_col,
+            trendline=trendline,
+            log_x=log_x,
+            log_y=log_y,
+            text_auto=text_auto
         )
     elif chart_type == 'line':
         # Line chart
@@ -228,44 +291,46 @@ def create_graph(
             x=x_col,
             y=y_col,
             color=color_col,
+            symbol=symbol_col,
             labels=labels,
             title=title,
             template=template,
             width=width,
             height=height,
-            markers=markers
+            markers=markers,
+            hover_data=hover_data,
+            facet_row=facet_row,
+            facet_col=facet_col,
+            log_x=log_x,
+            log_y=log_y,
+            line_group=line_group,
+            line_dash=line_dash,
+            text_auto=text_auto
         )
-        
-        if markers and not hasattr(px.line, 'markers'):
+        # The `markers` argument in px.line might not always render them if lines are also present.
+        # Explicitly setting mode can help ensure markers are shown.
+        if markers: #  and not symbol_col (symbol_col implies markers)
             fig.update_traces(mode='lines+markers')
+
     elif chart_type == 'pie':
         # Pie chart
-        if not x_col:
-            raise ValueError("For a pie chart, please specify 'x_col' for category names (or 'values' for quantities).")
+        if not x_col: # For pie, x_col is typically used for names
+            raise ValueError("For a pie chart, please specify 'x_col' for category names.")
+        if not y_col: # and y_col for values
+             raise ValueError("For a pie chart, please specify 'y_col' for quantities/values.")
         fig = px.pie(
             df,
             names=x_col,
             values=y_col,
-            color=color_col,
+            color=color_col, # Optional color grouping
             title=title,
             template=template,
             width=width,
-            height=height
+            height=height,
+            hover_data=hover_data,
+            labels=labels
         )
-    else:
-        # Custom chart type or fallback
-        fig = px.bar(
-            df,
-            x=x_col,
-            y=y_col,
-            color=color_col,
-            orientation=orientation,
-            labels=labels,
-            title=f"Chart type '{chart_type}' not handled, defaulting to bar chart.",
-            template=template,
-            width=width,
-            height=height
-        )
+    # No 'else' block needed due to chart_type validation at the beginning.
 
     fig.update_layout(
         showlegend=True,
@@ -285,5 +350,5 @@ def create_graph(
     print(f"Graph stored with ID: {id}")
     return id
 
-display_graph: BaseTool = tool(create_graph)
-display_graph.name = "Graph_Viewer"
+create_graph: BaseTool = tool(create_graph)
+create_graph.name = "Create_Graph"
