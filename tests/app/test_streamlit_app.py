@@ -11,7 +11,7 @@ from schema.models import OpenAIModelName
 
 def test_app_simple_non_streaming(mock_agent_client):
     """Test the full app - happy path"""
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
 
     WELCOME_START = "Hello! I'm an AI agent. Ask me anything!"
     PROMPT = "Know any jokes?"
@@ -36,7 +36,7 @@ def test_app_simple_non_streaming(mock_agent_client):
 
 def test_app_settings(mock_agent_client):
     """Test the full app - happy path"""
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
 
     PROMPT = "Know any jokes?"
     RESPONSE = "Sure! Here's a joke:"
@@ -72,10 +72,10 @@ def test_app_settings(mock_agent_client):
 def test_app_thread_id_history(mock_agent_client):
     """Test the thread_id is generated"""
 
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
 
     # Reset and set thread_id
-    at = AppTest.from_file("../../src/streamlit_app.py")
+    at = AppTest.from_file("../../src/Chat.py")
     at.query_params["thread_id"] = "1234"
     HISTORY = [
         ChatMessage(type="human", content="What is the weather?"),
@@ -102,7 +102,7 @@ def test_app_feedback(mock_agent_client):
 @pytest.mark.asyncio
 async def test_app_streaming(mock_agent_client):
     """Test the app with streaming enabled - including tool messages"""
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
 
     # Setup mock streaming response
     PROMPT = "What is 6 * 7?"
@@ -144,7 +144,7 @@ async def test_app_streaming(mock_agent_client):
 @pytest.mark.asyncio
 async def test_app_init_error(mock_agent_client):
     """Test the app with an error in the agent initialization"""
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
 
     # Setup mock streaming response
     PROMPT = "What is 6 * 7?"
@@ -162,7 +162,7 @@ async def test_app_init_error(mock_agent_client):
 
 
 def test_app_new_chat_btn(mock_agent_client):
-    at = AppTest.from_file("../../src/streamlit_app.py").run()
+    at = AppTest.from_file("../../src/Chat.py").run()
     thread_id_a = at.session_state.thread_id
 
     at.sidebar.button[0].click().run()

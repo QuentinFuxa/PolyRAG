@@ -65,7 +65,7 @@ python src/run_service.py
 
 # In another terminal
 source .venv/bin/activate
-streamlit run src/streamlit_app.py
+streamlit run src/Chat.py
 ```
 
 ### Run with Docker
@@ -102,7 +102,7 @@ Create a `.env` file with the following options:
 - `src/rag_system.py`: PDF processing and search logic
 - `scripts/index-folder-script.py`: Script to index local PDFs
 - `scripts/index-urls-script.py`: Script to index PDFs from URLs
-- `src/streamlit_app.py`: Chat interface
+- `src/Chat.py`: Chat interface
 - `docker/`: Dockerfiles and `compose.yaml`
 
 ## Utility Scripts

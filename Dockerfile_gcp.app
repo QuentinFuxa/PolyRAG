@@ -12,4 +12,4 @@ RUN uv sync --frozen
 
 COPY .variables ./.variables
 COPY src/ .
-CMD ["streamlit", "run", "streamlit_app.py"]
+CMD ["streamlit", "run", "Chat.py"]
