@@ -1951,6 +1951,152 @@ wheels = [
 ]
 
 [[package]]
+name = "polyrag"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "bcrypt" },
+    { name = "duckduckgo-search" },
+    { name = "ecdsa" },
+    { name = "fastapi" },
+    { name = "grpcio" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-aws" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-groq" },
+    { name = "langchain-ollama" },
+    { name = "langchain-openai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "langgraph-supervisor" },
+    { name = "langsmith" },
+    { name = "llmsherpa" },
+    { name = "numexpr" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "openai" },
+    { name = "pandas" },
+    { name = "passlib" },
+    { name = "plotly" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "psycopg2-binary" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyowm" },
+    { name = "pypdf" },
+    { name = "python-dotenv" },
+    { name = "python-http-client" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "sendgrid" },
+    { name = "setuptools" },
+    { name = "sqlalchemy" },
+    { name = "streamlit" },
+    { name = "streamlit-pdf-viewer" },
+    { name = "tiktoken" },
+    { name = "uuid" },
+    { name = "uvicorn" },
+    { name = "werkzeug" },
+]
+
+[package.dev-dependencies]
+client = [
+    { name = "httpx" },
+    { name = "plotly" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "streamlit" },
+    { name = "streamlit-pdf-viewer" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bcrypt", specifier = "==4.0.1" },
+    { name = "duckduckgo-search", specifier = ">=7.3.0" },
+    { name = "ecdsa", specifier = "==0.19.1" },
+    { name = "fastapi", specifier = "~=0.115.5" },
+    { name = "grpcio", specifier = ">=1.68.0" },
+    { name = "httpx", specifier = "~=0.27.2" },
+    { name = "jiter", specifier = "~=0.8.2" },
+    { name = "langchain-anthropic", specifier = "~=0.3.0" },
+    { name = "langchain-aws", specifier = "~=0.2.14" },
+    { name = "langchain-community", specifier = "~=0.3.16" },
+    { name = "langchain-core", specifier = "~=0.3.33" },
+    { name = "langchain-google-genai", specifier = "~=2.0.11" },
+    { name = "langchain-groq", specifier = "~=0.2.1" },
+    { name = "langchain-ollama", specifier = "~=0.2.3" },
+    { name = "langchain-openai", specifier = "~=0.3.0" },
+    { name = "langgraph", specifier = "~=0.3.5" },
+    { name = "langgraph-checkpoint-postgres", specifier = "~=2.0.13" },
+    { name = "langgraph-checkpoint-sqlite", specifier = "~=2.0.1" },
+    { name = "langgraph-supervisor", specifier = "~=0.0.8" },
+    { name = "langsmith", specifier = "~=0.1.145" },
+    { name = "llmsherpa", specifier = ">=0.1.0" },
+    { name = "numexpr", specifier = "~=2.10.1" },
+    { name = "numpy", marker = "python_full_version < '3.13'", specifier = "~=1.26.4" },
+    { name = "numpy", marker = "python_full_version >= '3.13'", specifier = "~=2.2.3" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "pandas", specifier = "~=2.2.3" },
+    { name = "passlib", specifier = "==1.7.4" },
+    { name = "plotly", specifier = ">=5.13.0" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.2.4" },
+    { name = "psycopg2-binary", specifier = ">=2.9.5" },
+    { name = "pyarrow", specifier = ">=18.1.0" },
+    { name = "pydantic", specifier = "~=2.10.1" },
+    { name = "pydantic-settings", specifier = "~=2.6.1" },
+    { name = "pyowm", specifier = "~=3.3.0" },
+    { name = "pypdf", specifier = "~=5.6.0" },
+    { name = "python-dotenv", specifier = "~=1.0.1" },
+    { name = "python-http-client", specifier = "==3.3.7" },
+    { name = "python-multipart", specifier = "~=0.0.20" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "sendgrid", specifier = "==6.12.3" },
+    { name = "setuptools", specifier = "~=75.6.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "streamlit", specifier = "~=1.44.1" },
+    { name = "streamlit-pdf-viewer", specifier = ">=0.0.22" },
+    { name = "tiktoken", specifier = ">=0.8.0" },
+    { name = "uuid", specifier = ">=1.30" },
+    { name = "uvicorn", specifier = "~=0.32.1" },
+    { name = "werkzeug", specifier = "==3.1.3" },
+]
+
+[package.metadata.requires-dev]
+client = [
+    { name = "httpx", specifier = "~=0.27.2" },
+    { name = "plotly", specifier = ">=5.13.0" },
+    { name = "pydantic", specifier = "~=2.10.1" },
+    { name = "python-dotenv", specifier = "~=1.0.1" },
+    { name = "streamlit", specifier = "~=1.44.1" },
+    { name = "streamlit-pdf-viewer", specifier = "~=0.0.23" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "ruff" },
+]
+
+[[package]]
+>>>>>>> Stashed changes
 name = "pre-commit"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2368,6 +2514,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/5a/0f44ccc4b81d23b9c84c821532e269727a64f3335c4231c9c16702809719/pyowm-3.3.0.tar.gz", hash = "sha256:8196f77c91eac680676ed5ee484aae8a165408055e3e2b28025cbf60b8681e03", size = 4516988 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6e/88/1279817aa7f5988a2ff42a6755fd371f3c1806aca377cb63b3d16684b174/pyowm-3.3.0-py3-none-any.whl", hash = "sha256:86463108e7613171531ba306040b43c972b3fc0b0acf73b12c50910cdd2107ab", size = 4547201 },
+]
+
+[[package]]
+name = "pypdf"
+version = "5.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/46/67de1d7a65412aa1c896e6b280829b70b57d203fadae6859b690006b8e0a/pypdf-5.6.0.tar.gz", hash = "sha256:a4b6538b77fc796622000db7127e4e58039ec5e6afd292f8e9bf42e2e985a749", size = 5023749 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/8b/dc3a72d98c22be7a4cbd664ad14c5a3e6295c2dbdf572865ed61e24b5e38/pypdf-5.6.0-py3-none-any.whl", hash = "sha256:ca6bf446bfb0a2d8d71d6d6bb860798d864c36a29b3d9ae8d7fc7958c59f88e7", size = 304208 },
 ]
 
 [[package]]

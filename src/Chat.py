@@ -19,10 +19,10 @@ from frontend.pdf_viewer_with_annotations import display_pdf
 
 from db_manager import DatabaseManager
 from display_texts import dt
-import auth_service
+from auth_helpers import ensure_authenticated, logout
+
 
 NO_AUTH = True
-
 
 APP_TITLE = dt.APP_TITLE
 APP_ICON = dt.APP_ICON
@@ -72,12 +72,6 @@ def pdf_dialog():
         if not current_agent_client: st.error("Agent client not available for PDF dialog.")
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON): st.rerun()
 
-@st.dialog('User', width="small")
-def user_modal():
-    # st.markdown("### Profil utilisateur")
-    st.markdown(f"**Email :** {st.session_state.current_user_email}")
-    if st.button("Logout", key="logout_button_modal", type='primary'):
-        logout()
         
 @st.dialog(dt.FEEDBACK_BUTTON, width="small")
 def user_feedback_modal():
@@ -154,7 +148,7 @@ def logout():
 async def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, menu_items={})
     if dt.LOGO:
-        st.logo(image="", size="large")
+        st.logo(image=dt.LOGO, size="large")
     
 
 
@@ -169,7 +163,7 @@ async def main() -> None:
             text-align: left !important;
         }
         div[data-testid="stSidebarHeader"] > img, div[data-testid="collapsedControl"] > img {
-            height: 3rem;
+            height: 4rem;
             width: auto;
         }
         div[data-testid="stSidebarHeader"], div[data-testid="stSidebarHeader"] > *,
@@ -181,17 +175,12 @@ async def main() -> None:
     """
     st.markdown(custom_css, unsafe_allow_html=True)
 
-    if NO_AUTH:
-        st.session_state.current_user_id = '00000000-0000-0000-0000-000000000001'
-        st.session_state.current_user_email = "user@test.test"
-
-    if "current_user_id" not in st.session_state:
-        if not login_ui():
-            st.stop() # Stop execution if login is not successful
+    if not ensure_authenticated():
+        st.stop() # ensure_authenticated calls st.stop() if login fails, but as a safeguard.
     
     current_user_id: UUID_TYPE = st.session_state.current_user_id
-    current_user_email = st.session_state.get("current_user_email", "User")
-    
+    current_user_email = st.session_state.get("current_user_email", "User") # Default to "User"
+        
     if "current_user_id" not in st.session_state:
         st.session_state.current_user_id = current_user_id
         st.session_state.current_user_email = current_user_email
@@ -254,22 +243,22 @@ async def main() -> None:
         username = current_user_email.split("@")[0] if current_user_email else "User"
         username = username.replace('.', ' ').title()
 
-        col1, col2 = st.columns([0.4, 0.6])
-        with col1:
-            if st.button(
-                f"{username}",
-                key="user_button",
-                help="Show user information",
-                icon=":material/account_circle:"
-            ):
-                user_modal()
-        with col2:
-            if st.button(
-                dt.FEEDBACK_BUTTON,
-                key="user_settings_button",
-                icon=":material/comment:"
-            ):
-                user_feedback_modal()
+        # col1, col2 = st.columns([0.4, 0.6])
+        # with col1:
+        #     if st.button(
+        #         f"{username}",
+        #         key="user_button",
+        #         help="Show user information",
+        #         icon=":material/account_circle:"
+        #     ):
+        #         user_modal()
+        # with col2:
+        #     if st.button(
+        #         dt.FEEDBACK_BUTTON,
+        #         key="user_settings_button",
+        #         icon=":material/comment:"
+        #     ):
+        #         user_feedback_modal()
 
         model_idx = agent_client.info.models.index(agent_client.info.default_model)
         model = 'gpt-4o'
