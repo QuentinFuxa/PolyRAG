@@ -2005,7 +2005,6 @@ dev = [
 ]
 
 [[package]]
->>>>>>> Stashed changes
 name = "pre-commit"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
