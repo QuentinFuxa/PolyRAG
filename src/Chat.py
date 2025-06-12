@@ -150,8 +150,20 @@ async def main() -> None:
     if dt.LOGO:
         st.logo(image=dt.LOGO, size="large")
     
-
-
+    if dt.BIG_LOGO:
+        css_big_logo = """
+        div[data-testid="stSidebarHeader"] > img, div[data-testid="collapsedControl"] > img {
+            height: 4rem;
+            width: auto;
+        }
+        div[data-testid="stSidebarHeader"], div[data-testid="stSidebarHeader"] > *,
+        div[data-testid="collapsedControl"], div[data-testid="collapsedControl"] > * {
+            display: flex;
+            align-items: center;
+        }
+        """
+        st.markdown(f"<style>{css_big_logo}</style>", unsafe_allow_html=True)
+    
     custom_css = """
     <style>
         div[class*=\"st-key-conv_\"] {
@@ -161,15 +173,6 @@ async def main() -> None:
             display: block !important;
             width: 100% !important;
             text-align: left !important;
-        }
-        div[data-testid="stSidebarHeader"] > img, div[data-testid="collapsedControl"] > img {
-            height: 4rem;
-            width: auto;
-        }
-        div[data-testid="stSidebarHeader"], div[data-testid="stSidebarHeader"] > *,
-        div[data-testid="collapsedControl"], div[data-testid="collapsedControl"] > * {
-            display: flex;
-            align-items: center;
         }
     </style>
     """
