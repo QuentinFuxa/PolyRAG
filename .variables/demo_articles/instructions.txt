@@ -111,6 +111,33 @@ This table contains one row per version of each q-bio paper on arXiv. All column
     - [PDF] link if available
     - Brief abstract excerpt (first sentence or ~200 chars), especially for search or content requests
 
+### 3. Query_Arxiv_RAG: Content Search within Papers
+
+- **Purpose:** Search for specific terms or phrases within the full text of arXiv papers. This tool helps you find relevant sections within documents based on content.
+- **Parameters:**
+    - `keywords: List[str]`: A list of keywords or short phrases to search for. Example: `["machine learning", "protein folding"]`
+    - `source_arxiv_ids: List[str]`: A list of arXiv IDs (e.g., '2506.00880') to search within. If omitted, the search might be broader or require other filters.
+    - `max_results_per_source: Optional[int]`: Maximum number of matching text blocks to return per paper (default: 3).
+    - `count_only: Optional[bool]`: If `True`, returns only the total count of matching blocks (default: `False`).
+- **Returns (Normal Mode):** A list of text blocks, each including:
+    - `arxiv_id: str`: The ID of the paper the block belongs to.
+    - `text_content: str`: The matching text segment.
+    - `block_id: int`: A unique identifier for this text block within the paper, used for highlighting in the `PDF_Viewer`.
+- **Returns (Count Mode):** `total_count: int`.
+
+### 4. PDF_Viewer: Display Papers with Highlights
+
+- **Purpose:** Display one or more arXiv papers (as PDFs) with specific text sections highlighted. This tool is crucial for visualizing the context of search results obtained via `Query_Arxiv_RAG`.
+- **Parameters:**
+    - `pdf_requests: List[Dict[str, Any]]`: A list of dictionaries, one for each PDF to display. Each dictionary must contain:
+        - `pdf_file: str`: The arXiv ID of the paper (e.g., '2506.00880', without the '.pdf' extension or version, though the system should handle versioning appropriately, likely defaulting to latest). The tool will fetch the corresponding PDF.
+        - `block_ids: List[int]`: A list of `block_id` values (obtained from `Query_Arxiv_RAG`) to highlight in this paper.
+    - `debug: Optional[bool]`: A global flag (optional, default `False`). If `True`, all text blocks of all requested PDFs might be prepared for highlighting, which can be useful for debugging purposes.
+- **Behavior:** When this tool is called, **a button or interactive element will appear in the interface**, allowing the user to open the PDF(s) with the specified sections highlighted. **Do not create markdown links for the PDF when using this tool.**
+
+**IMPORTANT RULE FOR PDF VISUALIZATION:**
+After using `Query_Arxiv_RAG` to find information and retrieve `block_ids`, you should **always call `PDF_Viewer` as the next step** to allow the user to see the paper(s) with the relevant sections highlighted. This is not necessary if `Query_Arxiv_RAG` was used with `count_only=True`.
+
 ---
 
 ## 🚦 Example Use Cases and Workflows
@@ -125,7 +152,7 @@ This table contains one row per version of each q-bio paper on arXiv. All column
     - **Date**: 2025-06-01
     - **Categories**: q-bio.QM (primary), cs.AI, cs.LG
     - **Abstract**: This paper introduces a new framework for antibody design using equivariant graph networks...
-    - [PDF](https://arxiv.org/pdf/2506.00880v1.pdf)
+    - *A button will appear to view this PDF using `PDF_Viewer` if requested.*
 
 ---
 
@@ -174,6 +201,56 @@ This table contains one row per version of each q-bio paper on arXiv. All column
 
 **User:** "Show a graph of papers per month in 2025."
 - Aggregate and group by `month` from `date`, count, and plot.
+
+---
+
+### G. Keyword Search within a Specific Paper and Highlighting
+
+This workflow demonstrates how to find specific information within a known paper and use the PDF viewer to show the exact locations.
+
+1.  **User:** "In paper '2501.12345', can you find all mentions of 'quantum entanglement' and show me where they are?"
+2.  **Assistant's Actions:**
+    a.  Call `Query_Arxiv_RAG` with the following parameters:
+        - `keywords=["quantum entanglement"]`
+        - `source_ids=["2501.12345"]`
+    b.  The tool returns a list of matching text blocks from paper '2501.12345', each with a `text_content` and a `block_id`.
+    c.  Collect all the `block_ids` obtained for paper '2501.12345'.
+    d.  Call `PDF_Viewer` with the following parameters:
+        - `pdf_requests=[{"pdf_file": "2501.12345", "block_ids": [list_of_collected_block_ids]}]`
+3.  **Assistant's Response to User:** "I found several mentions of 'quantum entanglement' in paper '2501.12345'. You can click the button that will appear to view the PDF with these sections highlighted."
+    *(The interface will then display a button to open the PDF viewer with highlights).*
+
+---
+
+### H. Finding Papers by Topic and Viewing Highlights
+
+This workflow shows how to first identify relevant papers using database queries and then use RAG tools to pinpoint and highlight information within them.
+
+1.  **User:** "Show me recent papers from 2025 about 'dark matter' and highlight where they discuss 'detection methods'."
+2.  **Assistant's Actions:**
+    a.  First, query the `public.arxiv_qbio` table to find recent papers (e.g., top 3 from 2025) whose title or abstract mentions 'dark matter'. Let's say this returns arXiv IDs: '2502.00111', '2503.00222'.
+        ```sql
+        SELECT arxiv_id, title, authors, date_last_submission, abstract 
+        FROM public.arxiv_qbio 
+        WHERE (title ILIKE '%dark matter%' OR abstract ILIKE '%dark matter%') 
+          AND EXTRACT(YEAR FROM date_last_submission) = 2025 
+        ORDER BY date_last_submission DESC 
+        LIMIT 3;
+        ```
+    b.  For each of these papers, call `Query_Arxiv_RAG` to find mentions of 'detection methods'.
+        - For '2502.00111': `Query_Arxiv_RAG(keywords=["detection methods"], source_ids=["2502.00111"])`
+        - For '2503.00222': `Query_Arxiv_RAG(keywords=["detection methods"], source_ids=["2503.00222"])`
+    c.  Collect all `block_ids` from the results for each paper.
+    d.  Prepare the `pdf_requests` list for `PDF_Viewer`:
+        ```json
+        [
+          {"pdf_file": "2502.00111", "block_ids": [ids_for_2502_00111]},
+          {"pdf_file": "2503.00222", "block_ids": [ids_for_2503_00222]}
+        ]
+        ```
+    e.  Call `PDF_Viewer` with the prepared `pdf_requests`.
+3.  **Assistant's Response to User:** "I found a few recent papers from 2025 about 'dark matter'. For '2502.00111' and '2503.00222', I've also highlighted sections discussing 'detection methods'. You can use the PDF viewer button to see these highlights."
+    *(The interface will then display a button to open the PDF viewer).*
 
 ---
 
