@@ -741,18 +741,16 @@ async def get_conversation_title(thread_id: str, user_id: Optional[UUID] = None)
 
 
 @router.post("/rag/annotations", response_model=AnnotationsResponse)
-async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse: # user_id is in request model
+async def get_rag_annotations(request: AnnotationsRequest) -> AnnotationsResponse:
     """
     Get highlighting annotations for specified blocks in a PDF.
     """
-    # user_id can be accessed via request.user_id if RAGSystem needs it
     logger.info(f"RAG annotations requested for {request.pdf_file}, user_id: {request.user_id}")
     try:
-        # TODO: Modify rag_system.get_annotations_by_indices if it needs to be user-aware
         annotations = rag_system.get_annotations_by_indices(
             pdf_file=request.pdf_file,
             block_indices=request.block_indices
-            # user_id=request.user_id # Pass if method supports
+            # user_id=request.user_id
         )
         return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
     except Exception as e:
@@ -765,13 +763,11 @@ async def debug_rag_blocks(request: DebugBlocksRequest) -> AnnotationsResponse: 
     """
     Get all block annotations for a PDF for debugging.
     """
-    # user_id can be accessed via request.user_id if RAGSystem needs it
     logger.info(f"RAG debug_blocks requested for {request.pdf_file}, user_id: {request.user_id}")
     try:
-        # TODO: Modify rag_system.debug_blocks if it needs to be user-aware
         annotations = rag_system.debug_blocks(
             pdf_file=request.pdf_file
-            # user_id=request.user_id # Pass if method supports
+            # user_id=request.user_id
         )
         return AnnotationsResponse(annotations=[AnnotationItem(**anno) for anno in annotations])
     except Exception as e:

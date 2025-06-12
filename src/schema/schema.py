@@ -1,4 +1,4 @@
-from typing import Any, Literal, NotRequired, Optional
+from typing import Any, Literal, NotRequired, Optional, Union
 from uuid import UUID
 from datetime import datetime
 
@@ -208,12 +208,12 @@ class ChatHistory(BaseModel):
 class AnnotationsRequest(BaseModel):
     pdf_file: str
     block_indices: list[int]
-    user_id: Optional[UUID] = Field(default=None, description="Optional User ID for context.")
+    user_id: Optional[Union[str, UUID]] = Field(default=None, description="Optional User ID for context.")
 
 
 class DebugBlocksRequest(BaseModel):
     pdf_file: str
-    user_id: Optional[UUID] = Field(default=None, description="Optional User ID for context.")
+    user_id: Optional[Union[str, UUID]] = Field(default=None, description="Optional User ID for context.")
 
 
 class AnnotationItem(BaseModel):
