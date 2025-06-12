@@ -1,9 +1,10 @@
+import os
 import streamlit as st
 from db_manager import DatabaseManager
 import auth_service
 from display_texts import dt
 
-NO_AUTH = False
+NO_AUTH = os.getenv("NO_AUTH", False)
 
 db = DatabaseManager()
 
