@@ -195,7 +195,7 @@ class ChatHistoryInput(BaseModel):
         description="Thread ID to persist and continue a multi-turn conversation.",
         examples=["847c6285-8fc9-4560-a83f-4e6285809254"],
     )
-    user_id: Optional[UUID] = Field( # Added Optional for UUID
+    user_id: Optional[Union[str, UUID]] = Field(
         default=None,
         description="Optional user ID to scope history retrieval if applicable on the backend."
     )

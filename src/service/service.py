@@ -48,7 +48,7 @@ from service.utils import (
 from db_manager import DatabaseManager
 
 from fastapi import File, UploadFile
-from typing import Optional
+from typing import Optional, Union
 from rag_system import RAGSystem
 
 db_manager = DatabaseManager()
@@ -448,7 +448,7 @@ def history(input_data: ChatHistoryInput) -> ChatHistory: # Renamed input to inp
 async def upload_file(
     file: UploadFile = File(...),
     thread_id: Optional[str] = None,
-    user_id: Optional[UUID] = None, # Added user_id as Query parameter
+    user_id: Optional[Union[str, UUID]] = None,
     agent_id: str = DEFAULT_AGENT
 ) -> dict:
     """
@@ -610,7 +610,7 @@ async def get_feedback(run_id: str) -> Dict[str, Any]:
 
 
 @router.post("/conversations/{thread_id}/title")
-async def set_conversation_title(thread_id: str, title: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+async def set_conversation_title(thread_id: str, title: str, user_id: Optional[Union[str, UUID]] = None) -> Dict[str, Any]:
     """Set or update the title of a conversation.
     
     Args:
@@ -637,7 +637,7 @@ async def set_conversation_title(thread_id: str, title: str, user_id: Optional[U
 
 
 @router.get("/conversations")
-async def get_conversations(limit: int = 20, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+async def get_conversations(limit: int = 20, user_id: Optional[Union[str, UUID]] = None) -> Dict[str, Any]:
     """Get a list of recent conversations for a user.
     
     Args:
@@ -661,7 +661,7 @@ async def get_conversations(limit: int = 20, user_id: Optional[UUID] = None) -> 
 
 
 @router.delete("/conversations/{thread_id}")
-async def delete_conversation(thread_id: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+async def delete_conversation(thread_id: str, user_id: Optional[Union[str, UUID]] = None) -> Dict[str, Any]:
     """Delete a conversation and all associated data for a user.
     
     Args:
@@ -708,7 +708,7 @@ async def delete_conversation(thread_id: str, user_id: Optional[UUID] = None) ->
         raise HTTPException(status_code=500, detail=f"Error processing delete request: {str(e)}")
 
 @router.get("/conversations/{thread_id}/title")
-async def get_conversation_title(thread_id: str, user_id: Optional[UUID] = None) -> Dict[str, Any]: # Added user_id
+async def get_conversation_title(thread_id: str, user_id: Optional[Union[str, UUID]] = None) -> Dict[str, Any]:
     """Get the title of a conversation for a user.
     
     Args:

@@ -1,8 +1,8 @@
 import json
 import os
 from collections.abc import AsyncGenerator, Generator
-from typing import Any, List, Dict, Optional
-from uuid import UUID # Added for user_id typing
+from typing import Any, List, Dict, Optional, Union
+from uuid import UUID
 
 import httpx
 
@@ -92,7 +92,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
-        user_id: Optional[UUID] = None, # Added user_id
+        user_id: Optional[Union[str, UUID]] = None, # Added user_id
     ) -> ChatMessage:
         """
         Invoke the agent asynchronously. Only the final message is returned.
@@ -140,7 +140,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
-        user_id: Optional[UUID] = None, # Added user_id
+        user_id: Optional[Union[str, UUID]] = None,
     ) -> ChatMessage:
         """
         Invoke the agent synchronously. Only the final message is returned.
@@ -213,7 +213,7 @@ class AgentClient:
         thread_id: str | None = None,
         agent_config: dict[str, Any] | None = None,
         stream_tokens: bool = True,
-        user_id: Optional[UUID] = None, # Added user_id
+        user_id: Optional[Union[str, UUID]] = None,
     ) -> Generator[ChatMessage | str, None, None]:
         """
         Stream the agent's response synchronously.
@@ -273,7 +273,7 @@ class AgentClient:
         agent_config: dict[str, Any] | None = None,
         stream_tokens: bool = True,
         file_ids: list[str] | None = None,
-        user_id: Optional[UUID] = None, # Added user_id
+        user_id: Optional[Union[str, UUID]] = None,
     ) -> AsyncGenerator[ChatMessage | str, None]:
         """
         Stream the agent's response asynchronously.
@@ -361,7 +361,6 @@ class AgentClient:
             user_id (UUID): The ID of the user providing feedback
             feedback (str): The feedback text
         """
-        print(f"Creating feedback for user {user_id}: {feedback}")
 
     def retrieve_graph(self, graph_id: str) -> str | None:
         """
@@ -383,7 +382,7 @@ class AgentClient:
     def get_history(
         self,
         thread_id: str,
-        user_id: Optional[UUID] = None, # Added user_id
+        user_id: Optional[Union[str, UUID]] = None,
     ) -> ChatHistory:
         """
         Get chat history.
@@ -411,8 +410,8 @@ class AgentClient:
         file_name: str,
         file_content: bytes,
         file_type: str,
-        thread_id: Optional[str] = None, # Made Optional consistent
-        user_id: Optional[UUID] = None, # Added user_id
+        thread_id: Optional[str] = None,
+        user_id: Optional[Union[str, UUID]] = None,
     ) -> str:
         """
         Upload a file to the agent service.
@@ -459,7 +458,7 @@ class AgentClient:
         
         return response_data["file_id"]
         
-    def get_conversations(self, limit: int = 20, user_id: Optional[UUID] = None) -> list[dict[str, Any]]:
+    def get_conversations(self, limit: int = 20, user_id: Optional[Union[str, UUID]] = None) -> list[dict[str, Any]]:
         """
         Get a list of recent conversations.
         
@@ -485,7 +484,7 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error getting conversations: {e}")
             
-    def set_conversation_title(self, thread_id: str, title: str, user_id: Optional[UUID] = None) -> None:
+    def set_conversation_title(self, thread_id: str, title: str, user_id: Optional[Union[str, UUID]] = None) -> None:
         """
         Set or update the title of a conversation.
         
@@ -508,7 +507,7 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error setting conversation title: {e}")
             
-    def get_conversation_title(self, thread_id: str, user_id: Optional[UUID] = None) -> str:
+    def get_conversation_title(self, thread_id: str, user_id: Optional[Union[str, UUID]] = None) -> str:
         """
         Get the title of a conversation.
         
@@ -534,7 +533,7 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error getting conversation title: {e}")
             
-    def delete_conversation(self, thread_id: str, user_id: Optional[UUID] = None) -> bool:
+    def delete_conversation(self, thread_id: str, user_id: Optional[Union[str, UUID]] = None) -> bool:
         """
         Delete a conversation and all associated data.
         
@@ -560,7 +559,7 @@ class AgentClient:
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error deleting conversation: {e}")
             
-    async def aget_conversations(self, limit: int = 20, user_id: Optional[UUID] = None) -> list[dict[str, Any]]:
+    async def aget_conversations(self, limit: int = 20, user_id: Optional[Union[str, UUID]] = None) -> list[dict[str, Any]]:
         """
         Get a list of recent conversations asynchronously.
         
@@ -587,7 +586,7 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error getting conversations: {e}")
                 
-    async def aset_conversation_title(self, thread_id: str, title: str, user_id: Optional[UUID] = None) -> None:
+    async def aset_conversation_title(self, thread_id: str, title: str, user_id: Optional[Union[str, UUID]] = None) -> None:
         """
         Set or update the title of a conversation asynchronously.
         
@@ -611,7 +610,7 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error setting conversation title: {e}")
                 
-    async def aget_conversation_title(self, thread_id: str, user_id: Optional[UUID] = None) -> str:
+    async def aget_conversation_title(self, thread_id: str, user_id: Optional[Union[str, UUID]] = None) -> str:
         """
         Get the title of a conversation asynchronously.
         
@@ -638,19 +637,19 @@ class AgentClient:
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error getting conversation title: {e}")
 
-    async def aget_annotations(self, pdf_file: str, block_indices: List[int], user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+    async def aget_annotations(self, pdf_file: str, block_indices: List[int], user_id: Optional[Union[str, UUID]] = None) -> List[Dict[str, Any]]:
         """
         Get highlighting annotations for specified blocks in a PDF asynchronously.
         """
         request_data = {"pdf_file": pdf_file, "block_indices": block_indices}
         if user_id:
-            request_data["user_id"] = str(user_id) # Add user_id to JSON body
+            request_data["user_id"] = str(user_id)
             
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/rag/annotations",
-                    json=request_data, # request_data now includes user_id if provided
+                    json=request_data,
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -661,19 +660,19 @@ class AgentClient:
             except Exception as e: # Catch potential JSON parsing errors or missing keys
                 raise AgentClientError(f"Error processing RAG annotations response: {e}")
 
-    async def adebug_pdf_blocks(self, pdf_file: str, user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+    async def adebug_pdf_blocks(self, pdf_file: str, user_id: Optional[Union[str, UUID]] = None) -> List[Dict[str, Any]]:
         """
         Get all block annotations for a PDF for debugging asynchronously.
         """
         request_data = {"pdf_file": pdf_file}
         if user_id:
-            request_data["user_id"] = str(user_id) # Add user_id to JSON body
+            request_data["user_id"] = str(user_id)
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/rag/debug_blocks",
-                    json=request_data, # request_data now includes user_id if provided
+                    json=request_data,
                     headers=self._headers,
                     timeout=self.timeout,
                 )
@@ -681,7 +680,7 @@ class AgentClient:
                 return response.json().get("annotations", [])
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error debugging RAG blocks: {e}")
-            except Exception as e: # Catch potential JSON parsing errors or missing keys
+            except Exception as e:
                 raise AgentClientError(f"Error processing RAG debug blocks response: {e}")
 
     def get_document_source_status(self, document_name: str) -> Optional[Dict[str, Any]]:
@@ -752,7 +751,7 @@ class AgentClient:
         try:
             response = httpx.post(
                 f"{self.base_url}/user_feedback",
-                json=request_data.model_dump(mode='json'), # Ensure UUID is serialized correctly
+                json=request_data.model_dump(mode='json'),
                 headers=self._headers,
                 timeout=self.timeout,
             )
@@ -792,7 +791,7 @@ class AgentClient:
             except httpx.HTTPError as e:
                 try:
                     error_detail = response.json().get("detail", str(e))
-                except Exception: # If response.json() fails or "detail" is not present
+                except Exception:
                     error_detail = str(e)
                 raise AgentClientError(f"Error submitting user feedback: {error_detail}")
             except Exception as e:
