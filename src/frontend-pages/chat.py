@@ -19,11 +19,8 @@ from frontend.pdf_viewer_with_annotations import display_pdf
 
 from db_manager import DatabaseManager
 from display_texts import dt
-from auth_helpers import ensure_authenticated, logout
+from auth_helpers import ensure_authenticated
 
-
-APP_TITLE = dt.APP_TITLE
-APP_ICON = dt.APP_ICON
 AI_ICON = dt.AI_ICON
 USER_ICON = dt.USER_ICON
 
@@ -70,78 +67,12 @@ def pdf_dialog():
         if not current_agent_client: st.error("Agent client not available for PDF dialog.")
     if st.button(dt.PDF_DIALOG_CLOSE_BUTTON): st.rerun()
 
-        
-@st.dialog(dt.FEEDBACK, width="small")
-def user_feedback_modal():
-    st.markdown(dt.FEEDBACK_DIALOG)
-    
-    feedback_text = st.text_area("", key="feedback_text_area")
-    if st.button(label="", icon=":material/send:", key="submit_feedback_button"):
-        if feedback_text:
-
-            try:
-                # Send feedback through the agent client
-                st.session_state.agent_client.create_feedback(
-                    user_id=st.session_state.current_user_id,
-                    feedback=feedback_text,
-                )
-                
-                st.session_state["show_user_modal"] = False # Keeping as is, though it might refer to a different modal.
-                st.rerun() # Often used to refresh state and close dialogs
-            except Exception as e:
-                st.error(f"An error occurred while submitting your feedback: {e}")
 
 def hide_welcome():
     st.markdown("<style>div[class*=\"st-key-welcome-msg\"] { display: none; }</style>", unsafe_allow_html=True)
 
 def show_user_modal():
     st.session_state["show_user_modal"] = True
-
-def login_ui():
-    st.title(dt.LOGIN_WELCOME)
-    email = st.text_input(dt.LOGIN_EMAIL_PROMPT, key="login_email_input")
-
-    if email:
-        if email == "admin":
-            st.session_state.current_user_id = "00000000-0000-0000-0000-000000000000"
-            st.session_state.current_user_email = ""
-        elif not email.lower().endswith(dt.EMAIL_DOMAIN):
-            st.error(dt.INVALID_EMAIL_FORMAT)
-            return False
-
-        user_in_db = db.get_user_by_email(email)
-
-        if user_in_db:
-            password = st.text_input(dt.LOGIN_PASSWORD_PROMPT, type="password", key="login_password_input")
-            if st.button(dt.LOGIN_BUTTON, key="login_button"):
-                authenticated_user = auth_service.authenticate_user(db, email, password)
-                if authenticated_user:
-                    st.session_state.current_user_id = authenticated_user.id
-                    st.session_state.current_user_email = authenticated_user.email # Store email for display
-                    st.rerun()
-                else:
-                    st.error(dt.LOGIN_FAILED)
-            return False # Not logged in yet or failed
-        else:
-            st.info(f"Email {email} is not registered.")
-            if st.button(dt.CREATE_ACCOUNT_BUTTON, key="create_account_button"):
-                new_user, plain_pwd = auth_service.register_new_user(db, email)
-                if new_user:
-                    st.success(dt.ACCOUNT_CREATED_SUCCESS.format(email=email))
-                    # if plain_pwd:
-                    #      st.info(dt.DEV_INFO_PASSWORD.format(email=email, plain_pwd=plain_pwd)) # For dev purposes
-                else:
-                    st.error(dt.ACCOUNT_CREATION_FAILED)
-            return False # Not logged in
-    return False # Not logged in
-
-def logout():
-    del st.session_state["current_user_email"]
-    if "current_user_id" in st.session_state:
-        del st.session_state["current_user_id"]
-    st.query_params.clear()
-    st.session_state["show_user_modal"] = False
-    st.rerun()
 
 async def main() -> None:
 
@@ -162,12 +93,9 @@ async def main() -> None:
     if not ensure_authenticated():
         st.stop() # ensure_authenticated calls st.stop() if login fails, but as a safeguard.
     
-    current_user_id: UUID_TYPE = st.session_state.current_user_id
-    current_user_email = st.session_state.get("current_user_email", "User") # Default to "User"
-        
+    current_user_id: UUID_TYPE = st.session_state.current_user_id        
     if "current_user_id" not in st.session_state:
         st.session_state.current_user_id = current_user_id
-        st.session_state.current_user_email = current_user_email
     
     if st.session_state.pdf_to_view: pdf_dialog()
     if "suggested_command" not in st.session_state: st.session_state.suggested_command = None
@@ -220,29 +148,6 @@ async def main() -> None:
         st.session_state.thread_id = thread_id
 
     with st.sidebar:
-        if not dt.LOGO:
-            st.header(f"{dt.APP_ICON} {dt.APP_TITLE}")
-        
-        current_user_email = st.session_state.get("current_user_email", "")
-        username = current_user_email.split("@")[0] if current_user_email else "User"
-        username = username.replace('.', ' ').title()
-
-        # col1, col2 = st.columns([0.4, 0.6])
-        # with col1:
-        #     if st.button(
-        #         f"{username}",
-        #         key="user_button",
-        #         help="Show user information",
-        #         icon=":material/account_circle:"
-        #     ):
-        #         user_modal()
-        # with col2:
-        #     if st.button(
-        #         dt.FEEDBACK,
-        #         key="user_settings_button",
-        #         icon=":material/comment:"
-        #     ):
-        #         user_feedback_modal()
 
         model_idx = agent_client.info.models.index(agent_client.info.default_model)
         model = 'gpt-4o'
