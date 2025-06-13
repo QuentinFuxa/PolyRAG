@@ -1,9 +1,7 @@
 import streamlit as st
 from auth_helpers import ensure_authenticated
-from display_texts import dt # Assuming dt contains necessary text constants
+from display_texts import dt
 
-
-# Ensure user is authenticated before rendering the page
 if not ensure_authenticated():
     st.stop()
 
@@ -14,13 +12,11 @@ if st.button(label="", icon=":material/send:", key="submit_feedback_button"):
     if feedback_text:
 
         try:
-            # Send feedback through the agent client
-            st.session_state.agent_client.create_feedback(
+            st.session_state.agent_client.submit_user_feedback(
                 user_id=st.session_state.current_user_id,
-                feedback=feedback_text,
+                feedback_content=feedback_text,
             )
             
-            st.session_state["show_user_modal"] = False # Keeping as is, though it might refer to a different modal.
-            st.rerun() # Often used to refresh state and close dialogs
+            st.toast(dt.FEEDBACK_SUBMITTED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
         except Exception as e:
             st.error(f"An error occurred while submitting your feedback: {e}")
