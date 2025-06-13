@@ -47,9 +47,9 @@ services:
         - path: src/schema/
           action: sync+restart
           target: /app/schema/
-        - path: src/Chat.py
+        - path: src/streamlit-app.py
           action: sync+restart
-          target: /app/Chat.py
+          target: /app/streamlit-app.py
 
   postgres-db:
     image: postgres:15

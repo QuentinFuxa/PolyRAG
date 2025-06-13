@@ -110,7 +110,7 @@ OPENAI_API_KEY = "sk-fake-openai-key"
 
 [tool.mypy]
 plugins = "pydantic.mypy"
-exclude = "src/Chat.py"
+exclude = "src/streamlit-app.py"
 
 [[tool.mypy.overrides]]
 module = ["numexpr.*"]

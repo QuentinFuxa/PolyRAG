@@ -22,7 +22,7 @@ def test_service_with_app():
 
     This test requires the service container to be running with USE_FAKE_MODEL=true
     """
-    at = AppTest.from_file("../../src/Chat.py").run()
+    at = AppTest.from_file("../../src/streamlit-app.py").run()
     assert at.chat_message[0].avatar == "assistant"
     welcome = at.chat_message[0].markdown[0].value
     assert welcome.startswith("Hello! I'm an AI-powered research assistant")

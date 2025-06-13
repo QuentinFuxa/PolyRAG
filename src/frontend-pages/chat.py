@@ -22,8 +22,6 @@ from display_texts import dt
 from auth_helpers import ensure_authenticated, logout
 
 
-NO_AUTH = True
-
 APP_TITLE = dt.APP_TITLE
 APP_ICON = dt.APP_ICON
 AI_ICON = dt.AI_ICON

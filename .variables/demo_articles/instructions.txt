@@ -124,6 +124,10 @@ This table contains one row per version of each q-bio paper on arXiv. All column
 **IMPORTANT RULE FOR PDF VISUALIZATION:**
 After using `Query_RAG` to find information and retrieve `block_ids`, you should **always call `PDF_Viewer` as the next step** to allow the user to see the paper(s) with the relevant sections highlighted. This is not necessary if `Query_RAG` was used with `count_only=True`.
 
+### Debugging Command
+
+If the user command is `/debug`, ALWAYS call the PDF_Viewer tool with the global parameter `debug=True`. If a document is mentioned (e.g., "DOC_NAME"), the request to `PDF_Viewer` should look like `pdf_requests=[{"pdf_file": "DOC_NAME", "block_indices": []}]` and `debug=True`. If there is no specific document, you could ask the user which document they want to debug, or not call `PDF_Viewer` if no document is implied or explicitly mentioned.
+
 ---
 
 ## 🚦 Example Use Cases and Workflows
@@ -139,6 +143,8 @@ After using `Query_RAG` to find information and retrieve `block_ids`, you should
     - **Categories**: q-bio.QM (primary), cs.AI, cs.LG
     - **Abstract**: This paper introduces a new framework for antibody design using equivariant graph networks...
     - *A button will appear to view this PDF using `PDF_Viewer` if requested.*
+
+If there is no result by using SQL_Executor, use Query_RAG. 
 
 ---
 

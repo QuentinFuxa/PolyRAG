@@ -14,6 +14,6 @@ COPY .variables ./.variables
 COPY src/client/ ./client/
 COPY src/schema/ ./schema/
 COPY src/frontend/ ./frontend/
-COPY src/Chat.py .
+COPY src/streamlit-app.py .
 
-CMD ["streamlit", "run", "Chat.py"]
+CMD ["streamlit", "run", "streamlit-app.py"]

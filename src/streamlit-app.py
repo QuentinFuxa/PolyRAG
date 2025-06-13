@@ -1,6 +1,7 @@
+import os
 import streamlit as st
 from display_texts import dt
-from auth_helpers import ensure_authenticated
+from auth_helpers import login_ui
 
 
 if dt.LOGO:
@@ -8,7 +9,7 @@ if dt.LOGO:
         custom_css = """
         <style>
             div[data-testid="stSidebarHeader"] > img, div[data-testid="collapsedControl"] > img {
-                height: 4rem;
+                height: 3rem;
                 width: auto;
             }
             div[data-testid="stSidebarHeader"], div[data-testid="stSidebarHeader"] > *,
@@ -30,6 +31,10 @@ changelog = st.Page(
     "frontend-pages/changelog.py", title="Nouveautés v0.1 - 12/06/2025", icon=":material/source_notes:")
 chatbot = st.Page("frontend-pages/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
+NO_AUTH = os.getenv("NO_AUTH", False)
+if NO_AUTH:
+    st.session_state.current_user_id = st.session_state.get('current_user_id', '00000000-0000-0000-0000-000000000001')
+    st.session_state.current_user_email = st.session_state.get('current_user_email', "user@test.test")
 
 if "current_user_id" in st.session_state:
     pg = st.navigation(
@@ -40,6 +45,9 @@ if "current_user_id" in st.session_state:
     },
     )
 else:
-    ensure_authenticated()
-
+    
+    pg = st.navigation(pages=[
+        st.Page(login_ui, title="Log in", icon=":material/login:")
+    ])
 pg.run()
+
