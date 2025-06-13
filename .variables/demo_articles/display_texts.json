@@ -146,7 +146,7 @@
   "PASSWORD_EMAIL_SUBJECT": "Demo Assistant Password",
   "PASSWORD_EMAIL_BODY": "Hello,<br>Your PolyRAG password is: {new_password}<br>If you have any issues, you can reply to this email.",
   "WARNING_MESSAGE": "<i><strong>Warning:</strong> Do not share sensitive data in messages, as they may be stored and used to improve the model. Avoid sharing personal or confidential information.</i>",
-  "FEEDBACK_BUTTON": "Feedbacks",
+  "FEEDBACK": "Feedbacks",
   "FEEDBACK_DIALOG": "Please leave your comments or suggestions to improve the application.",
   "LOGO": "https://raw.githubusercontent.com/QuentinFuxa/PolyRAG/refs/heads/main/media/polyrag.svg",
   "BIG_LOGO": false
