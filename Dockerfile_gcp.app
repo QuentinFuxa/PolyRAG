@@ -11,5 +11,7 @@ RUN pip install --no-cache-dir uv
 RUN uv sync --frozen
 
 COPY .variables ./.variables
+COPY .streamlit ./.streamlit
+
 COPY src/ .
 CMD ["streamlit", "run", "streamlit-app.py"]
