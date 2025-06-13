@@ -126,7 +126,7 @@
   "FEEDBACK_TEXT_AREA_LABEL": "Additional feedback (optional)",
   "FEEDBACK_TEXT_AREA_PLACEHOLDER": "Please provide any additional comments or suggestions...",
   "FEEDBACK_SUBMIT_BUTTON": "Submit Feedback",
-  "FEEDBACK_SUBMITTED_TOAST": "Detailed feedback submitted. Thank you!",
+  "FEEDBACK_SUBMITTED_TOAST": "Feedback submitted. Thank you!",
   "FEEDBACK_STARS_ICON": ":material/reviews:",
   "TOOL_OUTPUT_EMPTY": "No results found",
   "PDF_VIEWER_OUTPUT_LABEL": "PDF Preview {pdf_name}",
