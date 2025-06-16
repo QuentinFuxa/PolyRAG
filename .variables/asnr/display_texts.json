@@ -145,7 +145,7 @@
   "EMAIL_DOMAIN": "@asnr.fr",
   "LOGGED_AS": "Utilisateur",
   "PASSWORD_EMAIL_SUBJECT": "Mot de passe Siance Assistant",
-  "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : {new_password}<br>En cas de problème, vous pouvez répondre à cet email.<br>Veuillez conserver précieusement ce mot de passe et ne pas le diffuser. L’application (PoC) n’offre pas la possibilité de regénérer un nouveau mot de passe",
+  "PASSWORD_EMAIL_BODY": "Bonjour,<br>Votre mot de passe Siance Assistant est : {new_password}<br>En cas de problème, vous pouvez répondre à cet email.<br>Veuillez conserver précieusement ce mot de passe et ne pas le diffuser. L’application (PoC) n’offre pas la possibilité de regénérer un nouveau mot de passe.",
   "WARNING_MESSAGE": "<i><strong>Attention:</strong> Ne pas communiquer de données sensibles dans les messages, car ils peuvent être stockés et utilisés pour améliorer le modèle. Évitez de partager des informations personnelles ou confidentielles.</i>",
   "FEEDBACK": "Commentaires/Suggestions",
   "FEEDBACK_DIALOG": "Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.",
