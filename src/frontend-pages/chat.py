@@ -569,8 +569,17 @@ async def handle_feedback() -> None:
     feedback_stars = st.feedback(dt.FEEDBACK_STARS_KEY, key=f"stars_{latest_run_id}")
     if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
         normalized_score = (feedback_stars + 1) / 5.0; agent_client: AgentClient = st.session_state.agent_client
+        conversation_id = st.session_state.thread_id
+        commented_message_text = st.session_state.messages[-1].content if st.session_state.messages else None
         try:
-            await agent_client.acreate_feedback(run_id=latest_run_id, key="human-feedback-stars", score=normalized_score, kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT})
+            await agent_client.acreate_feedback(
+                run_id=latest_run_id, 
+                key="human-feedback-stars", 
+                score=normalized_score, 
+                conversation_id=conversation_id,
+                commented_message_text=commented_message_text,
+                kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT}
+            )
             st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
             st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
         except AgentClientError as e: st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
@@ -578,8 +587,17 @@ async def handle_feedback() -> None:
         text_feedback = st.text_area(dt.FEEDBACK_TEXT_AREA_LABEL, key=f"text_{latest_run_id}", height=100, placeholder=dt.FEEDBACK_TEXT_AREA_PLACEHOLDER)
         if text_feedback and st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"):
             normalized_score = (feedback_stars + 1) / 5.0; agent_client: AgentClient = st.session_state.agent_client
+            conversation_id = st.session_state.thread_id
+            commented_message_text = st.session_state.messages[-1].content if st.session_state.messages else None
             try:
-                await agent_client.acreate_feedback(run_id=latest_run_id, key="human-feedback-with-comment", score=normalized_score, kwargs={"comment": text_feedback})
+                await agent_client.acreate_feedback(
+                    run_id=latest_run_id, 
+                    key="human-feedback-with-comment", 
+                    score=normalized_score, 
+                    conversation_id=conversation_id,
+                    commented_message_text=commented_message_text,
+                    kwargs={"comment": text_feedback}
+                )
                 st.session_state.text_feedback_runs.add(latest_run_id)
                 st.toast(dt.FEEDBACK_SUBMITTED_TOAST, icon=dt.FEEDBACK_STARS_ICON); st.rerun()
             except AgentClientError as e: st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))

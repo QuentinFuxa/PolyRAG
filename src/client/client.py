@@ -328,7 +328,7 @@ class AgentClient:
                 raise AgentClientError(f"Error: {json.loads(response.content)}")
 
     async def acreate_feedback(
-        self, run_id: str, key: str, score: float, kwargs: dict[str, Any] = {}
+        self, run_id: str, key: str, score: float, conversation_id: Optional[str] = None, commented_message_text: Optional[str] = None, kwargs: dict[str, Any] = {}
     ) -> None:
         """
         Create a feedback record for a run.
@@ -337,7 +337,7 @@ class AgentClient:
         credentials can be stored and managed in the service rather than the client.
         See: https://api.smith.langchain.com/redoc#tag/feedback/operation/create_feedback_api_v1_feedback_post
         """
-        request = Feedback(run_id=run_id, key=key, score=score, kwargs=kwargs)
+        request = Feedback(run_id=run_id, key=key, score=score, conversation_id=conversation_id, commented_message_text=commented_message_text, kwargs=kwargs)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(

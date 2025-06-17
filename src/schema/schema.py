@@ -177,6 +177,14 @@ class Feedback(BaseModel):  # type: ignore[no-redef]
         description="Feedback score.",
         examples=[0.8],
     )
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="Identifier for the conversation thread related to this feedback."
+    )
+    commented_message_text: Optional[str] = Field(
+        default=None,
+        description="The text of the message that this feedback refers to."
+    )
     kwargs: dict[str, Any] = Field(
         description="Additional feedback kwargs, passed to LangSmith.",
         default={},

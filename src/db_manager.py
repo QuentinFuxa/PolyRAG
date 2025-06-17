@@ -193,6 +193,8 @@ class DatabaseManager:
                     run_id TEXT NOT NULL,
                     key TEXT NOT NULL,
                     score FLOAT NOT NULL,
+                    conversation_id TEXT NULL,
+                    commented_message_text TEXT NULL,
                     additional_data JSONB,
                     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
                 )
@@ -478,16 +480,16 @@ class DatabaseManager:
         finally:
             self.release_connection(conn)
         
-    def save_feedback(self, run_id: str, key: str, score: float, additional_data: Optional[Dict[str, Any]] = None) -> int:
+    def save_feedback(self, run_id: str, key: str, score: float, conversation_id: Optional[str] = None, commented_message_text: Optional[str] = None, additional_data: Optional[Dict[str, Any]] = None) -> int:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
                     f"""
-                    INSERT INTO {schema_app_data}.feedback (run_id, key, score, additional_data)
-                    VALUES (%s, %s, %s, %s) RETURNING id
+                    INSERT INTO {schema_app_data}.feedback (run_id, key, score, conversation_id, commented_message_text, additional_data)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
                     """,
-                    (run_id, key, score, Json(additional_data) if additional_data else None)
+                    (run_id, key, score, conversation_id, commented_message_text, Json(additional_data) if additional_data else None)
                 )
                 feedback_id = cursor.fetchone()[0]
                 conn.commit()
@@ -548,16 +550,39 @@ class DatabaseManager:
             self.release_connection(conn)
 
     def get_conversations(self, user_id: UUID, limit: int = 20) -> List[Dict[str, Any]]:
+        
+        query = f"""
+        SELECT thread_id, title, created_at, updated_at FROM {schema_app_data}.conversations
+        WHERE user_id = %s ORDER BY updated_at DESC LIMIT %s
+        """
+        params = (user_id, limit)
+        if user_id == '00000000-0000-0000-0000-000000000001':  # Special case for admin
+            query = f"""
+            SELECT * FROM (
+                SELECT 
+                    c.thread_id, 
+                    CASE 
+                        WHEN f.conversation_id IS NOT NULL 
+                        THEN '🔴 ' || split_part(u.email, '@', 1) || ': ' || c.title
+                        ELSE split_part(u.email, '@', 1) || ': ' || c.title
+                    END AS title, 
+                    c.created_at, 
+                    c.updated_at
+                FROM document_data.conversations c
+                JOIN document_data.users u ON c.user_id = u.id
+                LEFT JOIN document_data.feedback f ON CAST(c.thread_id AS text) = f.conversation_id
+                ORDER BY c.updated_at DESC
+                LIMIT %s
+            ) 
+            GROUP BY 1, 2, 3, 4
+            ORDER BY updated_at DESC
+            """
+            params = (limit,)
+            
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=DictCursor) as cursor:
-                cursor.execute(
-                    f"""
-                    SELECT thread_id, title, created_at, updated_at FROM {schema_app_data}.conversations
-                    WHERE user_id = %s ORDER BY updated_at DESC LIMIT %s
-                    """,
-                    (user_id, limit)
-                )
+                cursor.execute(query, params)
                 return [dict(row) for row in cursor.fetchall()]
         finally:
             self.release_connection(conn)

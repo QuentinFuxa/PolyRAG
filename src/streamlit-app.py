@@ -34,7 +34,7 @@ chatbot = st.Page("frontend-pages/chat.py", title='Assistant', icon=":material/c
 NO_AUTH = os.getenv("NO_AUTH", False)
 if NO_AUTH:
     st.session_state.current_user_id = st.session_state.get('current_user_id', '00000000-0000-0000-0000-000000000001')
-    st.session_state.current_user_email = st.session_state.get('current_user_email', "user@test.test")
+    st.session_state.current_user_email = st.session_state.get('current_user_email', "admin@admin")
 
 if "current_user_id" in st.session_state:
     pg = st.navigation(

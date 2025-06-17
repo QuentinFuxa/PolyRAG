@@ -383,6 +383,8 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
             run_id=feedback.run_id,
             key=feedback.key,
             score=feedback.score,
+            conversation_id=feedback.conversation_id,
+            commented_message_text=feedback.commented_message_text,
             additional_data=feedback.kwargs if feedback.kwargs else None
         )
         
