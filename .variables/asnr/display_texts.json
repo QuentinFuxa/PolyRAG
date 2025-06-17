@@ -21,7 +21,7 @@
   "SAVE_TITLE_BUTTON": "Enregistrer",
   "CANCEL_TITLE_BUTTON": "Annuler",
   "RECENT_SUBHEADER": "Récents",
-  "CONVERSATION_LAST_UPDATED_HELP": "Dernière mise à jour: {date_str}",
+  "CONVERSATION_LAST_UPDATED_HELP": "Dernier message: {date_str}",
   "EDIT_CONVERSATION_TITLE_HELP": "Editer le titre de la conversation",
   "DELETE_CONVERSATION_HELP": "Supprimer cette conversation",
   "LOAD_CONVERSATIONS_ERROR": "Erreur lors du chargement des conversations : {e}",

@@ -193,7 +193,7 @@ async def main() -> None:
                     
                     col1, col2, col3 = st.columns([0.9, 0.05, 0.05]) # Adjusted for potentially wider titles
                     with col1:
-                        if st.button(f"{title}", key=f"conv_{thread_id_conv}", help=f"{title}. {dt.CONVERSATION_LAST_UPDATED_HELP.format(date_str=date_str)}", type='tertiary'):
+                        if st.button(f"{title}", key=f"conv_{thread_id_conv}", help=f"{dt.CONVERSATION_LAST_UPDATED_HELP.format(date_str=date_str)}", type='tertiary'):
                             st.query_params["thread_id"] = thread_id_conv; st.rerun()
                     with col2:
                         if st.button(":material/edit:", key=f"edit_{thread_id_conv}", help=dt.EDIT_CONVERSATION_TITLE_HELP, type='tertiary'):
