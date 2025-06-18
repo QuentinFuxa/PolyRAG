@@ -3,6 +3,7 @@ import streamlit as st
 from display_texts import dt
 from auth_helpers import login_ui
 
+st.markdown("<div style='position: absolute; top: 0px; left: 0px; font-weight: bold;'>Phase de test du PoC ouverte jusqu'au 11/07/2025</div>", unsafe_allow_html=True)
 
 if dt.LOGO:
     if dt.BIG_LOGO:
@@ -28,7 +29,7 @@ comments = st.Page("frontend-pages/feedback.py", title=dt.FEEDBACK, icon=":mater
 help = st.Page(
     "frontend-pages/help.py", title="Aide", icon=":material/lightbulb:")
 changelog = st.Page(
-    "frontend-pages/changelog.py", title="Nouveautés v0.1.1 - 17/06/2025", icon=":material/source_notes:")
+    "frontend-pages/changelog.py", title="Nouveautés v0.1.1 - 18/06/2025", icon=":material/source_notes:")
 chatbot = st.Page("frontend-pages/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
 NO_AUTH = os.getenv("NO_AUTH", False)

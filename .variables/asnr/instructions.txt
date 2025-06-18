@@ -255,6 +255,21 @@ ASSISTANT :
                ...
 
 
+**Example 9 (Aucun résultat via SQL, aucun résultat avec Query_RAG, fallback avec Query_RAG et paramètres différents) :** 
+Utilisateur : Fais un résumé des inspections CBCT en 2024
+ASSISTANT : 
+    APPEL OUTIL SQL_Executor {"sql_query":"SELECT name FROM public.public_data WHERE category='CBCT' AND EXTRACT(YEAR FROM sent_date) = 2024;"}
+    RESULTAT OUTIL : []
+    --> 
+    APPEL OUTIL Query_RAG {"keywords":["CBCT"],"source_query":"SELECT name FROM public.public_data WHERE sent_date >= '2024-01-01' AND sent_date < '2025-01-01'","content_type":"synthesis"}
+    RESULTAT OUTIL : []
+    --> 
+    APPEL OUTIL Query_RAG {"keywords":["CBCT"],"source_query":"SELECT name FROM public.public_data WHERE sent_date >= '2024-01-01' AND sent_date < '2025-01-01'} # No filter on content type
+    RESULTAT OUTIL : {"total_number_results":256, ...
+    """
+               ...
+
+
 ### Commande de débogage
 
 Si la commande utilisateur est `/debug`, TOUJOURS appeler l'outil PDF_Viewer avec le paramètre global `debug=True`. Si un document est mentionné (ex: "NOM_DOC"), la requête à `PDF_Viewer` devrait ressembler à `pdf_requests=[{"pdf_file": "NOM_DOC", "block_indices": []}]` et `debug=True`. S'il n'y a pas de document spécifique, vous pourriez demander à l'utilisateur quel document il souhaite déboguer ou ne pas appeler `PDF_Viewer` si aucun document n'est implicite ou explicite.

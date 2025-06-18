@@ -6,9 +6,10 @@ st.markdown("""
 - Déploiement aux utilisateurs
 """)
 
-st.subheader("17/06/2025")
+st.subheader("18/06/2025")
 st.markdown("""
 - Meilleure gestion des feedbacks
 - Seulement la date de derniere maj de la conversation est affichée au survol d'une conversation
-- Amélioration du modèle lorsqu'aucun résultat n'est trouvé dans les métadonnées
+- Amélioration du modèle lors de certaines questions
+- Ajout de la date limite de la phase de test du PoC (11/07/2025)
 """)

@@ -8,7 +8,7 @@ if not ensure_authenticated():
 st.title(dt.FEEDBACK)
 
 feedback_text = st.text_area(dt.FEEDBACK_DIALOG, key="feedback_text_area")
-if st.button(label="", icon=":material/send:", key="submit_feedback_button"):
+if st.button(label="", icon=":material/send:", key="submit_feedback_button", type="primary"):
     if feedback_text:
 
         try:
