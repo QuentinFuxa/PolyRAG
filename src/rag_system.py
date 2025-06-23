@@ -25,7 +25,7 @@ def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str
     if not clause_str:
         return ""
 
-    sql_keywords = {'AND', 'OR', 'NOT', 'NULL', 'TRUE', 'FALSE', 'IS', 'IN', 'LIKE', 'BETWEEN', 'EXISTS',
+    sql_keywords = {'AND', 'OR', 'NOT', 'NULL', 'TRUE', 'FALSE', 'IS', 'IN', 'ILIKE', 'LIKE', 'BETWEEN', 'EXISTS',
                     'SELECT', 'FROM', 'WHERE', 'GROUP', 'ORDER', 'BY', 'LIMIT', 'OFFSET', 'AS',
                     'ASC', 'DESC', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'EXTRACT', 'CAST', 'CONVERT',
                     'UNION', 'INTERSECT', 'EXCEPT', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER'}
@@ -34,36 +34,29 @@ def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str
     
     processed_parts = []
     for part_idx, part_content in enumerate(parts):
-        stripped_part_content = part_content.strip()
-        
-        # If it's a delimiter (AND/OR), keep it
-        if part_idx % 2 == 1: # Delimiters are at odd indices
+        if part_idx % 2 == 1:
             processed_parts.append(part_content)
             continue
 
-        # Attempt to identify "column operator value" like structures
-        match = re.match(r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(.*)", stripped_part_content, re.IGNORECASE)
+        match = re.match(r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)$", part_content.strip(), re.IGNORECASE)
         
         if match:
-            column_candidate = match.group(1)
-            rest_of_condition = match.group(2)
+            column_candidate, rest_of_condition = match.groups()
 
-            # Check if it's a keyword, already prefixed, a function call, or a literal string/number
             if (column_candidate.upper() not in sql_keywords and
                 '.' not in column_candidate and
-                '(' not in column_candidate and # Simple check for function
-                not (column_candidate.startswith("'") and column_candidate.endswith("'")) and # String literal
-                not (column_candidate.startswith('"') and column_candidate.endswith('"')) and # String literal
-                not column_candidate.replace('.', '', 1).isdigit() and # Number
-                column_candidate.upper() != 'TRUE' and column_candidate.upper() != 'FALSE' and column_candidate.upper() != 'NULL'
+                '(' not in column_candidate and
+                not column_candidate.replace('.', '', 1).isdigit() and
+                column_candidate.upper() not in {'TRUE', 'FALSE', 'NULL'}
                ):
-                processed_parts.append(f"{prefix}{column_candidate}{rest_of_condition}")
+                # Optional: escape % characters
+                processed_parts.append(f"{prefix}{column_candidate} {rest_of_condition}")
             else:
-                processed_parts.append(part_content) # No change
+                processed_parts.append(part_content)
         else:
-            processed_parts.append(part_content) # No change if no word-like start
+            processed_parts.append(part_content)
             
-    return "".join(processed_parts)
+    return "".join(processed_parts).replace('%', '%%')
 
 # Helper function to prefix column names in an ORDER BY clause string
 def _prefix_columns_in_order_by_clause(clause_str: str, prefix: str = "js.") -> str:
@@ -479,7 +472,7 @@ class RAGSystem:
         count_query = "\n".join(count_query_parts)
 
         # Execute queries
-        _final_count_query = count_query.format(ts_query=ts_query_for_format)
+        _final_count_query = count_query.format(ts_query=ts_query_for_format).replace(';', '')
         count_result = self.db_manager.execute_query(_final_count_query)
         
         _final_search_query = search_query.format(ts_query=ts_query_for_format)
