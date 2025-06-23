@@ -1897,7 +1897,6 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pyowm" },
     { name = "pypdf" },
     { name = "python-dotenv" },
     { name = "python-http-client" },
@@ -1953,7 +1952,7 @@ requires-dist = [
     { name = "langgraph", specifier = "~=0.3.5" },
     { name = "langgraph-checkpoint-postgres", specifier = "~=2.0.13" },
     { name = "langgraph-checkpoint-sqlite", specifier = "~=2.0.1" },
-    { name = "langgraph-supervisor", specifier = "~=0.0.8" },
+    { name = "langgraph-supervisor", specifier = "~=0.0.19" },
     { name = "langsmith", specifier = "~=0.1.145" },
     { name = "llmsherpa", specifier = ">=0.1.0" },
     { name = "numexpr", specifier = "~=2.10.1" },
@@ -1968,7 +1967,6 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=18.1.0" },
     { name = "pydantic", specifier = "~=2.10.1" },
     { name = "pydantic-settings", specifier = "~=2.6.1" },
-    { name = "pyowm", specifier = "~=3.3.0" },
     { name = "pypdf", specifier = "~=5.6.0" },
     { name = "python-dotenv", specifier = "~=1.0.1" },
     { name = "python-http-client", specifier = "==3.3.7" },
@@ -2408,20 +2406,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/ca/40e14e196864a0f61a92abb14d09b3d3da98f94ccb03b49cf51688140dab/pydeck-0.9.1.tar.gz", hash = "sha256:f74475ae637951d63f2ee58326757f8d4f9cd9f2a457cf42950715003e2cb605", size = 3832240 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/4c/b888e6cf58bd9db9c93f40d1c6be8283ff49d88919231afe93a6bcf61626/pydeck-0.9.1-py2.py3-none-any.whl", hash = "sha256:b3f75ba0d273fc917094fa61224f3f6076ca8752b93d46faf3bcfd9f9d59b038", size = 6900403 },
-]
-
-[[package]]
-name = "pyowm"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "geojson" },
-    { name = "pysocks" },
-    { name = "requests", extra = ["socks"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/43/5a/0f44ccc4b81d23b9c84c821532e269727a64f3335c4231c9c16702809719/pyowm-3.3.0.tar.gz", hash = "sha256:8196f77c91eac680676ed5ee484aae8a165408055e3e2b28025cbf60b8681e03", size = 4516988 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/88/1279817aa7f5988a2ff42a6755fd371f3c1806aca377cb63b3d16684b174/pyowm-3.3.0-py3-none-any.whl", hash = "sha256:86463108e7613171531ba306040b43c972b3fc0b0acf73b12c50910cdd2107ab", size = 4547201 },
 ]
 
 [[package]]
