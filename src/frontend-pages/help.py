@@ -11,6 +11,16 @@ L’assistant SIANCE utilise de l’IA générative (Mistral Large) sur l’hist
 Il permet d’interagir avec l’ensemble des documents et utilise l’ensemble des questions ainsi que leurs contextes dans une même conversation.
 """)
 
+# Section : Objectifs du POC
+st.header("🎯 Objectifs du POC")
+objectifs = [
+    "Valider la valeur métier de ce type de solution",
+    "Définir les cas d’usages les plus intéressants",
+    "Identifier les axes d’amélioration et les freins éventuels"
+]
+for obj in objectifs:
+    st.markdown(f"- {obj}")
+
 # Section : Exemples de cas d’usage
 st.header("🧪 Exemples de cas d’usage")
 use_cases = [
@@ -26,16 +36,6 @@ use_cases = [
 ]
 for uc in use_cases:
     st.markdown(f"- {uc}")
-
-# Section : Objectifs du POC
-st.header("🎯 Objectifs du POC")
-objectifs = [
-    "Valider la valeur métier de ce type de solution",
-    "Définir les cas d’usages les plus intéressants",
-    "Identifier les axes d’amélioration et les freins éventuels"
-]
-for obj in objectifs:
-    st.markdown(f"- {obj}")
 
 # Section : Réagir aux réponses
 st.header("💬 Réagir aux réponses de l’assistant")
