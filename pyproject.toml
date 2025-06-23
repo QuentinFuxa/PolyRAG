@@ -32,7 +32,7 @@ dependencies = [
     "langgraph ~=0.3.5",
     "langgraph-checkpoint-sqlite ~=2.0.1",
     "langgraph-checkpoint-postgres ~=2.0.13",
-    "langgraph-supervisor ~=0.0.8",
+    "langgraph-supervisor ~=0.0.19",
     "langsmith ~=0.1.145",
     "llmsherpa>=0.1.0",
     "llmsherpa>=0.1.0",
@@ -49,7 +49,6 @@ dependencies = [
     "pyarrow >=18.1.0",
     "pydantic ~=2.10.1",
     "pydantic-settings ~=2.6.1",
-    "pyowm ~=3.3.0",
     "python-dotenv ~=1.0.1",
     "pyyaml>=6.0",
     "python-multipart ~=0.0.20",
@@ -115,3 +114,9 @@ exclude = "src/streamlit-app.py"
 [[tool.mypy.overrides]]
 module = ["numexpr.*"]
 follow_untyped_imports = true
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
