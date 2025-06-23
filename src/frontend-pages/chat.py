@@ -86,6 +86,21 @@ async def main() -> None:
             width: 100% !important;
             text-align: left !important;
         }
+        div.stVerticalBlock[class*="st-key-pdf_buttons_container"] {
+            display: flex !important;
+            flex-direction: row !important; /* Explicitly set direction to row */
+            flex-wrap: wrap !important;
+            gap: 0px 20px; !important;
+            padding: 0px !important;
+            margin: 0px !important;
+        }
+        div[class*=\"st-key-pdf_button_call\"] button {
+            color: rgb(26 94 213) !important;
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            cursor: pointer !important;
+        }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
@@ -529,11 +544,13 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                 st.write(f"Raw output: {tool_result.content}")
                 status.update(state="complete", label="PDF Viewer Processing Error")
         
-        # Create buttons outside the status context if any were prepared
-        for btn_data in pdf_buttons_to_create:
-            button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
-            if st.button(btn_data['name'], key=button_key, type="tertiary", icon=":material/picture_as_pdf:"):
-                view_pdf(btn_data['name'], btn_data['annotations'], debug_viewer=btn_data['debug'])
+        with st.container(key='sources', border=True):
+            st.button('**Sources dans les Lettres de suite :**', type='tertiary', icon=":material/info:", help='Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.',)
+            with st.container(key='pdf_buttons_container'):
+                for btn_data in pdf_buttons_to_create:
+                    button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
+                    if st.button(btn_data['name'], key=button_key, type="tertiary", icon=':material/article:'):
+                        view_pdf(btn_data['name'], btn_data['annotations'], debug_viewer=btn_data['debug'])
     else: # Other tools
         # ... (SQL_Executor and generic tool output remain the same) ...
         with status:
