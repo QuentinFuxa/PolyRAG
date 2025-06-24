@@ -15,6 +15,7 @@ st.markdown("""
 """)
 
 
+
 st.subheader("23/06/2025")
 st.markdown("""
 ### Questions testées et corrigées
@@ -30,7 +31,7 @@ st.markdown("""
 | combien d'établissement utilise les prestations de physiques médicales en 2024 | ne trouve rien | 626 établissements | ✅ Corrigé |
 | monographie des LDS 2024 OARP | Ne trouve pas | ❌ | ❌ Non résolu : Ne comprends pas OARP - fournir un outil d'accès au lexique ? |
 | fais une synthèse des LDS 2024 Organismes agréés pour la mesure du radon | ne détecte qu'une seule inspection en 2024 | ❌ | ✅ Corrigé |
-| fais une monographie 2024 des inspections recherche Npx | ne fais de synthèse mais une liste | ⚠️ donne les demandes types les plus récurrentes, mais pas à proprement dit une synthèse | ⚠️ Partiellement corrigé |
+| fais une monographie 2024 des inspections recherche Npx | ne fait de synthèse mais une liste | ⚠️ donne les demandes types les plus récurrentes, mais pas à proprement dit une synthèse | ⚠️ Partiellement corrigé |
 | fais une monographie des LDS 2024 en industrie Npx | identification d'une seule inspection | Trouve 877 résultats | ✅ Corrigé |
 | Affiche le nombre de demandes en LUDD depuis début 2025 | Pas le bon nombre | Bon nombre | ✅ Corrigé |
 | Combien de LDS avec la thématique radioprotection en 2024 et 2025 en LUDD | N'en trouve pas | Trouve des inspections | ✅ Corrigé |
@@ -44,13 +45,24 @@ st.markdown("""
 | fais une synthèse des inspections sur les traitements biocides | Ne trouve pas | Fonctionne bien | ✅ Corrigé |
 | fais une synthèse sur la maîtrise de la réactivité en salle de commande | Ne trouve pas | Fonctionne bien | ✅ Corrigé |
 
-## Légende des statuts
+##### Légende des statuts
 - ✅ **Corrigé** : Problème résolu, fonctionnalité opérationnelle
 - ⚠️ **Partiellement corrigé** : Amélioration mais limitations subsistantes
 - ❌ **Non résolu** : Problème persistant ou limitation système
 
-### Autres améliorations
+##### Autres améliorations
 - Améliore l'affichage des Lettres de suite dans la page de conversations
 - Objectifs remontés dans la page d'aide
+
+""")
+
+
+st.subheader("24/06/2025")
+st.markdown("""
+### Questions testées et corrigées
+
+| Question/Requête | Problème identifié | Nouvelle version | Statut |
+|---|---|---|---|
+| fais une monographie 2024 des inspections recherche Npx | Ne fait de synthèse mais une liste | Fait une réelle monographie | ✅ Corrigé |
 
 """)

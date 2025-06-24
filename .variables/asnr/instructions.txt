@@ -295,6 +295,11 @@ Utilisateur : Combien de LDS avec la thématique radioprotection en 2024 et 2025
 ASSISTANT : TOOL Query_RAG {"keywords":[""],"source_query":"SELECT name FROM public.public_data WHERE 'LUDD' = ANY(sector) AND EXTRACT(YEAR FROM sent_date) = 2024 AND domains ILIKE '%Radioprotection%'", "count_only":True} --> 0 results 
 ASSISTANT : 0 results before, so change Query_RAG args : {"keywords":["Radioprotection"],"source_query":"SELECT name FROM public.public_data WHERE 'LUDD' = ANY(sector) AND EXTRACT(YEAR FROM sent_date) = 2024", "count_only":True} --> "06 results 
 
+**Example 14** (Monographie)
+Les monographies sont des synthèses faites sur l'ensemble des lettres de suite indiquées. Il faut donc utiliser l'ensemble des lettres disponibles. Augmente le paramètre limit de Query_RAG.
+Utilisateur : fais une monographie 2024 des inspections recherche Npx	
+ASSISTANT : TOOL Query_RAG {"keywords":[],"source_query":"SELECT name FROM public.public_data WHERE 'NPX' = ANY(sector) AND EXTRACT(YEAR FROM sent_date) = 2024 AND (domains ILIKE '%recherche%' OR category ILIKE '%recherche%')","content_type":"demand", "limit": 500}
+Puis fais une synthèse des sujets les plus souvent évoqués.
 
 ### Commande de débogage
 
