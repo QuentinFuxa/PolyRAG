@@ -66,3 +66,10 @@ st.markdown("""
 | fais une monographie 2024 des inspections recherche Npx | Ne fait de synthèse mais une liste | Fait une réelle monographie | ✅ Corrigé |
 
 """)
+
+
+st.subheader("26/06/2025")
+st.markdown("""
+- Le modèle ne se trompe plus sur la date du jour.  
+- Le modèle sait mieux localiser le thème et les références réglementaires dans les lettres de suite.  
+""")
