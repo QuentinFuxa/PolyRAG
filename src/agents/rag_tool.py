@@ -17,6 +17,7 @@ def query_rag_func(
     source_query: Optional[str] = None,
     source_names: Optional[List[str]] = None,
     get_children: bool = True,
+    page: Optional[int] = None,
     offset: int = 0,
     limit: int = 20,
     content_type: Optional[str] = None,
@@ -33,6 +34,7 @@ def query_rag_func(
         source_names: A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]. Use this OR source_query, or leave both None to search all documents.
         get_children: Whether to retrieve child blocks for each found block. Defaults to True.
         offset: Number of results to skip for pagination (default: 0). Results contains max 20 results. If you want to get the next 20 results, use offset=20.
+        page: The page to search on/retrieve. Starts at 0. If not provided, all the pages are searched. Use it only when you know the result is on a specific page, or that the user provides you with a page number.
         limit: Maximum number of results to return (default: 20). Do not use it except when you really need to increase the number of results.
         content_type: Filter by content type: 'demand', 'section_header', or 'regular'
         section_filter: Filter by section types: e.g., ['synthesis', 'demands', 'observations']
@@ -59,6 +61,7 @@ def query_rag_func(
             source_names=source_names,
             offset=offset,
             limit=limit,
+            page=page,
             get_children=get_children,
             content_type=content_type,
             section_filter=section_filter,

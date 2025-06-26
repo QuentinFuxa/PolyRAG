@@ -50,7 +50,7 @@ if not instructions:
         instructions = f.read()
 
 instructions = instructions.replace('{', '{{').replace('}', '}}').replace('/././/', '{').replace('//././.', '}')
-instructions = instructions.format(current_date=current_date)
+instructions = instructions.replace("CURRENT_DATE", current_date)
 
 
 def wrap_model(model: BaseChatModel) -> RunnableSerializable[AgentState, AIMessage]:

@@ -329,6 +329,7 @@ class RAGSystem:
               source_names: Optional[List[str]] = None,
               limit: int = 20,
               offset: int = 0,
+              page: Optional[int] = None,
               get_children: bool = True,
               content_type: Optional[str] = None,
               section_filter: Optional[List[str]] = None,
@@ -439,6 +440,9 @@ class RAGSystem:
             where_conditions.append(f"r.section_type IN ('{str_section_filter}')")
         if demand_priority is not None:
             where_conditions.append(f"r.demand_priority = {demand_priority}")
+        
+        if page is not None:
+            where_conditions.append(f"r.page_idx = {page}")
 
         if where_conditions:
             where_clause_full_str = " WHERE " + " AND ".join(where_conditions)
