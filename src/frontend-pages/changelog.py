@@ -1,19 +1,31 @@
 import streamlit as st
 
 st.header("Nouveautés :")
-st.subheader("16/06/2025")
+
+st.subheader("03/07/2025")
 st.markdown("""
-- Déploiement aux utilisateurs
+- **Amélioration du moteur de recherche** : Meilleure compréhension des requêtes sur les thèmes
+- **Correction de bugs d'interface** :
+    - Résolution d'un bug qui pouvait faire crasher l'application lors de l'affichage de plusieurs documents PDF.
 """)
 
-st.subheader("18/06/2025")
+
+st.subheader("26/06/2025")
 st.markdown("""
-- Meilleure gestion des feedbacks
-- Seulement la date de derniere maj de la conversation est affichée au survol d'une conversation
-- Amélioration du modèle lors de certaines questions
-- Ajout de la date limite de la phase de test du PoC (11/07/2025)
+- Le modèle ne se trompe plus sur la date du jour.  
+- Le modèle sait mieux localiser le thème et les références réglementaires dans les lettres de suite.  
 """)
 
+
+st.subheader("24/06/2025")
+st.markdown("""
+### Questions testées et corrigées
+
+| Question/Requête | Problème identifié | Nouvelle version | Statut |
+|---|---|---|---|
+| fais une monographie 2024 des inspections recherche Npx | Ne fait de synthèse mais une liste | Fait une réelle monographie | ✅ Corrigé |
+
+""")
 
 
 st.subheader("23/06/2025")
@@ -57,19 +69,19 @@ st.markdown("""
 """)
 
 
-st.subheader("24/06/2025")
+
+
+
+st.subheader("18/06/2025")
 st.markdown("""
-### Questions testées et corrigées
-
-| Question/Requête | Problème identifié | Nouvelle version | Statut |
-|---|---|---|---|
-| fais une monographie 2024 des inspections recherche Npx | Ne fait de synthèse mais une liste | Fait une réelle monographie | ✅ Corrigé |
-
+- Meilleure gestion des feedbacks
+- Seulement la date de derniere maj de la conversation est affichée au survol d'une conversation
+- Amélioration du modèle lors de certaines questions
+- Ajout de la date limite de la phase de test du PoC (11/07/2025)
 """)
 
-
-st.subheader("26/06/2025")
+st.subheader("16/06/2025")
 st.markdown("""
-- Le modèle ne se trompe plus sur la date du jour.  
-- Le modèle sait mieux localiser le thème et les références réglementaires dans les lettres de suite.  
+- Déploiement aux utilisateurs
 """)
+

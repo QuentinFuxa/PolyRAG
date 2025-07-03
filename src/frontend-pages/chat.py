@@ -544,9 +544,9 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                 st.write(f"Raw output: {tool_result.content}")
                 status.update(state="complete", label="PDF Viewer Processing Error")
         
-        with st.container(key='sources', border=True):
+        with st.container(key=f"sources_{tool_result.tool_call_id}", border=True):
             st.button('**Sources dans les Lettres de suite :**', type='tertiary', icon=":material/info:", help='Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.',)
-            with st.container(key='pdf_buttons_container'):
+            with st.container(key=f"pdf_buttons_container_{tool_result.tool_call_id}"):
                 for btn_data in pdf_buttons_to_create:
                     button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
                     if st.button(btn_data['name'], key=button_key, type="tertiary", icon=':material/article:'):
