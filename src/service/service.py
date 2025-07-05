@@ -590,6 +590,25 @@ async def health_check():
     return {"status": "ok"}
 
 
+@router.get("/feedback")
+async def get_feedbacks(conversation_id: str) -> Dict[str, Any]:
+    """Get all feedback entries for a specific conversation (thread_id).
+
+    Args:
+        conversation_id: The conversation/thread ID to get feedback for
+
+    Returns:
+        Dictionary containing the list of feedbacks
+    """
+    try:
+        feedback_entries = db_manager.get_feedbacks_for_conversation(conversation_id)
+        return {
+            "feedbacks": [fb.model_dump() if hasattr(fb, "model_dump") else dict(fb) for fb in feedback_entries]
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving feedbacks for conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving feedbacks: {str(e)}")
+
 @router.get("/feedback/{run_id}")
 async def get_feedback(run_id: str) -> Dict[str, Any]:
     """Get all feedback entries for a specific run.
