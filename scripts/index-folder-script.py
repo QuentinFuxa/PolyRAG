@@ -11,12 +11,12 @@ def index_pdf(pdf_path, use_embeddings=False):
         db_manager = DatabaseManager()
         name = os.path.basename(pdf_path)[:-4]
         source_status = db_manager.get_document_source_status(name=name)
-        if source_status and source_status.get('is_indexed'):
-            print(f"Document source '{name}' is already indexed. Skipping.")
-            return source_status.get('id') # Return existing source ID
+        # if source_status and source_status.get('is_indexed'):
+        #     print(f"Document source '{name}' is already indexed. Skipping.")
+        #     return source_status.get('id') # Return existing source ID
         source_id = db_manager.add_document_source(name=name, path=pdf_path)
         print(f"Ensured document source entry for '{name}' with ID: {source_id}")
-        rag_system = RAGSystem(use_embeddings=use_embeddings)
+        rag_system = RAGSystem()
         rag_system.index_document(pdf_path, document_name_override=name)
         print(f"Successfully processed blocks for document source: {name}")
         if db_manager.set_document_indexed(name=name, indexed=True):

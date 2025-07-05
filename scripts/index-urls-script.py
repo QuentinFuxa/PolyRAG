@@ -101,7 +101,7 @@ def main():
     temp_dir = None
     try:
         db_manager = DatabaseManager()
-        rag_system = RAGSystem(use_embeddings=args.embeddings) # Pass embedding flag
+        rag_system = RAGSystem()
         if not (args.schema.isidentifier() and args.table.isidentifier() and args.column.isidentifier()):
              raise ValueError("Invalid schema, table, or column name provided.")
 
