@@ -17,6 +17,7 @@ from schema import (
     UserFeedbackCreate,
     UserFeedbackRead,
 )
+from typing import cast
 
 
 class AgentClientError(Exception):
@@ -25,6 +26,33 @@ class AgentClientError(Exception):
 
 class AgentClient:
     """Client for interacting with the agent service."""
+
+    def get_feedbacks(
+        self,
+        conversation_id: str,
+    ) -> list[Feedback]:
+        """
+        Retrieve all feedbacks for a given conversation (thread_id).
+
+        Args:
+            conversation_id (str): The thread ID of the conversation.
+
+        Returns:
+            list[Feedback]: List of feedback objects.
+        """
+        params = {"conversation_id": conversation_id}
+        try:
+            response = httpx.get(
+                f"{self.base_url}/feedback",
+                params=params,
+                headers=self._headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            feedbacks_data = response.json().get("feedbacks", [])
+            return [Feedback.model_validate(fb) for fb in feedbacks_data]
+        except httpx.HTTPError as e:
+            raise AgentClientError(f"Error retrieving feedbacks: {e}")
 
     def __init__(
         self,
