@@ -503,7 +503,7 @@ class DatabaseManager:
             with conn.cursor(cursor_factory=DictCursor) as cursor:
                 cursor.execute(
                     f"""
-                    SELECT id, run_id, key, score, additional_data, created_at FROM {schema_app_data}.feedback
+                    SELECT id, run_id, key, score, conversation_id, commented_message_text, additional_data, created_at FROM {schema_app_data}.feedback
                     WHERE run_id = %s ORDER BY created_at DESC
                     """,
                     (run_id,)
@@ -511,7 +511,25 @@ class DatabaseManager:
                 return [dict(row) for row in cursor.fetchall()]
         finally:
             self.release_connection(conn)
-            
+
+    def get_feedbacks_for_conversation(self, conversation_id: str) -> List[Dict[str, Any]]:
+        """
+        Retrieve all feedbacks for a given conversation (thread_id).
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT id, run_id, key, score, conversation_id, commented_message_text, additional_data, created_at FROM {schema_app_data}.feedback
+                    WHERE conversation_id = %s ORDER BY created_at DESC
+                    """,
+                    (conversation_id,)
+                )
+                return [dict(row) for row in cursor.fetchall()]
+        finally:
+            self.release_connection(conn)
+
     # Conversation history methods
     def save_conversation_title(self, thread_id: UUID, user_id: UUID, title: str) -> None:
         conn = self.get_connection()
