@@ -135,6 +135,10 @@ async def main() -> None:
             st.markdown(dt.AGENT_CONNECTION_RETRY_MSG); st.stop()
     agent_client: AgentClient = st.session_state.agent_client
 
+    # --- FEEDBACKS: Load all feedbacks for the current conversation (thread_id) ---
+    # (Ce bloc va être déplacé après chaque chargement effectif de messages)
+    feedbacks_by_run_id = {}
+
     query_thread_id = st.query_params.get("thread_id")
     if query_thread_id and ("thread_id" not in st.session_state or query_thread_id != st.session_state.thread_id):
         try:
@@ -149,6 +153,18 @@ async def main() -> None:
             except: st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
         except AgentClientError as e: st.error(dt.CONVERSATION_LOAD_ERROR.format(e=e))
 
+        # (Re)charger les feedbacks après chargement des messages
+        feedbacks_by_run_id = {}
+        try:
+            thread_id = st.session_state.get("thread_id")
+            if agent_client and thread_id:
+                feedbacks = agent_client.get_feedbacks(thread_id)
+                for fb in feedbacks:
+                    feedbacks_by_run_id.setdefault(fb.run_id, []).append(fb)
+        except Exception as e:
+            feedbacks_by_run_id = {}
+            st.warning(f"Impossible de charger les feedbacks de la conversation : {e}")
+
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")
         if not thread_id:
@@ -161,6 +177,18 @@ async def main() -> None:
             except AgentClientError: st.error(dt.CONVERSATION_NOT_FOUND_ERROR); messages = []
         st.session_state.messages = messages
         st.session_state.thread_id = thread_id
+
+        # (Re)charger les feedbacks après chargement des messages
+        feedbacks_by_run_id = {}
+        try:
+            thread_id = st.session_state.get("thread_id")
+            if agent_client and thread_id:
+                feedbacks = agent_client.get_feedbacks(thread_id)
+                for fb in feedbacks:
+                    feedbacks_by_run_id.setdefault(fb.run_id, []).append(fb)
+        except Exception as e:
+            feedbacks_by_run_id = {}
+            st.warning(f"Impossible de charger les feedbacks de la conversation : {e}")
 
     with st.sidebar:
 
@@ -296,7 +324,7 @@ async def main() -> None:
                 """, unsafe_allow_html=True)
 
 
-    await draw_messages(amessage_iter(), agent_client=agent_client)
+    await draw_messages(amessage_iter(), agent_client=agent_client, feedbacks_by_run_id=feedbacks_by_run_id)
 
     if user_input := st.chat_input(dt.CHAT_INPUT_PLACEHOLDER, accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
         hide_welcome()
@@ -373,6 +401,7 @@ async def draw_messages(
     messages_agen: AsyncGenerator[ChatMessage | str, None],
     is_new: bool = False,
     agent_client: AgentClient = None, # agent_client is passed, can be used
+    feedbacks_by_run_id: dict = None, # mapping run_id -> list of feedbacks
 ) -> None:
     if "pdf_documents" not in st.session_state: st.session_state.pdf_documents = {}
     last_message_type = None
@@ -396,6 +425,28 @@ async def draw_messages(
         if not isinstance(msg, ChatMessage):
             st.error(dt.UNEXPECTED_MESSAGE_TYPE_ERROR.format(msg_type=type(msg))); st.write(msg); st.stop()
 
+        # --- FEEDBACKS: Affichage sous chaque message concerné ---
+        def display_feedbacks_for_run(run_id):
+            if not feedbacks_by_run_id or not run_id or run_id not in feedbacks_by_run_id:
+                return
+            for fb in feedbacks_by_run_id[run_id]:
+                stars = int(round(fb.score * 5))
+                stars_str = "★" * stars + "☆" * (5 - stars)
+                # Correction : récupérer le texte du feedback dans kwargs['comment'] OU commented_message_text
+                comment = ""
+                # Support dict ou objet
+                if hasattr(fb, "kwargs"):
+                    comment = getattr(fb, "kwargs", {}).get("comment", "") or getattr(fb, "commented_message_text", "") or ""
+                elif isinstance(fb, dict):
+                    comment = fb.get("kwargs", {}).get("comment", "") or fb.get("commented_message_text", "") or ""
+                st.markdown(
+                    f'<div style="margin:8px 0 8px 0; padding:8px; border-radius:8px; background:#f6f6f6; border:1px solid #e0e0e0; color:#444; font-size:0.95em;">'
+                    f'<span style="color:#f5b301; font-size:1.2em;">{stars_str}</span>'
+                    + (f'<br><span style="color:#555;">{comment}</span>' if comment else "")
+                    + '</div>',
+                    unsafe_allow_html=True
+                )
+
         match msg.type:
             case "human":
                 last_message_type = "human"
@@ -404,6 +455,7 @@ async def draw_messages(
                     additional_markdown = "  \n"                   
                     for file_name in msg.attached_files: additional_markdown += dt.FILE_ATTACHED_BADGE.format(file_name=file_name)
                 st.chat_message("human", avatar=USER_ICON).write(msg.content + additional_markdown)
+                display_feedbacks_for_run(msg.run_id)
             case "ai":
                 if is_new: st.session_state.messages.append(msg)
                 if last_message_type != "ai":
@@ -415,6 +467,7 @@ async def draw_messages(
                         if streaming_placeholder: # End of stream for this message part
                             streaming_placeholder.write(msg.content); streaming_content = ""; streaming_placeholder = None
                         else: st.write(msg.content) # Non-streamed AI message
+                    display_feedbacks_for_run(msg.run_id)
 
                     if msg.tool_calls:
                         # ... (tool call logic remains the same, ensure agent_client calls within are user-scoped if needed)
@@ -584,25 +637,25 @@ async def handle_feedback() -> None:
     latest_run_id = st.session_state.messages[-1].run_id
     if not latest_run_id: return
     feedback_stars = st.feedback(dt.FEEDBACK_STARS_KEY, key=f"stars_{latest_run_id}")
-    if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
-        normalized_score = (feedback_stars + 1) / 5.0; agent_client: AgentClient = st.session_state.agent_client
-        conversation_id = st.session_state.thread_id
-        commented_message_text = st.session_state.messages[-1].content if st.session_state.messages else None
-        try:
-            await agent_client.acreate_feedback(
-                run_id=latest_run_id, 
-                key="human-feedback-stars", 
-                score=normalized_score, 
-                conversation_id=conversation_id,
-                commented_message_text=commented_message_text,
-                kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT}
-            )
-            st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
-            st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
-        except AgentClientError as e: st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
+    # if feedback_stars is not None and (latest_run_id, feedback_stars) != st.session_state.last_star_feedback:
+    #     normalized_score = (feedback_stars + 1) / 5.0; agent_client: AgentClient = st.session_state.agent_client
+    #     conversation_id = st.session_state.thread_id
+    #     commented_message_text = st.session_state.messages[-1].content if st.session_state.messages else None
+    #     try:
+    #         await agent_client.acreate_feedback(
+    #             run_id=latest_run_id, 
+    #             key="human-feedback-stars", 
+    #             score=normalized_score, 
+    #             conversation_id=conversation_id,
+    #             commented_message_text=commented_message_text,
+    #             kwargs={"comment": dt.FEEDBACK_HUMAN_INLINE_COMMENT}
+    #         )
+    #         st.session_state.last_star_feedback = (latest_run_id, feedback_stars)
+    #         st.toast(dt.FEEDBACK_SAVED_TOAST, icon=dt.FEEDBACK_STARS_ICON)
+    #     except AgentClientError as e: st.error(dt.FEEDBACK_SAVE_ERROR.format(e=e))
     if feedback_stars is not None and latest_run_id not in st.session_state.text_feedback_runs:
         text_feedback = st.text_area(dt.FEEDBACK_TEXT_AREA_LABEL, key=f"text_{latest_run_id}", height=100, placeholder=dt.FEEDBACK_TEXT_AREA_PLACEHOLDER)
-        if text_feedback and st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"):
+        if st.button(dt.FEEDBACK_SUBMIT_BUTTON, key=f"submit_{latest_run_id}"):
             normalized_score = (feedback_stars + 1) / 5.0; agent_client: AgentClient = st.session_state.agent_client
             conversation_id = st.session_state.thread_id
             commented_message_text = st.session_state.messages[-1].content if st.session_state.messages else None
