@@ -407,30 +407,14 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
 
 
 @router.post("/history")
-def history(input_data: ChatHistoryInput) -> ChatHistory: # Renamed input to input_data
+def history(input_data: ChatHistoryInput) -> ChatHistory:
     """
-    Get chat history.
+    Get chat history, with feedbacks injected into messages.
     """
-    # TODO: Hard-coding DEFAULT_AGENT here is wonky. 
-    # Also, agent state might not be the sole source of truth for history if db_manager is also used.
-    # This endpoint might need to decide whether to fetch from agent state or db_manager based on user_id.
-    # For now, assuming agent state is primary and thread_id is globally unique or implicitly user-scoped by client.
-    # If strict user scoping is needed here, and thread_ids are not guaranteed unique across users,
-    # this logic needs to change to use input_data.user_id to verify ownership or scope the agent's checkpointer.
-    
     agent: Pregel = get_agent(DEFAULT_AGENT)
-    
-    # Construct configurable, potentially including user_id if the agent's checkpointer uses it.
-    # This depends on how the checkpointer is set up in lifespan.
-    # For now, we'll assume thread_id is sufficient for agent.get_state if user_id is for db_manager.
     configurable_for_agent = {"thread_id": input_data.thread_id}
     if input_data.user_id:
-        # If the agent's checkpointer is user-aware, user_id should be passed here.
-        # configurable_for_agent["user_id"] = str(input_data.user_id)
-        # This is a deeper change involving how LangGraph's checkpointer is configured and used.
-        # We'll log that user_id was provided for now.
         logger.info(f"History requested for thread_id: {input_data.thread_id}, user_id: {input_data.user_id}")
-
 
     try:
         state_snapshot = agent.get_state(
@@ -440,6 +424,54 @@ def history(input_data: ChatHistoryInput) -> ChatHistory: # Renamed input to inp
         )
         messages: list[AnyMessage] = state_snapshot.values.get("messages", [])
         chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
+
+        # --- Ajout feedbacks ---
+        # Appel direct à la fonction get_feedbacks (importée dans ce fichier)
+        try:
+            feedbacks_result = get_feedbacks(input_data.thread_id)
+            feedbacks = feedbacks_result.get("feedbacks", [])
+        except Exception as e:
+            logger.error(f"Could not fetch feedbacks for thread {input_data.thread_id}: {e}")
+            feedbacks = []
+
+        for msg in chat_messages:
+            matched_feedbacks = [
+                fb for fb in feedbacks
+                if fb.get("commented_message_text") == msg.content
+            ]
+            if matched_feedbacks:
+                # Group feedbacks by score
+                from collections import defaultdict
+                feedbacks_by_score = defaultdict(list)
+                for fb in matched_feedbacks:
+                    feedbacks_by_score[fb.get("score", "")].append(fb)
+
+                feedback_md = ""
+                for score, fbs in feedbacks_by_score.items():
+                    # Check if any feedback in this score group has a non-empty comment (excluding "Feedback humain en ligne")
+                    feedbacks_with_comment = []
+                    for fb in fbs:
+                        comment = fb.get("additional_data", "").get("comment", "")
+                        if comment == "Feedback humain en ligne":
+                            comment = ''
+                        if comment:
+                            feedbacks_with_comment.append((fb, comment))
+                    if feedbacks_with_comment:
+                        # Only display feedbacks with comments for this score
+                        for fb, comment in feedbacks_with_comment:
+                            feedback_md += f"\n\n**Feedback** {int(score*5)*'⭐️'}\n"
+                            feedback_md += f"""*{comment}*\n"""
+                    else:
+                        # No feedback with comment for this score, display all (even if no comment)
+                        for fb in fbs:
+                            comment = fb.get("additional_data", "").get("comment", "")
+                            if comment == "Feedback humain en ligne":
+                                comment = ''
+                            feedback_md += f"\n\n**Feedback** {int(score*5)*'⭐️'}\n"
+                            if comment:
+                                feedback_md += f""": *{comment}*\n"""
+                msg.content += feedback_md
+
         return ChatHistory(messages=chat_messages)
     except Exception as e:
         logger.error(f"An exception occurred: {e}")
@@ -590,8 +622,8 @@ async def health_check():
     return {"status": "ok"}
 
 
-@router.get("/feedback")
-async def get_feedbacks(conversation_id: str) -> Dict[str, Any]:
+# @router.get("/feedback")
+def get_feedbacks(conversation_id: str) -> Dict[str, Any]:
     """Get all feedback entries for a specific conversation (thread_id).
 
     Args:
