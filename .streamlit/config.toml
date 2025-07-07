@@ -4,3 +4,6 @@ primaryColor = "#0082ff"
 [theme.sidebar]
 backgroundColor = "rgb(236, 245, 255)"
 color = 'black'
+
+[browser]
+gatherUsageStats = false
