@@ -195,7 +195,7 @@ async def main() -> None:
                     st.session_state.editing_title = False; st.rerun()
         
         try:
-            conversations = agent_client.get_conversations(limit=20, user_id=current_user_id)
+            conversations = agent_client.get_conversations(limit=100, user_id=current_user_id)
             if conversations:
                 st.subheader(dt.RECENT_SUBHEADER)
                 for conv in conversations:

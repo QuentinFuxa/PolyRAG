@@ -469,7 +469,7 @@ def history(input_data: ChatHistoryInput) -> ChatHistory:
                                 comment = ''
                             feedback_md += f"\n\n**Feedback** {int(score*5)*'⭐️'}\n"
                             if comment:
-                                feedback_md += f""": *{comment}*\n"""
+                                feedback_md += f""": *{comment.strip()}*\n"""
                 msg.content += feedback_md
 
         return ChatHistory(messages=chat_messages)
