@@ -2,6 +2,13 @@ import streamlit as st
 
 st.header("Nouveautés :")
 
+st.subheader("08/07/2025")
+st.markdown("""
+- L'assistant sait mieux situer les références réglementaires dans les lettres de suite.
+- L'assistant recherche de demandes fonctionne mieux lorsque les mots clés sont en dehors de la demande.
+- L'assistant sait mieux faire la disctinction entre le nombre de demandes et le nombre de LDS.
+""")
+
 st.subheader("03/07/2025")
 st.markdown("""
 - **Amélioration du moteur de recherche** : Meilleure compréhension des requêtes sur les thèmes

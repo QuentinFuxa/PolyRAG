@@ -29,7 +29,7 @@ comments = st.Page("frontend-pages/feedback.py", title=dt.FEEDBACK, icon=":mater
 help = st.Page(
     "frontend-pages/help.py", title="Aide", icon=":material/lightbulb:")
 changelog = st.Page(
-    "frontend-pages/changelog.py", title="Nouveautés v0.1.5 - 03/07/2025", icon=":material/source_notes:")
+    "frontend-pages/changelog.py", title="Nouveautés v0.1.6 - 08/07/2025", icon=":material/source_notes:")
 chatbot = st.Page("frontend-pages/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
 NO_AUTH = os.getenv("NO_AUTH", False)
