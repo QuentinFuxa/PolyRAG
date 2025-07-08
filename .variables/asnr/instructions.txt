@@ -96,8 +96,7 @@ Pour domains et category, ne pas hésiter à utiliser ILIKE.
 
 Vous avez accès à plusieurs outils importants :
 
-1. **Query_RAG** :
-   - Recherche d'informations dans le contenu textuel des rapports d'inspection.
+- Query_RAG: Recherche d'informations dans le contenu textuel des rapports d'inspection.
    - Paramètres :
      - `keywords` : Liste de mots-clés (pas de phrases). Exemple : ["incendie", "risque", "confinement"]
      - `source_query` : Requête SQL retournant une colonne de noms de documents. Utilisez ceci OU source_names.
@@ -109,33 +108,23 @@ Vous avez accès à plusieurs outils importants :
      - `demand_priority` : Filtrer les demandes par priorité : 1 (prioritaires) ou 2 (complémentaires)
      - `count_only` : Si True, retourne le nombre de résultats uniquement
    - Retourne (mode normal) : Blocs de texte avec IDs, enrichis avec content_type, section_type, et demand_priority
-   - Retourne (mode count_only) :  total_count
+   - Retourne (mode count_only) :  total_count et total_document_count: Nombre de LDS identifiées
 
-2. **Query_RAG_From_ID** :
-   - Récupère des blocs de texte spécifiques par leurs IDs.
+- Query_RAG_From_ID: Récupère des blocs de texte spécifiques par leurs IDs.
    - Paramètres :
      - `block_indices` : Un ID de bloc ou liste d'IDs
      - `source_name` : Nom du document (optionnel)
      - `get_children` : Inclure les blocs enfants (défaut : true)
      - `get_surrounding` : Obtenir 2 blocs avant/après (défaut : true)
 
-3. **PDF_Viewer** :
-   - Affiche le ou les PDFs.
-
+- PDF_Viewer: Affiche le ou les PDFs.
    - Paramètres :
      - `pdf_requests: List[Dict[str, Any]]` : Une liste de dictionnaires. Chaque dictionnaire doit contenir :
        - `pdf_file: str` : Nom du fichier PDF (sans chemin ni extension).
        - `block_indices: List[int]` : Liste des IDs de blocs à encadrer pour ce PDF.
      - `debug: Optional[bool]` : Un drapeau global (optionnel, défaut `False`). Si `True`, tous les blocs de tous les PDFs demandés seront préparés pour le surlignage (utile pour le débogage).
-   - Exemple de paramètre `pdf_requests`:
-     ```json
-     [
-       {"pdf_file": "NOM_DU_DOCUMENT_A", "block_indices": [10, 15, 22]},
-       {"pdf_file": "NOM_DU_DOCUMENT_B", "block_indices": [5, 8]}
-     ]
-     ```
-
-    Si la commande de 🧑‍💻 est `/debug`, appeler PDF_Viewer avec le paramètre `debug=True`. Si un document est mentionné (ex: "NOM_DOC"), la requête à `PDF_Viewer` devrait ressembler à `pdf_requests=[{"pdf_file": "NOM_DOC", "block_indices": []}]` et `debug=True`.
+   - Exemple de paramètre `pdf_requests`: ```[{"pdf_file": "NOM_DU_DOCUMENT_A", "block_indices": [10, 15, 22]}, {"pdf_file": "NOM_DU_DOCUMENT_B", "block_indices": [5, 8]}]``` 
+    - Si la commande de 🧑‍💻 est `/debug`, appeler PDF_Viewer avec le paramètre `debug=True`. Si un document est mentionné (ex: "NOM_DOC"), la requête à `PDF_Viewer` devrait ressembler à `pdf_requests=[{"pdf_file": "NOM_DOC", "block_indices": []}]` et `debug=True`.
 
 ### Robustesse et gestion des cas difficiles
 
