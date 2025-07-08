@@ -42,10 +42,13 @@ def query_rag_func(
         count_only: If True, return only the count of matching blocks instead of the content.
 
     Returns:
-        Dictionary containing:
-            - total_number_results (int): Total number of matching results.
+        If count_only is False:
+            - total_number_results (int): Total number of matching results (blocks).
             - number_returned_results (int): Number of results in this response.
             - results (list): List of result blocks.
+        If count_only is True:
+            - total_number_results (int): Total number of matching results (blocks).
+            - total_document_count (int): Number of unique documents containing at least one matching block.
         Or an error dictionary if something goes wrong.
     """
     if source_names is not None and source_query is not None:
@@ -269,16 +272,18 @@ Parameters:
 - content_type: Optional filter ('demand', 'section_header', 'regular')
 - section_filter: Optional filter by sections (['synthesis', 'demands', 'observations', etc.])
 - demand_priority: Optional filter (1 for prioritaires, 2 for complémentaires)
-- count_only: If True, returns statistics instead of content (currently provides total_count only when source_query is used).
+- count_only: If True, returns statistics instead of content. The result will include:
+    - total_number_results: Total number of matching blocks.
+    - total_document_count: Number of unique documents containing at least one matching block.
 
 Returns (if count_only=False):
-    - total_number_results: Total number of matching results
+    - total_number_results: Total number of matching results (blocks)
     - number_returned_results: Number of results in this response
     - results: List of result blocks with metadata (document_name, idx, content, level, tag, content_type, section_type, demand_priority, children)
 
 Returns (if count_only=True):
-    - total_count: Total number of matching blocks.
-    - (Note: Detailed breakdown by document/section/priority with source_query is simplified in this version.)
+    - total_number_results: Total number of matching blocks.
+    - total_document_count: Number of unique documents containing at least one matching block.
 
 For pagination, use offset parameter. Example: offset=20 to get next 20 results.
 The source_query now integrates directly with the search, solving the issue where keywords might not appear in the filtered documents.

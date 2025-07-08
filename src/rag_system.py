@@ -478,34 +478,45 @@ class RAGSystem:
         # Execute queries
         _final_count_query = count_query.format(ts_query=ts_query_for_format).replace(';', '')
         count_result = self.db_manager.execute_query(_final_count_query)
-        
+
+        # Prepare document count query (unique document names)
+        doc_count_query_parts = [part.replace("COUNT(*)", "COUNT(DISTINCT r.name)") if "COUNT(*)" in part else part for part in count_query_parts]
+        _final_doc_count_query = "\n".join(doc_count_query_parts).format(ts_query=ts_query_for_format).replace(';', '')
+        doc_count_result = self.db_manager.execute_query(_final_doc_count_query)
+
         _final_search_query = search_query.format(ts_query=ts_query_for_format)
         _final_search_query += f" LIMIT {limit} OFFSET {offset}"
         if not count_only:
             results = self.db_manager.execute_query(_final_search_query)
-        
+
         total_count_to_return = count_result[0][0] if count_result and count_result[0] else 0
+        total_document_count = doc_count_result[0][0] if doc_count_result and doc_count_result[0] else 0
 
         # If AND search returns no results, try OR search
         if total_count_to_return == 0 and formatted_elements:
             ts_query_or_for_format = " | ".join(formatted_elements) # OR version for FTS
-            
+
             _final_count_query_or = count_query.format(ts_query=ts_query_or_for_format)
             count_result_or = self.db_manager.execute_query(_final_count_query_or)
-            # Update total_count_to_return with the count from the OR search
             total_count_to_return = count_result_or[0][0] if count_result_or and count_result_or[0] else 0
+
+            # Also update document count for OR search
+            doc_count_query_parts_or = [part.replace("COUNT(*)", "COUNT(DISTINCT r.name)") if "COUNT(*)" in part else part for part in count_query_parts]
+            _final_doc_count_query_or = "\n".join(doc_count_query_parts_or).format(ts_query=ts_query_or_for_format).replace(';', '')
+            doc_count_result_or = self.db_manager.execute_query(_final_doc_count_query_or)
+            total_document_count = doc_count_result_or[0][0] if doc_count_result_or and doc_count_result_or[0] else 0
 
             _final_search_query_or = search_query.format(ts_query=ts_query_or_for_format)
             _final_search_query_or += f" LIMIT {limit} OFFSET {offset}"
             if not count_only:
                 results = self.db_manager.execute_query(_final_search_query_or)
-        
-        # total_count = count_result[0][0] if count_result else 0 # This line is now handled by total_count_to_return
+
         if count_only:
             return {
                 "total_number_results": total_count_to_return,
+                "total_document_count": total_document_count
             }
-        
+
         # Format results
         formatted_results = []
         for row in results:
