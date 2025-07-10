@@ -138,7 +138,6 @@ async def main() -> None:
     query_thread_id = st.query_params.get("thread_id")
     if query_thread_id and ("thread_id" not in st.session_state or query_thread_id != st.session_state.thread_id):
         try:
-            # TODO: Ensure get_history is user-scoped if AgentClient handles it, or adapt
             messages_history = agent_client.get_history(thread_id=query_thread_id) # Pass user_id if backend supports
             st.session_state.messages = messages_history.messages
             st.session_state.thread_id = query_thread_id
@@ -463,18 +462,20 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
         with status:
             try:
                 graph_id = tool_result.content
-                st.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
-                # TODO: Ensure retrieve_graph is user-scoped if graphs are user-specific
-                graph_data = agent_client.retrieve_graph(graph_id) # Pass user_id if backend supports
-                if graph_data:
-                    try: plot_data = json.loads(graph_data); st.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR); plot_data_for_this_tool = plot_data
-                    except json.JSONDecodeError: st.write(dt.GRAPH_NON_JSON_DATA); st.code(graph_data)
-                else: st.write(dt.GRAPH_NO_DATA_RETURNED)
+                if 'Error' in graph_id:
+                    st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=graph_id))
+                else:
+                    st.write(dt.GRAPH_RETRIEVAL_STATUS.format(graph_id=graph_id))
+                    graph_data = agent_client.retrieve_graph(graph_id)
+                    if graph_data:
+                        try: plot_data = json.loads(graph_data); st.write(dt.GRAPH_RETRIEVED_SUCCESSFULLY_FR); plot_data_for_this_tool = plot_data
+                        except json.JSONDecodeError: st.write(dt.GRAPH_NON_JSON_DATA); st.code(graph_data)
+                    else: st.write(dt.GRAPH_NO_DATA_RETURNED)
                 status.update(state="complete")
             except Exception as e: st.error(dt.GRAPH_RETRIEVAL_ERROR.format(e=e)); status.update(state="complete")
     
     elif current_tool_name == "PDF_Viewer":
-        pdf_buttons_to_create = [] # Initialize here to ensure it's always defined
+        pdf_buttons_to_create = []
         with status:
             try:
                 pdf_results_list = json.loads(tool_result.content)
@@ -498,9 +499,6 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
 
                     pdf_name = pdf_entry.get('pdf_file')
                     block_indices = pdf_entry.get('block_indices')
-                    # Use the global debug flag from the tool call if present, else default to False
-                    # This assumes the 'debug' flag from the tool call is passed down or is accessible
-                    # For now, let's assume the 'debug' in pdf_entry is the one to use per PDF.
                     debug_viewer = pdf_entry.get('debug', False) 
 
                     if not pdf_name:
@@ -513,7 +511,6 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                     if agent_client:
                         try:
                             if not debug_viewer:
-                                # Pass user_id if available and required by the backend
                                 annotations = await agent_client.aget_annotations(pdf_file=pdf_name, block_indices=block_indices, user_id=user_id) 
                             else:
                                 annotations = await agent_client.adebug_pdf_blocks(pdf_file=pdf_name, user_id=user_id)
@@ -523,7 +520,7 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                                 "annotations": annotations,
                                 "debug": debug_viewer,
                                 "tool_call_id": tool_result.tool_call_id,
-                                "unique_suffix": f"{pdf_entry_idx}_{pdf_name.replace(' ','_')}" # for unique button key
+                                "unique_suffix": f"{pdf_entry_idx}_{pdf_name.replace(' ','_')}"
                             })
                         except Exception as e:
                             st.error(f"Error fetching annotations for '{pdf_name}': {e}")
@@ -545,17 +542,16 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                 status.update(state="complete", label="PDF Viewer Processing Error")
         
         with st.container(key=f"sources_{tool_result.tool_call_id}", border=True):
-            st.button('**Sources dans les Lettres de suite :**', type='tertiary', icon=":material/info:", help='Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.',)
+            st.button(dt.SOURCE_PDFs, type='tertiary', icon=":material/info:", help=dt.HELP_SOURCE_PDFs, key=f"source_pdf_button_{uuid.uuid4()}")
             with st.container(key=f"pdf_buttons_container_{tool_result.tool_call_id}"):
                 for btn_data in pdf_buttons_to_create:
-                    button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
+                    button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}_{str(uuid.uuid4())[:8]}"
                     if st.button(btn_data['name'], key=button_key, type="tertiary", icon=':material/article:'):
                         view_pdf(btn_data['name'], btn_data['annotations'], debug_viewer=btn_data['debug'])
-    else: # Other tools
-        # ... (SQL_Executor and generic tool output remain the same) ...
+    else:
         with status:
             st.write(dt.TOOL_CALL_OUTPUT_LABEL)
-            if current_tool_name == "SQL_Executor": # ... (SQL_Executor logic) ...
+            if current_tool_name == "SQL_Executor":
                 csv_string = tool_result.content; data_lines = []; comment_lines = []
                 for line in csv_string.strip().split('\n'):
                     if line.startswith("#"): comment_lines.append(line)

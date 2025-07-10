@@ -35,7 +35,7 @@ Les PDFs sont construits à partir de documents Word, les titres des grandes par
 - **resp_entity** (texte) : Entité ou organisation responsable de l'inspection. Ex : "Orléans", "Lyon", "Paris", "Nantes"
 
 - **sector** (TABLEAU): Secteurs concernés par l'inspection. Valeurs possibles :
-     - **REP** : Réacteur à Eau Pressurisée
+     - **REP** : Réacteur à Eau Pressurisée. Les CNPE (Centres Nucléaires de Production d’Électricité) possèdent uniquement des REP.
      - **LUDD** : Laboratoires, Usines, Déchets et Démantèlement
      - **NPX** : Nucléaire de Proximité
      - **Transverse** : Quand une inspection peut concerner plusieurs secteurs 

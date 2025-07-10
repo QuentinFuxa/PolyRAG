@@ -46,6 +46,8 @@
   "PROMPT_SUGGESTED_NPX_TABLE": "Affiche moi une table du nombre de LDS par année dans le NPX",
   "PROMPT_BUTTON_LDS_FRAUDE": "A-t-on observé des LDS qui parlent de fraude en 2024 ?",
   "PROMPT_SUGGESTED_LDS_FRAUDE": "A-t-on observé des LDS qui parlent de fraude en 2024 ?",
+  "SOURCE_PDFs": "**Sources dans les Lettres de suite :**",
+  "HELP_SOURCE_PDFs": "Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.",
   "EXAMPLE_PROMPTS": [
     {
       "button_text": "Fais moi une synthèse monographique des demandes prioritaires depuis début 2025",
@@ -151,5 +153,4 @@
   "FEEDBACK_DIALOG": "Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.",
   "LOGO": "https://github.com/QuentinFuxa/PolyRAG/blob/asnr/media/logo_siance.png?raw=true",
   "BIG_LOGO": true
-
 }
