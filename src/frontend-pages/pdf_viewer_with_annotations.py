@@ -2,11 +2,8 @@ import streamlit as st
 import requests
 import os
 from typing import Optional, List, Dict, Any
-# Removed: from db_manager import DatabaseManager
 from streamlit_pdf_viewer import pdf_viewer
-from client import AgentClient # Added AgentClient import
-
-# Removed: db_manager = DatabaseManager()
+from client import AgentClient
 
 def get_pdf_content(agent_client: AgentClient, document_name: str) -> Optional[bytes]:
     print(f"Attempting to fetch PDF content for: {document_name}")

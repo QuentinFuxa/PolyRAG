@@ -15,7 +15,7 @@ from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 import json
-from frontend.pdf_viewer_with_annotations import display_pdf
+from .pdf_viewer_with_annotations import display_pdf
 
 from db_manager import DatabaseManager
 from display_texts import dt
