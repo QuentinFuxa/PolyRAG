@@ -18,7 +18,7 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
+LANGUAGE = os.environ.get("LANGUAGE", "english")
 
 
 def _prefix_columns_in_where_clause(clause_str: str, prefix: str = "js.") -> str:
@@ -108,7 +108,10 @@ class SherpaDocumentProcessor:
     
     def process_pdf(self, pdf_path):
         """Process a PDF file using llmsherpa and return DocumentBlock objects"""
-        sherpa_data = self.pdf_reader.read_pdf(pdf_path).json
+        try:
+            sherpa_data = self.pdf_reader.read_pdf(pdf_path).json
+        except Exception as e:
+            raise ValueError(f"Error processing PDF with llmsherpa: {e}") 
         return self._process_sherpa_data(sherpa_data)
 
     def _process_sherpa_data(self, sherpa_data):
@@ -186,7 +189,7 @@ class RAGSystem:
 
     def __init__(self):
         self.db_manager = DatabaseManager()
-        self.TS_QUERY_LANGUAGE = TS_QUERY_LANGUAGE
+        self.LANGUAGE = LANGUAGE
         
         # Determine PDF parsing backend
         pdf_parser_backend = os.getenv("PDF_PARSER", "nlm-ingestor").lower()
@@ -219,7 +222,7 @@ class RAGSystem:
             content_type TEXT DEFAULT 'regular',
             section_type TEXT,
             demand_priority INTEGER,
-            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{TS_QUERY_LANGUAGE}', content)) STORED,
+            content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('{LANGUAGE}', content)) STORED,
             UNIQUE(name, block_idx)
         );
         
@@ -397,7 +400,7 @@ class RAGSystem:
             SELECT 
                 r.name, r.block_idx, r.content, r.level, r.tag,
                 r.content_type, r.section_type, r.demand_priority, r.parent_idx,
-                ts_rank_cd(r.content_tsv, to_tsquery('{self.TS_QUERY_LANGUAGE}','{{ts_query}}')) AS score
+                ts_rank_cd(r.content_tsv, to_tsquery('{self.LANGUAGE}','{{ts_query}}')) AS score
             """
         else:
             select_base = f"""
@@ -421,7 +424,7 @@ class RAGSystem:
         where_conditions = []
         if formatted_elements:
             # ts_query variable for formatting is ts_query_for_format
-            where_conditions.append(f"r.content_tsv @@ to_tsquery('{self.TS_QUERY_LANGUAGE}', '{{ts_query}}')")
+            where_conditions.append(f"r.content_tsv @@ to_tsquery('{self.LANGUAGE}', '{{ts_query}}')")
 
         # Add conditions from source_query's WHERE clause
         if where_join_conditions_list:

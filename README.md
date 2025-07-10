@@ -90,7 +90,7 @@ Create a `.env` file with the following options:
 - `UPLOADED_PDF_PARSER`: Parser used for the chat uploaded documents. `nlm-ingestor` (default) or `pymupdf`
 - `LLMSHERPA_API_URL`: URL for nlm-ingestor service if `nlm-ingestor` is used
 - `SYSTEM_PROMPT_PATH`: Path to a system prompt file that you can generate using `scripts/prompt_generator.py`
-- `TS_QUERY_LANGUAGE`: Language used for text search queries. Default: `english`
+- `LANGUAGE`: Language used for text search queries. Default: `english`
 
 - Additional options in `src/core/settings.py`
 
@@ -182,3 +182,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 uv pip install langchain_mistralai
+
+
+python scripts/index-urls-script.py --table medrxiv_2025

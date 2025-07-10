@@ -591,7 +591,7 @@ class DatabaseManager:
                 LEFT JOIN document_data.feedback f ON CAST(c.thread_id AS text) = f.conversation_id
                 ORDER BY c.updated_at DESC
                 LIMIT %s
-            ) 
+            ) all_convs
             GROUP BY 1, 2, 3, 4
             ORDER BY updated_at DESC
             """
@@ -780,6 +780,7 @@ class DatabaseManager:
 
     def set_document_indexed(self, name: str, indexed: bool = True) -> bool:
         conn = self.get_connection()
+        pdf_name = name.split('/')[-1][:-4]
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -788,7 +789,7 @@ class DatabaseManager:
                     SET is_indexed = %s, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
                     WHERE name = %s RETURNING id
                     """,
-                    (indexed, name)
+                    (indexed, pdf_name)
                 )
                 updated = cursor.fetchone() is not None
                 conn.commit()

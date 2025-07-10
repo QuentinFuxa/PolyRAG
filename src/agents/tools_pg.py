@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__) # Added logger
 
 load_dotenv()
 
-TS_QUERY_LANGUAGE = os.environ.get("TS_QUERY_LANGUAGE", "english")
+LANGUAGE = os.environ.get("LANGUAGE", "english")
 
 # Instantiate DatabaseManager - it's a singleton
 try:
@@ -133,7 +133,7 @@ def _get_demands_data(
     if search_text:
         # Search on the pre-computed tsvector column in public.demands
         conditions.append(f"d.demand_tsv @@ plainto_tsquery(%s, %s)")
-        params_list.extend([TS_QUERY_LANGUAGE, search_text])
+        params_list.extend([LANGUAGE, search_text])
 
     final_query = f"SELECT {select_clause} {base_query_from_join}"
     if conditions:
@@ -178,7 +178,7 @@ def _get_demands_data(
             count_params_list.append(priority)
         if search_text:
             count_query_parts.append(f"d.demand_tsv @@ plainto_tsquery(%s, %s)")
-            count_params_list.extend([TS_QUERY_LANGUAGE, search_text])
+            count_params_list.extend([LANGUAGE, search_text])
 
         final_count_query = count_query_parts[0]
         if len(count_query_parts) > 1:
@@ -214,7 +214,7 @@ def get_demand_content(
                               Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'". Use this OR letter_names.
         search_text: (Optional) Text to search for within the pre-extracted demand content (in `public.demands.demand_tsv`)
                      using advanced full-text search.
-                     (language for query parsing configured via TS_QUERY_LANGUAGE env var, defaults to English).
+                     (language for query parsing configured via LANGUAGE env var, defaults to English).
                      If provided, only demands matching this text will be returned.
         limit: (Optional) Maximum number of demands to return. Defaults to 100.
         offset: (Optional) Number of demands to skip before returning results. Defaults to 0.
@@ -282,7 +282,7 @@ def count_demands(
                               Example: "SELECT name FROM public.public_data WHERE site_name = 'Blayais'". Use this OR letter_names.
         search_text: (Optional) Text to search for within the pre-extracted demand content (in `public.demands.demand_tsv`)
                      using advanced full-text search.
-                     (language for query parsing configured via TS_QUERY_LANGUAGE env var, defaults to English).
+                     (language for query parsing configured via LANGUAGE env var, defaults to English).
                      If provided, only demands matching this text will be counted.
 
     Returns:
