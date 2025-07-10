@@ -1,7 +1,3 @@
-"""
-Content classification utilities for RAG system.
-Extracted and adapted from sections_demands.py for integration with rag_system.py
-"""
 import re
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
@@ -25,10 +21,6 @@ class SectionType(Enum):
 
 
 def normalize_text(text: str) -> str:
-    """
-    Replace most of special characters in a text, and turn it to lowercase
-    Copied from sections_demands.py
-    """
     text_lower = (
         text.replace("–", "-")
         .replace("—", "-")
@@ -54,7 +46,6 @@ class ContentClassifier:
     """Classifier for document blocks to identify sections and demands"""
     
     def __init__(self):
-        # Section header patterns from sections_demands.py
         self.section_patterns = {
             SectionType.SYNTHESIS: [
                 r"(?:^|\n+)[(i\. )|(1\. )|(a\. )|(1 \- )]*s[a-z]{1,2}these de (l'insp[a-z]{3}ion|la visite)[\.| |:]*",
@@ -108,7 +99,6 @@ class ContentClassifier:
             ]
         }
         
-        # Demand patterns from sections_demands.py
         self.demand_patterns = [
             r"Demande (A|B)\d\. *(:)?je vous (demande|invite)",
             r"Demande (A|B)\d\. *(:)?asn vous (demande|invite)",
