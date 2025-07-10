@@ -24,13 +24,13 @@ if dt.LOGO:
     st.logo(image=dt.LOGO, size="large")
 
 
-logout_page = st.Page('frontend-pages/user.py', title="Déconnexion", icon=":material/logout:")
-comments = st.Page("frontend-pages/feedback.py", title=dt.FEEDBACK, icon=":material/comment:")
+logout_page = st.Page('frontend/user.py', title="Déconnexion", icon=":material/logout:")
+comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/comment:")
 help = st.Page(
-    "frontend-pages/help.py", title="Aide", icon=":material/lightbulb:")
+    "frontend/help.py", title="Aide", icon=":material/lightbulb:")
 changelog = st.Page(
-    "frontend-pages/changelog.py", title="Nouveautés v0.1.6 - 08/07/2025", icon=":material/source_notes:")
-chatbot = st.Page("frontend-pages/chat.py", title='Assistant', icon=":material/chat:", default=True)
+    "frontend/changelog.py", title="Nouveautés v0.1.6 - 08/07/2025", icon=":material/source_notes:")
+chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
 NO_AUTH = os.getenv("NO_AUTH", False)
 if NO_AUTH:
