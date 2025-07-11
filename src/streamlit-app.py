@@ -59,4 +59,4 @@ else:
             st.Page(login_ui, title="Log in", icon=":material/login:")
         ])
         
-    pg.run()
+pg.run()
