@@ -477,6 +477,46 @@ def history(input_data: ChatHistoryInput) -> ChatHistory:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
+
+@router.get('/total_count_messages')
+def get_total_count_messages():
+    agent: Pregel = get_agent(DEFAULT_AGENT)
+    ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
+    conversations = db_manager.get_conversations(user_id=ADMIN_USER_ID, limit=1000000)
+    
+    total_user = 0
+    total_ai = 0
+        
+    for conv in conversations:
+        thread_id = str(conv["thread_id"])
+        configurable_for_agent = {"thread_id": thread_id}
+        state_snapshot = agent.get_state(
+            config=RunnableConfig(
+                configurable=configurable_for_agent
+            )
+        )
+        messages = state_snapshot.values.get("messages", [])
+        chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
+        user_count = 0
+        ai_count = 0
+        for m in chat_messages:
+            # Convert to ChatMessage if not already
+            if not isinstance(m, ChatMessage):
+                m = ChatMessage.model_validate(m)
+            if m.type == "human":
+                user_count += 1
+            elif m.type == "ai":
+                ai_count += 1
+        total_user += user_count
+        total_ai += ai_count
+
+    return {
+        "total_conversations": len(conversations),
+        "total_user_messages": total_user,
+        "total_ai_messages": total_ai,
+    }
+    
+
 @router.post("/{agent_id}/upload")
 @router.post("/upload")
 async def upload_file(
