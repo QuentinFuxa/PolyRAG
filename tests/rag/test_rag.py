@@ -44,11 +44,19 @@ rag_system = RAGSystem()
 #     demand_priority=1
 # )
 
+# result = rag_system.query(
+#     user_query=[],
+#     source_query="SELECT name FROM public.public_data WHERE 'REP' = ANY(sector) AND theme ILIKE '%compétences%'",
+#     content_type="demand",
+# )
+
 result = rag_system.query(
-    user_query=[],
-    source_query="SELECT name FROM public.public_data WHERE 'REP' = ANY(sector) AND theme ILIKE '%compétences%'",
-    content_type="demand",
+    user_query=["insomnia"],
+    source_query="SELECT title FROM public.medrxiv_2025 ORDER BY publication_date DESC LIMIT 1",
+    get_children=True
 )
+
+
 
 
 print(result)

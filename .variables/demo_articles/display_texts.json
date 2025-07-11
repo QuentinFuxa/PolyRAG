@@ -29,69 +29,55 @@
   "SELECT_LLM_LABEL": "LLM to use",
   "SELECT_AGENT_LABEL": "Agent to use",
   "STREAMING_TOGGLE_LABEL": "Stream results",
-  "WELCOME_CHATBOT": "Hello! I'm a simple chatbot. Ask me anything!",
-  "WELCOME_INTERRUPT": "Hello! I'm an interrupt agent. Tell me your birthday and I will predict your personality!",
-  "WELCOME_RESEARCH": "Hello! I'm an AI-powered research assistant with web search and a calculator. Ask me anything!",
   "WELCOME_PG_RAG": "Hello! I'm an AI-powered research assistant with Postgres database access, PDF analysis, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!",
-  "WELCOME_DEFAULT": "Hello! I'm an AI agent. Ask me anything!",
-  "PROMPT_BUTTON_DB_QUERY": "How many preprints in the q-bio.PE category since the beginning of the year?",
-  "PROMPT_SUGGESTED_DB_QUERY": "How many preprints in the q-bio.PE category since the beginning of the year?",
-  "PROMPT_BUTTON_DEBUG_PDF": "/debug 2504.12888v1",
-  "PROMPT_SUGGESTED_DEBUG_PDF": "/debug 2504.12888v1",
-  "PROMPT_BUTTON_CREATE_GRAPH": "Plot a graph of anemia distribution by condition and age for the year 2012",
-  "PROMPT_SUGGESTED_CREATE_GRAPH": "Plot a graph of anemia distribution by condition and age for the year 2012",
-  "PROMPT_BUTTON_DOCUMENT_SUMMARY": "Summarize the most recent preprint",
-  "PROMPT_SUGGESTED_DOCUMENT_SUMMARY": "Summarize the most recent preprint",
-  "PROMPT_BUTTON_NPX_TABLE_DEFAULT": "Show NPX demands table by year",
-  "PROMPT_SUGGESTED_NPX_TABLE_DEFAULT": "Show me a table of the number of NPX demands per year",
-  "PROMPT_BUTTON_LDS_FRAUDE_DEFAULT": "LDS fraud in 2024 (default)?",
-  "PROMPT_SUGGESTED_LDS_FRAUDE_DEFAULT": "Were there any LDS discussing fraud or similar in 2024?",
+  "SOURCE_PDFs": "**Sources dans les Lettres de suite :**",
+  "HELP_SOURCE_PDFs": "Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.",
   "EXAMPLE_PROMPTS": [
     {
-      "button_text": "How many preprints in the q-bio.PE category since the beginning of the year?",
-      "suggested_command_text": "How many preprints in the q-bio.PE category since the beginning of the year?",
+      "button_text": "Give me a comprehensive synthesis of machine learning applications in oncology since 2024",
+      "suggested_command_text": "Give me a comprehensive synthesis of machine learning applications in oncology since 2024",
       "icon": ":material/description:",
-      "key": "btn_ex_db_query_default"
+      "key": "btn_ex_db_query"
     },
     {
-      "button_text": "/debug 2504.12888v1",
-      "suggested_command_text": "/debug 2504.12888v1",
+      "button_text": "Find the most recent preprint mentioning CRISPR gene editing",
+      "suggested_command_text": "Find the most recent preprint mentioning CRISPR gene editing",
       "icon": ":material/bug_report:",
-      "key": "btn_ex_debug_pdf_default"
+      "key": "btn_ex_debug_pdf"
     },
     {
-      "button_text": "Plot a graph of anemia distribution by condition and age for the year 2012",
-      "suggested_command_text": "Plot a graph of anemia distribution by condition and age for the year 2012",
+      "button_text": "Show the comparative evolution of publications per month between Oncology and Cardiology since 2022",
+      "suggested_command_text": "Show the comparative evolution of publications per month between Oncology and Cardiology since 2022",
       "icon": ":material/monitoring:",
-      "key": "btn_ex_create_graph_default"
+      "key": "btn_ex_create_graph"
     },
     {
-      "button_text": "Summarize the most recent preprint",
-      "suggested_command_text": "Summarize the most recent preprint",
+      "button_text": "Summarize the latest neuroscience preprint published",
+      "suggested_command_text": "Summarize the latest neuroscience preprint published",
       "icon": ":material/list:",
-      "key": "btn_ex_document_summary_default"
+      "key": "btn_ex_document_summary"
     },
     {
-      "button_text": "Show a table of the number of preprints per month and year",
-      "suggested_command_text": "Show a table of the number of preprints per month and year",
+      "button_text": "Display a table of the number of preprints per year in Public Health",
+      "suggested_command_text": "Display a table of the number of preprints per year in Public Health",
       "icon": ":material/table_chart:",
-      "key": "btn_ex_npx_table_default"
+      "key": "btn_ex_npx_table"
     },
     {
-      "button_text": "Do some preprint mention lung cancer or similar?",
-      "suggested_command_text": "Do some preprint mention lung cancer or similar?",
-      "icon": ":material/find_in_page:",
-      "key": "btn_ex_lds_fraude_default"
+      "button_text": "Have we observed any preprints about vaccine hesitancy in 2024?",
+      "suggested_command_text": "Have we observed any preprints about vaccine hesitancy in 2024?",
+      "icon": ":material/analytics:",
+      "key": "btn_ex_lds_fraude"
     },
     {
-      "button_text": "Generate a graph of priority vs non-priority items between January and March 2025",
-      "suggested_command_text": "Generate a graph of priority vs non-priority items between January and March 2025",
+      "button_text": "Generate a graph of the number of clinical trial vs observational studies between January and March 2025",
+      "suggested_command_text": "Generate a graph of the number of clinical trial vs observational studies between January and March 2025",
       "icon": ":material/bar_chart:",
       "key": "btn_ex_demand_count"
     },
     {
-      "button_text": "How many requests for 'generator sets' in 2024? Display the last item that mentions it",
-      "suggested_command_text": "How many requests for 'generator sets' in 2024? Display the last item that mentions it",
+      "button_text": "How many preprints mention telemedicine in 2024? Show the latest one that discusses it",
+      "suggested_command_text": "How many preprints mention telemedicine in 2024? Show the latest one that discusses it",
       "icon": ":material/article:",
       "key": "btn_ex_last_demand"
     }

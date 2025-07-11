@@ -542,10 +542,10 @@ async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, st
                 status.update(state="complete", label="PDF Viewer Processing Error")
         
         with st.container(key=f"sources_{tool_result.tool_call_id}", border=True):
-            st.button(dt.SOURCE_PDFs, type='tertiary', icon=":material/info:", help=dt.HELP_SOURCE_PDFs, key=f"source_pdf_button_{uuid.uuid4()}")
+            st.button(dt.SOURCE_PDFs, type='tertiary', icon=":material/info:", help=dt.HELP_SOURCE_PDFs, key=f"pdf_{str(uuid.uuid4())}")
             with st.container(key=f"pdf_buttons_container_{tool_result.tool_call_id}"):
                 for btn_data in pdf_buttons_to_create:
-                    button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}_{str(uuid.uuid4())[:8]}"
+                    button_key = f"pdf_button_{btn_data['tool_call_id']}_{btn_data['unique_suffix']}"
                     if st.button(btn_data['name'], key=button_key, type="tertiary", icon=':material/article:'):
                         view_pdf(btn_data['name'], btn_data['annotations'], debug_viewer=btn_data['debug'])
     else:
