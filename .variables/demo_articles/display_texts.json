@@ -135,5 +135,6 @@
   "FEEDBACK": "Feedbacks",
   "FEEDBACK_DIALOG": "Please leave your comments or suggestions to improve the application.",
   "LOGO": "https://raw.githubusercontent.com/QuentinFuxa/PolyRAG/refs/heads/main/media/polyrag.svg",
-  "BIG_LOGO": false
+  "BIG_LOGO": false,
+  "RESET_PASSWORD_BUTTON": "Reset Password"
 }

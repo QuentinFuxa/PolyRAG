@@ -85,3 +85,24 @@ def register_new_user(db: DatabaseManager, email: str) -> tuple[Optional[UserInD
     except Exception as e:
         logger.error(f"Error during user creation for {email}: {e}")
         return None, None
+
+def reset_user_password(db: DatabaseManager, email: str) -> tuple[bool, str]:
+    """
+    Resets the password for an existing user, updates it in the database, and sends the new password via email.
+    Returns (success, message) for UI feedback.
+    """
+    user = db.get_user_by_email(email)
+    if not user:
+        return False, getattr(dt, "RESET_PASSWORD_USER_NOT_FOUND", "User not found.")
+    plain_password = security.generate_secure_password()
+    hashed_password = security.hash_password(plain_password)
+    updated = db.update_user_password(email, hashed_password)
+    if not updated:
+        return False, getattr(dt, "RESET_PASSWORD_UPDATE_FAILED", "Failed to update password.")
+    email_sent = send_password_email_with_sendgrid(email, plain_password)
+    if email_sent:
+        return True, dt.RESET_PASSWORD_EMAIL_SENT.format(email=email)
+    else:
+        # If email fails, show the password directly (not ideal for production, but fallback for demo/dev)
+        # return True, getattr(dt, "RESET_PASSWORD_EMAIL_FAILED", "Email failed. Your new password is: {password}").format(password=plain_password)
+        pass

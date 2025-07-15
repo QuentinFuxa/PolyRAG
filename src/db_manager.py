@@ -369,6 +369,24 @@ class DatabaseManager:
         finally:
             self.release_connection(conn)
 
+    def update_user_password(self, email: str, new_hashed_password: str) -> bool:
+        """
+        Update the hashed password for a user identified by email.
+        Returns True if a user was updated, False otherwise.
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {schema_app_data}.users SET hashed_password = %s, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') WHERE email = %s",
+                    (new_hashed_password, email)
+                )
+                updated = cursor.rowcount > 0
+                conn.commit()
+                return updated
+        finally:
+            self.release_connection(conn)
+
     # File operations
     def save_file(self, file_id: UUID, user_id: UUID, thread_id: Optional[UUID], filename: str,
                   content_type: str, content: bytes, text_content: Optional[str] = None,

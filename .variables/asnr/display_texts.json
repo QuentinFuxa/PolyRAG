@@ -127,6 +127,7 @@
   "LOGIN_FAILED": "Échec de la connexion. Veuillez vérifier votre e-mail et votre mot de passe.",
   "ACCOUNT_CREATION_FAILED": "La création du compte a échoué. Veuillez réessayer plus tard.",
   "ACCOUNT_CREATED_SUCCESS": "Compte créé pour {email}. Un mot de passe vous a été envoyé par e-mail. Veuillez recliquer sur le bouton ci-dessus et vous connecter avec ce mot de passe.",
+  "ACCOUNT_NOT_REGISTERED": "Le compte {email} n'est pas enregistré. Veuillez créer un compte. ⬇️",
   "DEV_INFO_PASSWORD": "INFO_DEV : Le mot de passe pour {email} est {plain_pwd}",
   "EMAIL_DOMAIN": "@asnr.fr",
   "LOGGED_AS": "Utilisateur",
@@ -137,5 +138,7 @@
   "FEEDBACK_DIALOG": "Veuillez laisser vos commentaires ou suggestions pour améliorer l'application.",
   "LOGO": "https://github.com/QuentinFuxa/PolyRAG/blob/asnr/media/logo_siance.png?raw=true",
   "LANGUAGE": "french",
-  "BIG_LOGO": true
+  "BIG_LOGO": true,
+  "RESET_PASSWORD_BUTTON": "Réinitialiser le mot de passe",
+  "RESET_PASSWORD_EMAIL_SENT": "Un e-mail de réinitialisation a été envoyé à {email}."
 }

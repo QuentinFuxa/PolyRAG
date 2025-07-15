@@ -3,7 +3,7 @@ import streamlit as st
 from display_texts import dt
 from auth_helpers import login_ui
 
-st.markdown("<div style='position: absolute; top: 0px; left: 0px; font-weight: bold;'>Phase de test du PoC ouverte jusqu'au 11/07/2025</div>", unsafe_allow_html=True)
+# st.markdown("<div style='position: absolute; top: 0px; left: 0px; font-weight: bold;'>xxxxx</div>", unsafe_allow_html=True)
 
 if dt.LOGO:
     if dt.BIG_LOGO:
