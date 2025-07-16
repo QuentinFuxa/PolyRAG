@@ -298,6 +298,7 @@ async def main() -> None:
     await draw_messages(amessage_iter(), agent_client=agent_client)
 
     if user_input := st.chat_input(dt.CHAT_INPUT_PLACEHOLDER, accept_file="multiple", file_type=["pdf"]) or st.session_state.suggested_command:
+        st.session_state['additional_data_added'] = False
         hide_welcome()
         if st.session_state.suggested_command:
             user_text = st.session_state.suggested_command; files = []
@@ -382,6 +383,14 @@ async def draw_messages(
     current_user_id = st.session_state.get("current_user_id") # Get current user for any user-specific logic
 
     while msg := await anext(messages_agen, None):
+        if isinstance(msg, tuple):
+            msg, additional_data = msg
+            if not st.session_state.get("additional_data_added", False) and additional_data is not None and len(st.session_state.get("messages", [])) > 0:
+                additional_markdown = ""
+                for definition in additional_data:
+                    additional_markdown += "  \n"  + dt.LEXICON_BADGE.format(entity=definition['entity'])
+                st.session_state.messages[-1].content += additional_markdown
+                st.session_state['additional_data_added'] = True
         if isinstance(msg, str): # Streaming case
             if not streaming_placeholder:
                 if last_message_type != "ai": # Ensure we are in an AI message block
@@ -392,8 +401,8 @@ async def draw_messages(
             streaming_placeholder.write(streaming_content)
             continue
 
-        if not isinstance(msg, ChatMessage):
-            st.error(dt.UNEXPECTED_MESSAGE_TYPE_ERROR.format(msg_type=type(msg))); st.write(msg); st.stop()
+        # if not isinstance(msg, ChatMessage):
+        #     st.error(dt.UNEXPECTED_MESSAGE_TYPE_ERROR.format(msg_type=type(msg))); st.write(msg); st.stop()
 
         match msg.type:
             case "human":
@@ -428,7 +437,11 @@ async def draw_messages(
                             with status_container: st.write(dt.TOOL_CALL_INPUT_LABEL); st.write(tool_call["args"])
                         
                         pending_tool_call_ids = set(call_results.keys())
-                        while pending_tool_call_ids and (tool_result := await anext(messages_agen, None)):
+                        while pending_tool_call_ids and (msg := await anext(messages_agen, None)):
+                            if isinstance(msg, tuple):
+                                tool_result, additional_data = msg
+                            else:
+                                tool_result = msg
                             if isinstance(tool_result, str):
                                 if streaming_placeholder: streaming_content += tool_result; streaming_placeholder.write(streaming_content)
                                 continue
@@ -446,6 +459,8 @@ async def draw_messages(
                     st.session_state.last_message = st.chat_message(name="task", avatar=":material/manufacturing:")
                     with st.session_state.last_message: status_widget = TaskDataStatus()
                 status_widget.add_and_draw_task_data(task_data)
+            case "system":
+                pass
             case _: st.error(dt.UNEXPECTED_CHATMESSAGE_TYPE_ERROR.format(msg_type=msg.type)); st.write(msg); st.stop()
 
 async def chain_messages(initial_messages: List[ChatMessage], next_messages: AsyncGenerator[Union[ChatMessage, str], None]) -> AsyncGenerator[Union[ChatMessage, str], None]:

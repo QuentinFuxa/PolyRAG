@@ -214,25 +214,26 @@ class AgentClient:
         if line.startswith("data: "):
             data = line[6:]
             if data == "[DONE]":
-                return None
+                return None, None
             try:
                 parsed = json.loads(data)
             except Exception as e:
                 raise Exception(f"Error JSON parsing message from server: {e}")
+            additional_data = parsed.get("additional_data", None)
             match parsed["type"]:
                 case "message":
                     # Convert the JSON formatted message to an AnyMessage
                     try:
-                        return ChatMessage.model_validate(parsed["content"])
+                        return ChatMessage.model_validate(parsed["content"]), additional_data
                     except Exception as e:
                         raise Exception(f"Server returned invalid message: {e}")
                 case "token":
                     # Yield the str token directly
-                    return parsed["content"]
+                    return parsed["content"], additional_data
                 case "error":
                     error_msg = "Error: " + parsed["content"]
-                    return ChatMessage(type="ai", content=error_msg)
-        return None
+                    return ChatMessage(type="ai", content=error_msg), additional_data
+        return None, None
 
     def stream(
         self,
@@ -286,10 +287,10 @@ class AgentClient:
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line.strip():
-                        parsed = self._parse_stream_line(line)
+                        parsed, additional_data = self._parse_stream_line(line)
                         if parsed is None:
                             break
-                        yield parsed
+                        yield parsed, additional_data
         except httpx.HTTPError as e:
             raise AgentClientError(f"Error: {json.loads(response.content)}")
 
@@ -348,10 +349,10 @@ class AgentClient:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if line.strip():
-                            parsed = self._parse_stream_line(line)
+                            parsed, additional_data = self._parse_stream_line(line)
                             if parsed is None:
                                 break
-                            yield parsed
+                            yield parsed, additional_data
             except httpx.HTTPError as e:
                 raise AgentClientError(f"Error: {json.loads(response.content)}")
 

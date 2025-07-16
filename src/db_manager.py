@@ -29,6 +29,23 @@ schema_app_data = os.environ.get("SCHEMA_APP_DATA", "document_data")
 
 class DatabaseManager:
     """Manager for PostgreSQL database operations."""
+
+    def get_lexicon_definitions(self, words) -> list[dict[str, str]]:
+        results = []
+        for word in words:
+            print(f"Searching lexicon for word: {word}")
+            query = """
+                SELECT entity, definition
+                FROM public.lexicon
+                WHERE entity LIKE %s
+            """
+            try:
+                result = self.execute_query(query, [word])[0]
+                if result:
+                    results.append({"entity": result[0], "def": result[1]})
+            except Exception as e:
+                logger.error(f"Error querying public.lexicon: {e}")
+        return results
     
     _instance = None
     

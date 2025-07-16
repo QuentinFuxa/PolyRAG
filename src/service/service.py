@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID, uuid4
+import re
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse, Response
@@ -120,6 +121,9 @@ async def get_graph(graph_id: str):
         media_type="application/json"
     )
 
+def extract_words_with_two_uppercase(phrase: str) -> list[str]:
+    words = re.findall(r'\b[\w-]+\b', phrase)
+    return [word for word in words if sum(1 for c in word if c.isupper()) >= 2]
 
 async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str, Any], UUID]:
     """
@@ -166,18 +170,33 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     ]
 
     input: Command | dict[str, Any]
+    
+    user_message = user_input.message
+    two_uppercases = extract_words_with_two_uppercase(user_message)
+
+    lexicon_matches = db_manager.get_lexicon_definitions(two_uppercases)
+    system_message_str = []
+    system_message = None
+    for entry in lexicon_matches:
+        system_message_str += f'{entry}\n'
+    if system_message_str:
+        system_message = SystemMessage(
+            content=f"<LEXICON>\n\n{''.join(system_message_str)}\n\n</LEXICON>"
+        )
+
     if interrupted_tasks:
         # assume user input is response to resume agent execution from interrupt
-        input = Command(resume=user_input.message)
+        input = Command(resume=user_message)
     else:
-        input = {"messages": [HumanMessage(content=user_input.message)]}
+        messages = [HumanMessage(content=user_message)]
+        messages.append(system_message)
+        input = {"messages": messages}
 
     kwargs = {
         "input": input,
         "config": config,
     }
-
-    return kwargs, run_id
+    return kwargs, run_id, lexicon_matches
 
 
 @router.post("/{agent_id}/invoke")
@@ -196,7 +215,7 @@ async def invoke(user_input: UserInput, agent_id: str = DEFAULT_AGENT) -> ChatMe
     # you'd want to include it. You could update the API to return a list of ChatMessages
     # in that case.
     agent: Pregel = get_agent(agent_id)
-    kwargs, run_id = await _handle_input(user_input, agent)
+    kwargs, run_id, dictionnary = await _handle_input(user_input, agent)
     try:
         response_events: list[tuple[str, Any]] = await agent.ainvoke(**kwargs, stream_mode=["updates", "values"])  # type: ignore # fmt: skip
         response_type, response = response_events[-1]
@@ -228,7 +247,7 @@ async def message_generator(
     This is the workhorse method for the /stream endpoint.
     """
     agent: Pregel = get_agent(agent_id)
-    kwargs, run_id = await _handle_input(user_input, agent)
+    kwargs, run_id, additional_data = await _handle_input(user_input, agent)
 
     try:
         # Process streamed events from the graph and yield messages over the SSE stream.
@@ -299,12 +318,12 @@ async def message_generator(
                     chat_message.run_id = str(run_id)
                 except Exception as e:
                     logger.error(f"Error parsing message: {e}")
-                    yield f"data: {json.dumps({'type': 'error', 'content': 'Unexpected error'})}\n\n"
+                    yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'error', 'content': 'Unexpected error'})}\n\n"
                     continue
                 # LangGraph re-sends the input message, which feels weird, so drop it
                 if chat_message.type == "human" and chat_message.content == user_input.message:
                     continue
-                yield f"data: {json.dumps({'type': 'message', 'content': chat_message.model_dump()})}\n\n"
+                yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'message', 'content': chat_message.model_dump()})}\n\n"
 
             if stream_mode == "messages":
                 if not user_input.stream_tokens:
@@ -321,10 +340,10 @@ async def message_generator(
                     # Empty content in the context of OpenAI usually means
                     # that the model is asking for a tool to be invoked.
                     # So we only print non-empty content.
-                    yield f"data: {json.dumps({'type': 'token', 'content': convert_message_content_to_string(content)})}\n\n"
+                    yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'token', 'content': convert_message_content_to_string(content)})}\n\n"
     except Exception as e:
         logger.error(f"Error in message generator: {e}")
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+        yield f"data: {json.dumps({'additional_data': [], 'type': 'error', 'content': str(e)})}\n\n"
     finally:
         yield "data: [DONE]\n\n"
 
@@ -423,8 +442,7 @@ def history(input_data: ChatHistoryInput) -> ChatHistory:
             )
         )
         messages: list[AnyMessage] = state_snapshot.values.get("messages", [])
-        chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
-
+        chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages if m is not None]
         # --- Ajout feedbacks ---
         # Appel direct à la fonction get_feedbacks (importée dans ce fichier)
         try:

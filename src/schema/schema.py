@@ -113,7 +113,7 @@ class ToolCall(TypedDict):
 class ChatMessage(BaseModel):
     """Message in a chat."""
 
-    type: Literal["human", "ai", "tool", "custom"] = Field(
+    type: Literal["human", "ai", "tool", "custom", "system"] = Field(
         description="Role of the message.",
         examples=["human", "ai", "tool", "custom"],
     )
