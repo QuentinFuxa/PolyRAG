@@ -90,9 +90,7 @@ This agentic design is what enables PolyRAG to get the most out of small or loca
 ### Run with Python
 
 ```sh
-# Set required environment variables
-echo 'OPENAI_API_KEY=your_openai_api_key' >> .env
-echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
+# Set required environment variables. Check in .env.example for values to put in .env
 
 # Install dependencies (uv recommended)
 pip install uv
@@ -107,31 +105,38 @@ source .venv/bin/activate
 streamlit run src/streamlit-app.py
 ```
 
-### Run with Docker
+---
 
+## 🗄️ Database Setup
+
+To quickly get started with real data as shown in the screenshots, you can populate your PostgreSQL database using the following dump:
+
+**[Download the demo database dump (Google Drive)](https://drive.google.com/file/d/1sN6-1vx18vGjRGosKPJtoLiocb_ulP56/view?usp=sharing)**
+
+This dump contains metadata and vectorized PDFs from medrxiv (first half of 2025), enabling you to reproduce the demo experience out of the box.
+
+To restore the dump:
 ```sh
-# Set required environment variables in .env
-echo 'OPENAI_API_KEY=your_openai_api_key' >> .env
-echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
-
-# Run with Docker Compose
-docker compose watch
+# Example command (adjust connection details as needed)
+pg_restore -d your_database_name -U your_postgres_user -h your_postgres_host -p your_postgres_port /path/to/downloaded/dump_file
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-Create a `.env` file with the following options:
+All configuration is handled via environment variables in your `.env` file. See `.env.example` for a full list. Key options include:
 
-- `OPENAI_API_KEY`: Required for LLM and embeddings
-- `DATABASE_URL`: PostgreSQL connection string
-- `SCHEMA_APP_DATA`: Database schema for application data. Default: `document_data`
-- `PDF_PARSER`: `nlm-ingestor` (default) or `pymupdf`
-- `UPLOADED_PDF_PARSER`: Parser used for the chat uploaded documents. `nlm-ingestor` (default) or `pymupdf`
-- `LLMSHERPA_API_URL`: URL for nlm-ingestor service if `nlm-ingestor` is used
-- `SYSTEM_PROMPT_PATH`: Path to a system prompt file that you can generate using `scripts/prompt_generator.py`
-- `LANGUAGE`: Language used for text search queries. Default: `english`
+- `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`: API keys for supported LLM providers.
+- `USE_AWS_BEDROCK`: Enable Amazon Bedrock integration (`true`/`false`).
+- `AWS_KB_ID`: Amazon Bedrock Knowledge Base ID.
+- `DATABASE_URL`: PostgreSQL connection string.
+- `SCHEMA_APP_DATA`: Database schema for application data (default: `document_data`).
+- `LANGUAGE`: Language for text search queries (default: `english`).
+- `NLM_INGESTOR_API`: URL for the NLM Ingestor service.
+- `UPLOADED_PDF_PARSER`: Parser for uploaded PDFs (`pypdf`, `nlm-ingestor`, etc.).
+- `DISPLAY_TEXTS_JSON_PATH`: Path to display texts JSON.
+- `SYSTEM_PROMPT_PATH`: Path to the system prompt file.
+- `NO_AUTH`: Set to `True` to disable authentication (not recommended for production).
 
-- Additional options in `src/core/settings.py`
-
+Copy `.env.example` to `.env` and fill in the required values for your setup.
