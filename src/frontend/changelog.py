@@ -2,6 +2,12 @@ import streamlit as st
 
 st.header("Nouveautés :")
 
+st.subheader("16/07/2025")
+st.markdown("""
+- Les acronymes sont automatiquement extraits des messages des utilisateurs, et le lexique de l'ASNR est utilisé pour indiquer leur signification.
+- Il est maintenant possible de réinitialiser son mot de passe depuis la page de connexion.
+""")
+
 st.subheader("08/07/2025")
 st.markdown("""
 - L'assistant sait mieux situer les références réglementaires dans les lettres de suite.
