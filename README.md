@@ -1,52 +1,91 @@
-# PolyRAG
+<p align="center">
+  <img src="media/polyrag.svg" alt="PolyRAG Logo" width="200"/>
+</p>
 
-A comprehensive toolkit for building and running advanced AI agent services with RAG capabilities over both **PostgreSQL databases** and **PDF documents**.
+**Agentic RAG for Small LLMs — Modular, Orchestrated, and Context-Smart**
 
-## Overview
+---
 
-### [Try PolyRag here!](https://polyrag.streamlit.app/) 
+PolyRAG is an **agentic Retrieval-Augmented Generation (RAG) framework** designed to empower **small and local LLMs**: At its core, PolyRAG is built around modular, orchestrated agents—each specialized for a class of tasks and able to coordinate powerful toolchains. Every aspect is optimized for limited context windows, slower models, and on-premise or privacy-focused deployments. 
 
-PolyRAG extends the original [Agent Service Toolkit](https://github.com/JoshuaC215/agent-service-toolkit) by integrating sophisticated capabilities for Retrieval-Augmented Generation across structured and unstructured data sources. Built on LangGraph, FastAPI, and Streamlit, it provides a complete framework from agent definition to user interface.
+---
 
-![Application Screenshot](media/demo_1.png)
-![Application Screenshot](media/demo_2.png)
-![Application Screenshot](media/demo_3.png)
+## Agentic Architecture
 
-## Features
+- **Agents** are modular, specialized entities that coordinate complex tasks, delegate subtasks to tools, and manage context flow.
+- **Agent Orchestration:** Agents can call other agents or tools, pipe outputs directly, and adaptively route information to minimize context usage.
+- **Agent-Tool Synergy:** Tools are robust to imperfect inputs and return concise, high-quality outputs. Agents decide when to use which tool, and how to chain them for optimal results.
+- **Direct-to-User Output:** Tools and agents can send data directly to the user, bypassing the main agent to preserve context and maximize efficiency.
 
-- **Advanced RAG Agent:** Handles complex interactions involving database querying, document analysis, and visualization
+This agentic design is what enables PolyRAG to get the most out of small or local LLMs, supporting advanced workflows that would otherwise overwhelm limited context windows.
 
-![Example](media/example.png)
 
-- **Core Agent Tools:** The `pg_rag_assistant` is equipped with a suite of powerful tools:
-  | Tool Name           | Description                                                                                                                               |
-  |---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-  | `execute_sql`       | Enables secure, read-only SQL execution for dynamic data retrieval. |
-  | `tool_graphing_agent` | Invokes a specialized agent to create visualizations from natural language and data (direct input or SQL query). |
-  | `query_rag`         | Leverages Retrieval Augmented Generation to intelligently search documents (specified by name or SQL) for keywords, extracting precise text blocks and context. |
-  | `query_rag_from_id` | Provides targeted access to document content by retrieving specific blocks via their indices, including optional child and surrounding blocks. |
-  | `highlight_pdf`     | Prepares PDF documents for frontend display with highlighted content blocks. |
+### Conversational Research Assistant (Agent-Orchestrated)
+<img src="media/demo_1.png" alt="PolyRAG Chat Interface" width="800"/>
 
-- **Database RAG:**
-  - Dynamically discovers PostgreSQL database schemas
-  - Generates tailored prompts for the LLM
-  - Enables secure SQL querying via the `execute_sql` tool
-  
-- **Document RAG:** Two configurable backends:
-  - **`nlm-ingestor` (Recommended):** Preserves document hierarchy for better context understanding
-  - **`pymupdf`:** Faster alternative with simpler text extraction
-  
-- **Document Processing:**
-  - Indexing scripts for local folders and URLs
-  - Vector and text search in PostgreSQL
-  - Interactive PDF viewer with relevant section highlighting
-  
-- **Visualization:** Interactive Plotly graph generation
-- **File Uploads:** Upload PDFs directly through the chat interface
-- **Conversation History:** Stored in PostgreSQL with auto-generated titles, accessible via sidebar
-- **Supporting Features:** Content moderation, feedback mechanism, Docker support, and testing
+*Ask complex research questions and get precise, sourced answers. Accesses lexicon, finds paragraphs in documents*
 
-## Quick Start
+---
+
+### Suggestion buttons for the user
+<img src="media/demo_3.png" alt="PolyRAG Smart Actions" width="800"/>
+
+*Choose from a menu of advanced actions: synthesize literature, run SQL, generate graphs, and more. Each action is handled by specialized agents and tools, minimizing context usage.*
+
+---
+
+### Contextual PDF Highlighting
+<img src="media/demo_4.png" alt="PolyRAG PDF Highlighting" width="800"/>
+
+*View PDFs with automatically highlighted, contextually relevant blocks—extracted.*
+
+---
+
+### Data Visualization from Natural Language (Agent-Tool Chaining)
+<img src="media/demo_2.png" alt="PolyRAG Data Visualization" width="800"/>
+
+*Generate publication trend graphs and other visualizations from natural language requests, with results piped through the agent-tool chain.*
+
+---
+
+### End-to-End Agent Orchestration
+<img src="media/example.png" alt="PolyRAG Agent Orchestration" width="800"/>
+
+*See how PolyRAG chains SQL, RAG, and PDF tools to answer technical questions—each step coordinated by agents for context efficiency.*
+
+---
+
+### Architecture: Built for Agentic Workflows
+<img src="media/schema-data.png" alt="PolyRAG Architecture" width="800"/>
+
+*Agents and tools are designed to pipe outputs directly, auto-correct imperfect inputs, and minimize main agent context load. Every feature is built for small, slow, or local LLMs.*
+
+---
+
+## Document Extraction & Indexing
+
+- **Semi-structured Extraction:**  
+  - Uses NLM Ingestor and Tika with data type detection and tree structure.
+  - Localization and regex rules for extracting structured parts.
+  - Produces a structure with type, parent, child, and position.
+
+- **Indexing:**  
+  - Uses PostgreSQL TSVector (French) for efficient, scalable full-text search with tokenization and stemming.
+  - No embeddings by default: lighter, scalable, and future-ready for on-premise models.
+  - Excellent performance for technical queries.
+
+---
+
+## Features Overview
+
+- Agentic RAG: Modular agents for database and document queries.
+- Interactive PDF viewer with contextual highlights.
+- Natural language to SQL and graphing, coordinated by agents.
+- Conversation history, feedback, and moderation.
+- Docker and Python support for easy deployment.
+
+
+## ⚡ Quick Start
 
 ### Run with Python
 
@@ -79,7 +118,9 @@ echo 'DATABASE_URL=postgresql://user:password@host:port/dbname' >> .env
 docker compose watch
 ```
 
-## Configuration
+---
+
+## ⚙️ Configuration
 
 Create a `.env` file with the following options:
 
@@ -94,94 +135,3 @@ Create a `.env` file with the following options:
 
 - Additional options in `src/core/settings.py`
 
-## Key Files
-
-- `src/agents/pg_rag_assistant.py`: Main RAG agent definition
-- `src/db_manager.py`: PostgreSQL connection and schema discovery
-- `scripts/prompt_generator.py`: Dynamic system prompt generation
-- `src/rag_system.py`: PDF processing and search logic
-- `scripts/index-folder-script.py`: Script to index local PDFs
-- `scripts/index-urls-script.py`: Script to index PDFs from URLs
-- `src/streamlit-app.py`: Chat interface
-- `docker/`: Dockerfiles and `compose.yaml`
-
-## Utility Scripts
-
-These scripts help with indexing data and generating prompts. Ensure your environment is activated (`source .venv/bin/activate`) and necessary environment variables (like `DATABASE_URL`, `OPENAI_API_KEY`) are set in your `.env` file before running them.
-
-### Indexing PDFs from a Folder (`scripts/index-folder-script.py`)
-
-Indexes PDF documents from a local directory into the database and RAG system.
-
-```sh
-python scripts/index-folder-script.py --dir /path/to/your/pdf/folder [--embeddings]
-```
-
-- `--dir`: (Required) Path to the directory containing PDF files.
-- `--pdf`: (Optional) Path to a single PDF file to index instead of a directory.
-- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
-
-### Indexing PDFs from URLs (`scripts/index-urls-script.py`)
-
-Fetches PDF URLs from a specified database table, downloads them, and indexes their content.
-
-```sh
-python scripts/index-urls-script.py [--schema SCHEMA_NAME] [--table TABLE_NAME] [--column COLUMN_NAME] [--embeddings]
-```
-
-- `--schema`: (Optional) Database schema containing the table with URLs (default: `public`).
-- `--table`: (Optional) Database table name containing the URLs (default: `arxiv_qbio_metadata_2025`).
-- `--column`: (Optional) Column name within the table that holds the PDF URLs (default: `pdf_url`).
-- `--embeddings`: (Optional) Generate and store embeddings for the documents (requires `OPENAI_API_KEY`).
-
-### Generating the Database RAG Prompt (`scripts/prompt_generator.py`)
-
-Inspects the database schema and generates a detailed system prompt for the RAG agent, saving it to `system_prompt.txt`.
-
-```sh
-python scripts/prompt_generator.py
-```
-
-This script reads database connection details from the environment and currently inspects the `public` schema by default. You can modify the script (`if __name__ == '__main__':` block) to target different schemas or tables if needed.
-
-## Customization
-
-To build your own agent:
-
-1. Modify `src/agents/pg_rag_assistant.py` or add new agents
-2. Add agents to the `agents` dictionary in `src/agents/agents.py`
-3. Adjust the Streamlit interface as needed
-
-## Client Usage
-
-```python
-from client import AgentClient
-client = AgentClient() # Assumes service running locally
-
-# Ask the RAG agent a question
-response = client.invoke(
-    "What are the main risks mentioned in document 2503_01910 v1?",
-    agent="pg_rag_assistant"
-)
-response.pretty_print()
-```
-
-## Development
-
-```sh
-# Install dev dependencies
-pip install uv
-uv sync --frozen --dev
-pre-commit install
-pytest
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-
-uv pip install langchain_mistralai
-
-
-python scripts/index-urls-script.py --table medrxiv_2025

@@ -24,19 +24,20 @@ if dt.LOGO:
     st.logo(image=dt.LOGO, size="large")
 
 NO_AUTH = os.getenv("NO_AUTH", False)
+NO_AUTH = False
 if NO_AUTH:
     st.session_state.current_user_id = st.session_state.get('current_user_id', '00000000-0000-0000-0000-000000000001')
     st.session_state.current_user_email = st.session_state.get('current_user_email', "admin@admin")
 
-logout_page = st.Page('frontend/user.py', title="Déconnexion", icon=":material/logout:")
-comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/comment:")
+logout_page = st.Page('frontend/user.py', title=dt.LOGOUT, icon=":material/logout:")
+comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/feedback:")
 help = st.Page(
     "frontend/help.py", title="Aide", icon=":material/lightbulb:")
 changelog = st.Page(
     "frontend/changelog.py", title="Nouveautés v0.1.7 - 16/07/2025", icon=":material/source_notes:")
 chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
-if dt.LANGUAGE == "french":
+if os.getenv('LANGUAGE', 'english') == "french":
     if "current_user_id" in st.session_state:
         pg = st.navigation(
         {
@@ -52,9 +53,16 @@ if dt.LANGUAGE == "french":
 
 else:
     if "current_user_id" in st.session_state:
-        pg = st.navigation([comments, chatbot])
+        pg = st.navigation(
+        {
+            "": [chatbot],
+            "User": [logout_page, comments],
+
+        },
+        )
     else:
-        
+       
+
         pg = st.navigation(pages=[
             st.Page(login_ui, title="Log in", icon=":material/login:")
         ])

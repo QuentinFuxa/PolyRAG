@@ -60,7 +60,7 @@ def register_new_user(db: DatabaseManager, email: str) -> tuple[Optional[UserInD
     Generates a password and calls the email placeholder.
     Returns (UserInDB object or None, plain_password or None for display/logging if needed temporarily)
     """
-    if not email.lower().endswith(dt.EMAIL_DOMAIN):
+    if dt.EMAIL_DOMAIN and not email.lower().endswith(dt.EMAIL_DOMAIN):
         logger.error(f"Registration attempt with invalid email domain: {email}")
         return None, None
 
@@ -74,17 +74,18 @@ def register_new_user(db: DatabaseManager, email: str) -> tuple[Optional[UserInD
     try:
         created_user = db.create_user(email=email, hashed_password=hashed_password)
         if created_user:
-            if send_password_email_with_sendgrid(email, plain_password):
+            successfuly_sent = send_password_email_with_sendgrid(email, plain_password)
+            if successfuly_sent:
                 logger.info(f"Successfully registered and sent password to {email}")
             else:
                 logger.error(f"User {email} registered, but FAILED to send password email via SendGrid.")
-            return created_user, plain_password
+            return created_user, plain_password, successfuly_sent
         else:
             logger.error(f"User creation returned None for {email}")
-            return None, None
+            return None, None, None
     except Exception as e:
         logger.error(f"Error during user creation for {email}: {e}")
-        return None, None
+        return None, None, None
 
 def reset_user_password(db: DatabaseManager, email: str) -> tuple[bool, str]:
     """
@@ -103,6 +104,5 @@ def reset_user_password(db: DatabaseManager, email: str) -> tuple[bool, str]:
     if email_sent:
         return True, dt.RESET_PASSWORD_EMAIL_SENT.format(email=email)
     else:
-        # If email fails, show the password directly (not ideal for production, but fallback for demo/dev)
-        # return True, getattr(dt, "RESET_PASSWORD_EMAIL_FAILED", "Email failed. Your new password is: {password}").format(password=plain_password)
-        pass
+        return True, "Email could not be sent. Your new password is: {password}".format(password=plain_password)
+

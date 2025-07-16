@@ -481,7 +481,6 @@ class RAGSystem:
         # Execute queries
         _final_count_query = count_query.format(ts_query=ts_query_for_format).replace(';', '')
         count_result = self.db_manager.execute_query(_final_count_query)
-
         # Prepare document count query (unique document names)
         doc_count_query_parts = [part.replace("COUNT(*)", "COUNT(DISTINCT r.name)") if "COUNT(*)" in part else part for part in count_query_parts]
         _final_doc_count_query = "\n".join(doc_count_query_parts).format(ts_query=ts_query_for_format).replace(';', '')

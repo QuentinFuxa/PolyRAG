@@ -3,7 +3,7 @@
   "APP_ICON": ":material/experiment:",
   "AI_ICON": ":material/flare:",
   "USER_ICON": ":material/person:",
-  "CAPTION": "For any bug, you can create an issue here: https://github.com/QuentinFuxa/PolyRAG :material/cell_tower: .",
+  "CAPTION": "",
   "PDF_DIALOG_TITLE": "Document",
   "PDF_DIALOG_DEBUG_PREFIX": "/debug",
   "PDF_DIALOG_NO_PDF_ERROR": "No PDF selected for viewing.",
@@ -30,8 +30,8 @@
   "SELECT_AGENT_LABEL": "Agent to use",
   "STREAMING_TOGGLE_LABEL": "Stream results",
   "WELCOME_PG_RAG": "Hello! I'm an AI-powered research assistant with Postgres database access, PDF analysis, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!",
-  "SOURCE_PDFs": "**Sources dans les Lettres de suite :**",
-  "HELP_SOURCE_PDFs": "Cliquez sur les documents pour visualiser les zones qui ont permis de répondre à la question.",
+  "SOURCE_PDFs": "**Sources in documents:**",
+  "HELP_SOURCE_PDFs": "Click on the documents to view the sections that helped answer the question.",
   "EXAMPLE_PROMPTS": [
     {
       "button_text": "Give me a comprehensive synthesis of machine learning applications in oncology since 2024",
@@ -117,17 +117,18 @@
   "TOOL_OUTPUT_EMPTY": "No results found",
   "PDF_VIEWER_OUTPUT_LABEL": "PDF Preview {pdf_name}",
   "LOGIN_WELCOME": "Welcome to PolyRAG",
-  "LOGIN_EMAIL_PROMPT": "Enter your @example.com email address:",
+  "LOGIN_EMAIL_PROMPT": "Enter your email address:",
   "LOGIN_PASSWORD_PROMPT": "Enter your password:",
   "LOGIN_BUTTON": "Login",
   "LOGOUT_BUTTON": "Logout",
-  "CREATE_ACCOUNT_BUTTON": "Create Account & Send Password",
+  "CREATE_ACCOUNT_BUTTON": "Create Account",
   "INVALID_EMAIL_FORMAT": "Only @example.com email addresses are allowed.",
   "LOGIN_FAILED": "Login failed. Please check your email and password.",
   "ACCOUNT_CREATION_FAILED": "Account creation failed. Please try again later.",
   "ACCOUNT_CREATED_SUCCESS": "Account created for {email}. A password has been sent to your email. Please click the button above again and log in with this password.",
   "DEV_INFO_PASSWORD": "DEV_INFO: The password for {email} is {plain_pwd}",
-  "EMAIL_DOMAIN": "@example.com",
+  "ACCOUNT_NOT_REGISTERED": "Email account {email} is not registered. Please create an account. ⬇️",
+  "EMAIL_DOMAIN": "",
   "LOGGED_AS": "User",
   "PASSWORD_EMAIL_SUBJECT": "Demo Assistant Password",
   "PASSWORD_EMAIL_BODY": "Hello,<br>Your PolyRAG password is: {new_password}<br>If you have any issues, you can reply to this email.",
@@ -137,6 +138,6 @@
   "LOGO": "https://raw.githubusercontent.com/QuentinFuxa/PolyRAG/refs/heads/main/media/polyrag.svg",
   "BIG_LOGO": false,
   "RESET_PASSWORD_BUTTON": "Reset Password",
-  "LEXICON_BADGE": ":blue-badge[:material/dictionary: Definition of {entity} added] "
-
+  "LEXICON_BADGE": ":blue-badge[:material/dictionary: Definition of {entity} added] ",
+  "LOGOUT": "Logout"
 }

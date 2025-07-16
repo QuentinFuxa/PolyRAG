@@ -51,8 +51,8 @@ rag_system = RAGSystem()
 # )
 
 result = rag_system.query(
-    user_query=["insomnia"],
-    source_query="SELECT title FROM public.medrxiv_2025 ORDER BY publication_date DESC LIMIT 1",
+    user_query=["machine learning", "oncology"],
+    source_query="SELECT title FROM public.medrxiv_2025 WHERE publication_date >= '2024-01-01' AND subject_area ILIKE '%oncology%'",
     get_children=True
 )
 

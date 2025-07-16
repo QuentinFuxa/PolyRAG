@@ -4,6 +4,10 @@ from db_manager import DatabaseManager
 import auth_service
 from display_texts import dt
 from auth_service import reset_user_password
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 NO_AUTH = os.getenv("NO_AUTH", False)
 
@@ -24,7 +28,7 @@ def login_ui():
             st.session_state.current_user_email = "admin@example.com"
             st.rerun()
             return True
-        elif not st.session_state["email"].lower().endswith(dt.EMAIL_DOMAIN):
+        elif dt.EMAIL_DOMAIN and not st.session_state["email"].lower().endswith(dt.EMAIL_DOMAIN):
             st.error(dt.INVALID_EMAIL_FORMAT)
             return False
 
@@ -52,9 +56,11 @@ def login_ui():
         else:
             st.info(dt.ACCOUNT_NOT_REGISTERED.format(email=st.session_state["email"]))
             if st.button(dt.CREATE_ACCOUNT_BUTTON, key="create_account_button"):
-                new_user, plain_pwd = auth_service.register_new_user(db, st.session_state["email"])
+                new_user, plain_pwd, successfuly_sent = auth_service.register_new_user(db, st.session_state["email"])
                 if new_user:
-                    if plain_pwd:
+                    if not successfuly_sent:
+                        st.session_state["login_success_message"] = dt.DEV_INFO_PASSWORD.format(email=st.session_state["email"], plain_pwd=plain_pwd)
+                    elif plain_pwd:
                         st.session_state["login_success_message"] = dt.ACCOUNT_CREATED_SUCCESS.format(email=st.session_state["email"])
                         st.rerun()
                     else:

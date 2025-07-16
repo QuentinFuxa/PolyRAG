@@ -141,5 +141,6 @@
   "LANGUAGE": "french",
   "BIG_LOGO": true,
   "RESET_PASSWORD_BUTTON": "Réinitialiser le mot de passe",
-  "RESET_PASSWORD_EMAIL_SENT": "Un e-mail de réinitialisation a été envoyé à {email}."
+  "RESET_PASSWORD_EMAIL_SENT": "Un e-mail de réinitialisation a été envoyé à {email}.",
+  "LOGOUT": "Déconnexion"
 }

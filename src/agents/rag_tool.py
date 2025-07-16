@@ -11,8 +11,67 @@ from db_manager import schema_app_data # Import schema_app_data
 # Initialize the RAG system
 rag_system = RAGSystem()
 
+def query_rag(
+    keywords: List[str],
+    source_query: Optional[str] = None,
+    source_names: Optional[List[str]] = None,
+    get_children: bool = True,
+    page: Optional[int] = None,
+    offset: int = 0,
+    limit: int = 20,
+    count_only: bool = False
+    ) -> Union[Dict[str, Any], str]:
+    """
+    Query the RAG system to find relevant information in documents with simplified return format and single-query source handling.
 
-def query_rag_func(
+    Args:
+        keywords: Words to search for in the documents. Example: ["télécommunications", "crise"].
+        source_query: A SQL query string that returns document names. Example: "SELECT name FROM public.public_data ORDER BY sent_date DESC LIMIT 1". Use this OR source_names, or leave both None to search all documents.
+        source_names: A list of document names to search within. Example: ["report_campaign", "biology_comparison_report"]. Use this OR source_query, or leave both None to search all documents.
+        get_children: Whether to retrieve child blocks for each found block. Defaults to True.
+        offset: Number of results to skip for pagination (default: 0). Results contains max 20 results. If you want to get the next 20 results, use offset=20.
+        page: The page to search on/retrieve. Starts at 0. If not provided, all the pages are searched. Use it only when you know the result is on a specific page, or that the user provides you with a page number.
+        limit: Maximum number of results to return (default: 20). Do not use it except when you really need to increase the number of results.
+        
+        count_only: If True, return only the count of matching blocks instead of the content.
+
+    Returns:
+        If count_only is False:
+            - total_number_results (int): Total number of matching results (blocks).
+            - number_returned_results (int): Number of results in this response.
+            - results (list): List of result blocks.
+        If count_only is True:
+            - total_number_results (int): Total number of matching results (blocks).
+            - total_document_count (int): Number of unique documents containing at least one matching block.
+        Or an error dictionary if something goes wrong.
+    """
+    
+    ## if confident in nlm ingestor output, use tag: Filter by tag: 'header', 'list_item', 'para' or 'table'
+    
+    if source_names is not None and source_query is not None:
+        return {"error": "Provide either 'source_names' (list of strings) or 'source_query' (SQL string), but not both."}
+
+    if source_query and not source_query.strip().lower().startswith('select'):
+        return {"error": "Invalid source_query: Must start with SELECT if provided."}
+
+    try:
+        result = rag_system.query(
+            user_query=keywords,
+            source_query=source_query, 
+            source_names=source_names,
+            offset=offset,
+            limit=limit,
+            page=page,
+            get_children=get_children,
+            count_only=count_only
+        )
+        return result
+    except Exception as e:
+        return {"error": f"Error during search: {str(e)}"}
+
+
+
+def query_rag_lds(
     keywords: List[str],
     source_query: Optional[str] = None,
     source_names: Optional[List[str]] = None,
@@ -251,43 +310,69 @@ def highlight_pdf_func(
             results.append({
                 "pdf_file": found_pdf_name,
                 "block_indices": block_indices,
-                "debug": debug  # Use the global debug flag
+                "debug": debug
             })
-        # No explicit else needed here as errors are handled by `continue` statements above.
-
     return json.dumps(results)
 
-query_rag: BaseTool = tool(query_rag_func)
-query_rag.name = "Query_RAG"
-query_rag.description = """
-Use this tool to search for information in documents with simplified return format and pagination support.
-Enhanced with demand classification and single-query source handling.
+if os.getenv("LANGUAGE") == "french":
+    query_rag: BaseTool = tool(query_rag_lds)
+    query_rag.name = "Query_RAG"
+    query_rag.description = """
+    Use this tool to search for information in documents with simplified return format and pagination support.
 
-Parameters:
-- keywords: List of keywords to search (e.g., ["télécommunications", "crise"])
-- source_query: SQL query returning document names (e.g., "SELECT name FROM public.public_data ORDER BY sent_date DESC LIMIT 1")
-- source_names: List of document names OR use source_query (not both)
-- limit: Maximum number of results to return (default: 20)
-- offset: Number of results to skip for pagination (default: 0)
-- content_type: Optional filter ('demand', 'section_header', 'regular')
-- section_filter: Optional filter by sections (['synthesis', 'demands', 'observations', etc.])
-- demand_priority: Optional filter (1 for prioritaires, 2 for complémentaires)
-- count_only: If True, returns statistics instead of content. The result will include:
-    - total_number_results: Total number of matching blocks.
-    - total_document_count: Number of unique documents containing at least one matching block.
+    Parameters:
+    - keywords: List of keywords to search (e.g., ["télécommunications", "crise"])
+    - source_query: SQL query returning document names (e.g., "SELECT name FROM public.public_data ORDER BY sent_date DESC LIMIT 1")
+    - source_names: List of document names OR use source_query (not both)
+    - limit: Maximum number of results to return (default: 20)
+    - offset: Number of results to skip for pagination (default: 0)
+    - content_type: Optional filter ('demand', 'section_header', 'regular')
+    - section_filter: Optional filter by sections (['synthesis', 'demands', 'observations', etc.])
+    - demand_priority: Optional filter (1 for prioritaires, 2 for complémentaires)
+    - count_only: If True, returns statistics instead of content. The result will include:
+        - total_number_results: Total number of matching blocks.
+        - total_document_count: Number of unique documents containing at least one matching block.
 
-Returns (if count_only=False):
-    - total_number_results: Total number of matching results (blocks)
-    - number_returned_results: Number of results in this response
-    - results: List of result blocks with metadata (document_name, idx, content, level, tag, content_type, section_type, demand_priority, children)
+    Returns (if count_only=False):
+        - total_number_results: Total number of matching results (blocks)
+        - number_returned_results: Number of results in this response
+        - results: List of result blocks with metadata (document_name, idx, content, level, tag, content_type, section_type, demand_priority, children)
 
-Returns (if count_only=True):
-    - total_number_results: Total number of matching blocks.
-    - total_document_count: Number of unique documents containing at least one matching block.
+    Returns (if count_only=True):
+        - total_number_results: Total number of matching blocks.
+        - total_document_count: Number of unique documents containing at least one matching block.
 
-For pagination, use offset parameter. Example: offset=20 to get next 20 results.
-The source_query now integrates directly with the search, solving the issue where keywords might not appear in the filtered documents.
-"""
+    For pagination, use offset parameter. Example: offset=20 to get next 20 results.
+    The source_query now integrates directly with the search, solving the issue where keywords might not appear in the filtered documents.
+    """
+else:
+    query_rag: BaseTool = tool(query_rag)
+    query_rag.name = "Query_RAG"
+    query_rag.description = """
+    Use this tool to search for information in documents with simplified return format and pagination support.
+
+    Parameters:
+    - keywords: List of keywords to search (e.g., ["oncology"])
+    - source_query: SQL query returning document names (e.g., "SELECT name FROM public.medrxiv_2025 ORDER BY sent_date DESC LIMIT 1")
+    - source_names: List of document names OR use source_query (not both)
+    - limit: Maximum number of results to return (default: 20)
+    - offset: Number of results to skip for pagination (default: 0)
+    - count_only: If True, returns statistics instead of content. The result will include:
+        - total_number_results: Total number of matching blocks.
+        - total_document_count: Number of unique documents containing at least one matching block.
+
+    Returns (if count_only=False):
+        - total_number_results: Total number of matching results (blocks)
+        - number_returned_results: Number of results in this response
+        - results: List of result blocks with metadata (document_name, idx, content, level, tag, children)
+
+    Returns (if count_only=True):
+        - total_number_results: Total number of matching blocks.
+        - total_document_count: Number of unique documents containing at least one matching block.
+
+    For pagination, use offset parameter. Example: offset=20 to get next 20 results.
+    The source_query now integrates directly with the search, solving the issue where keywords might not appear in the filtered documents.
+    """
 
 query_rag_from_id: BaseTool = tool(query_rag_from_id_func)
 query_rag_from_id.name = "Query_RAG_From_Id"
