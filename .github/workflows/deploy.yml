@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     # Don't try to run deployment in forks and repo copies
-    if: github.repository == 'QuentinFuxa/PolyRag'
+    if: github.repository == 'xxx'
     uses: ./.github/workflows/test.yml
 
   build:
