@@ -160,11 +160,6 @@ For subject_area, don't hesitate to use ILIKE for partial matches.
 - 🤖 TOOL Query_RAG {"keywords":[""],"source_query":"SELECT title FROM public.medrxix_2025 WHERE EXTRACT(YEAR FROM publication_date) = 2024 AND subject_area ILIKE '%infectious diseases%'", "count_only":True} --> 0 results 
 - 🤖 0 results before, so change Query_RAG args: {"keywords":["infectious diseases"],"source_query":"SELECT title FROM public.medrxix_2025 WHERE EXTRACT(YEAR FROM publication_date) = 2024", "count_only":True} --> 25 results
 
-**Monograph**: Monographs are syntheses made on all indicated preprints. Therefore, use all available papers. Increase the Query_RAG limit parameter.
-- 🧑‍💻 Make a 2024 monograph of neuroscience preprints
-- 🤖 TOOL Query_RAG {"keywords":[],"source_query":"SELECT title FROM public.medrxix_2025 WHERE subject_area ILIKE '%neuroscience%' AND EXTRACT(YEAR FROM publication_date) = 2024","content_type":"results", "limit": 500}
-Then synthesize the most frequently mentioned topics.
-
 **Sequential approach:** Search can select documents, then content extraction can be done in a second step
 - 🧑‍💻 Give me the results from clinical trials published in 2024
 - 🤖 Tool Query_RAG {"keywords":["clinical trials"],"source_query":"SELECT title FROM public.medrxix_2025 WHERE EXTRACT(YEAR FROM publication_date) = 2024"} --> ['A', 'B', 'C', 'D'] (Mock names)
