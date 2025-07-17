@@ -29,13 +29,17 @@ if NO_AUTH:
     st.session_state.current_user_id = st.session_state.get('current_user_id', '00000000-0000-0000-0000-000000000001')
     st.session_state.current_user_email = st.session_state.get('current_user_email', "admin@admin")
 
+chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
 logout_page = st.Page('frontend/user.py', title=dt.LOGOUT, icon=":material/logout:")
 comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/feedback:")
-help = st.Page(
-    "frontend/help.py", title="Aide", icon=":material/lightbulb:")
-changelog = st.Page(
-    "frontend/changelog.py", title="Nouveautés v0.1.8 - 17/07/2025", icon=":material/source_notes:")
-chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
+try:
+    help = st.Page(
+        "frontend/help.py", title="Aide", icon=":material/lightbulb:")
+    changelog = st.Page(
+        "frontend/changelog.py", title="Nouveautés v0.1.8 - 17/07/2025", icon=":material/source_notes:")
+except:
+    help = None
+    changelog = None
 
 if os.getenv('LANGUAGE', 'english') == "french":
     if "current_user_id" in st.session_state:
