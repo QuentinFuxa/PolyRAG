@@ -1,8 +1,8 @@
 [theme]
-primaryColor = "#0082ff"
+primaryColor = "#3639f5ff"
 
 [theme.sidebar]
-backgroundColor = "rgb(236, 245, 255)"
+backgroundColor = "rgba(245, 246, 255, 1)"
 color = 'black'
 
 [browser]

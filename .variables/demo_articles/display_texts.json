@@ -29,7 +29,7 @@
   "SELECT_LLM_LABEL": "LLM to use",
   "SELECT_AGENT_LABEL": "Agent to use",
   "STREAMING_TOGGLE_LABEL": "Stream results",
-  "WELCOME_PG_RAG": "Hello! I'm an AI-powered assistant with metadata and PDF access, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!",
+  "WELCOME_PG_RAG": "Hi! I’m your PolyRAG research agent—quick metadata search, deep PDF insight, and instant visuals, all powered by small-LLM-optimized agents. Ask away!",
   "SOURCE_PDFs": "**Sources in documents:**",
   "HELP_SOURCE_PDFs": "Click on the documents to view the sections that helped answer the question.",
   "EXAMPLE_PROMPTS": [
@@ -52,15 +52,15 @@
       "key": "btn_ex_create_graph"
     },
     {
-      "button_text": "Summarize the latest neuroscience preprint published",
-      "suggested_command_text": "Summarize the latest neuroscience preprint published",
-      "icon": ":material/list:",
+      "button_text": "Generate a table comparing psychosis and non-psychosis groups by urban residence, insight into mental illness, cannabis use, and opioids",
+      "suggested_command_text": "Generate a table comparing psychosis and non-psychosis groups by urban residence, insight into mental illness, cannabis use, and opioids",
+      "icon": ":material/table_chart:",
       "key": "btn_ex_document_summary"
     },
     {
-      "button_text": "Display a table of the number of preprints per year in Public Health",
-      "suggested_command_text": "Display a table of the number of preprints per year in Public Health",
-      "icon": ":material/table_chart:",
+      "button_text": "What have been the trends in terms of subject area in the last year?",
+      "suggested_command_text": "What have been the trends in terms of subject area in the last year?",
+      "icon": ":material/list:",
       "key": "btn_ex_npx_table"
     },
     {

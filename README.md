@@ -6,7 +6,13 @@
 
 ---
 
-PolyRAG is an **agentic Retrieval-Augmented Generation (RAG) framework** designed to empower **small and local LLMs**: At its core, PolyRAG is built around modular, orchestrated agents—each specialized for a class of tasks and able to coordinate powerful toolchains. Every aspect is optimized for limited context windows, slower models, and on-premise or privacy-focused deployments. 
+PolyRAG is a modular agentic RAG framework for small and local LLMs, optimized for privacy, limited context, and on-premise use.
+
+---
+
+> **Modular: Bring Your Own Data, Lexicon, and LLM**
+>
+> This repo uses MedRxiv as a demo, but you can connect PolyRAG to any database, lexicon, or document set—just adapt the system prompt and DB connection. Any LLM backend is supported. Indexing scripts are in [`scripts/`](scripts/). See "Customization" below.
 
 ---
 
@@ -27,7 +33,7 @@ This agentic design is what enables PolyRAG to get the most out of small or loca
 
 ---
 
-### Suggestion buttons for the user
+### Conversational Entry Points
 <img src="media/demo_3.png" alt="PolyRAG Smart Actions" width="800"/>
 
 *Choose from a menu of advanced actions: synthesize literature, run SQL, generate graphs, and more. Each action is handled by specialized agents and tools, minimizing context usage.*
@@ -140,3 +146,33 @@ All configuration is handled via environment variables in your `.env` file. See 
 - `NO_AUTH`: Set to `True` to disable authentication (not recommended for production).
 
 Copy `.env.example` to `.env` and fill in the required values for your setup.
+
+---
+
+## 🛠️ Customization: Connect Your Own Data, Lexicon, and LLM
+
+PolyRAG is designed to be easily adapted to your own use case—across any domain, database, or document set. The MedRxiv setup provided here is just a showcase.
+
+**To use PolyRAG with your own data:**
+
+1. **Database Connection:**  
+   - Edit the `DATABASE_URL` in your `.env` file to point to your own PostgreSQL (or compatible) database.
+   - Adjust schema/table names as needed in your configuration.
+
+2. **System Prompt:**  
+   - Adapt the system prompt file (see the `SYSTEM_PROMPT_PATH` variable in your `.env`) to fit your domain, lexicon, and user instructions.
+
+3. **Indexing Your Data:**  
+   - Use the scripts in the [`scripts/`](scripts/) directory to index your own documents:
+     - `index-folder-script.py`: Index documents from a local folder.
+     - `index-urls-script.py`: Index documents from a list of URLs.
+     - `scrape_arxiv.py`, `scrape_medrxiv.py`: Example scrapers for scientific sources.
+   - You can create your own scripts following these templates for other data sources.
+
+4. **LLM Backend:**  
+   - PolyRAG is backend-agnostic. Set the appropriate API key(s) in your `.env` to use OpenAI, Mistral, DeepSeek, Anthropic, Google, Groq, or your own local LLM.
+
+5. **Display Texts & Instructions:**  
+   - Customize user-facing texts and instructions by editing the files referenced in your `.env` (e.g., `DISPLAY_TEXTS_JSON_PATH`, `instructions.md`).
+
+**For more advanced customization, see the code in the `src/` directory and adapt agents, tools, or workflows as needed.**
