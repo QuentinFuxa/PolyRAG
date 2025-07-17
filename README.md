@@ -25,6 +25,11 @@ PolyRAG is a modular agentic RAG framework for small and local LLMs, optimized f
 
 This agentic design is what enables PolyRAG to get the most out of small or local LLMs, supporting advanced workflows that would otherwise overwhelm limited context windows.
 
+<img src="media/demo_3.png" alt="PolyRAG Smart Actions" width="800"/>
+
+*Choose from a menu of advanced actions: synthesize literature, run SQL, generate graphs, and more. Each action is handled by specialized agents and tools, minimizing context usage.*
+
+---
 
 ### Conversational Research Assistant (Agent-Orchestrated)
 <img src="media/demo_1.png" alt="PolyRAG Chat Interface" width="800"/>
