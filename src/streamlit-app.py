@@ -41,9 +41,9 @@ if os.getenv('LANGUAGE', 'english') == "french":
     if "current_user_id" in st.session_state:
         pg = st.navigation(
         {
-            "Compte": [logout_page],
-            "Commentaires et aide": [comments, help, changelog],
-            "Assistant": [chatbot]
+            "": [chatbot],
+            "Utilisateur": [comments, logout_page],
+            "PoC": [help, changelog],
         },
         )
     else:
@@ -57,7 +57,6 @@ else:
         {
             "": [chatbot],
             "User": [logout_page, comments],
-
         },
         )
     else:
