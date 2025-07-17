@@ -2,6 +2,8 @@ FROM python:3.12.3-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y libpq5 --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 ENV UV_PROJECT_ENVIRONMENT="/usr/local/"
 ENV UV_COMPILE_BYTECODE=1
 
@@ -9,16 +11,7 @@ COPY pyproject.toml .
 COPY uv.lock .
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
-
-COPY src/agents/ ./agents/
-COPY src/core/ ./core/
-COPY src/memory/ ./memory/
-COPY src/schema/ ./schema/
-COPY src/service/ ./service/
-COPY src/run_service.py .
+COPY src/ .
 COPY .variables ./.variables
-
-COPY src/db_manager.py ./db_manager.py
-COPY src/rag_system.py ./rag_system.py
 
 CMD ["python", "run_service.py"]
