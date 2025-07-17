@@ -13,5 +13,6 @@ RUN uv sync --frozen
 COPY .variables ./.variables
 COPY .streamlit ./.streamlit
 COPY src/ .
+COPY media ./media
 
 CMD ["streamlit", "run", "streamlit-app.py"]

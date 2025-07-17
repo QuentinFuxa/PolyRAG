@@ -12,6 +12,7 @@ COPY uv.lock .
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
 COPY src/ .
+COPY media ./media
 COPY .variables ./.variables
 
 CMD ["python", "run_service.py"]
