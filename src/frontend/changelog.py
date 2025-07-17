@@ -2,6 +2,12 @@ import streamlit as st
 
 st.header("Nouveautés :")
 
+st.subheader("17/07/2025")
+st.markdown("""
+- L'enchaînement entre les différents outils de l’assistant a été optimisé grâce à une réorganisation et un nettoyage du system prompt.
+- La génération de graphiques a été améliorée grâce à une définition plus précise des entrées de l'outil.
+""")
+
 st.subheader("16/07/2025")
 st.markdown("""
 - Les acronymes sont automatiquement extraits des messages des utilisateurs, et le lexique de l'ASNR est utilisé pour indiquer leur signification.

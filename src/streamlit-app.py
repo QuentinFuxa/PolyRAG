@@ -34,7 +34,7 @@ comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/fe
 help = st.Page(
     "frontend/help.py", title="Aide", icon=":material/lightbulb:")
 changelog = st.Page(
-    "frontend/changelog.py", title="Nouveautés v0.1.7 - 16/07/2025", icon=":material/source_notes:")
+    "frontend/changelog.py", title="Nouveautés v0.1.8 - 17/07/2025", icon=":material/source_notes:")
 chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
 
 if os.getenv('LANGUAGE', 'english') == "french":
