@@ -29,7 +29,7 @@
   "SELECT_LLM_LABEL": "LLM to use",
   "SELECT_AGENT_LABEL": "Agent to use",
   "STREAMING_TOGGLE_LABEL": "Stream results",
-  "WELCOME_PG_RAG": "Hello! I'm an AI-powered research assistant with Postgres database access, PDF analysis, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!",
+  "WELCOME_PG_RAG": "Hello! I'm an AI-powered assistant with metadata and PDF access, and visualization tools. I can search documents, run SQL queries, and save our conversations for later reference. Ask me anything!",
   "SOURCE_PDFs": "**Sources in documents:**",
   "HELP_SOURCE_PDFs": "Click on the documents to view the sections that helped answer the question.",
   "EXAMPLE_PROMPTS": [
@@ -46,8 +46,8 @@
       "key": "btn_ex_debug_pdf"
     },
     {
-      "button_text": "Show the comparative evolution of publications per month between Oncology and Cardiology since 2022",
-      "suggested_command_text": "Show the comparative evolution of publications per month between Oncology and Cardiology since 2022",
+      "button_text": "Can you show a graph of how regional lung tier scores transition over 5 years depending on GOLD status in COPD patients?",
+      "suggested_command_text": "Can you show a graph of how regional lung tier scores transition over 5 years depending on GOLD status in COPD patients?",
       "icon": ":material/monitoring:",
       "key": "btn_ex_create_graph"
     },
@@ -135,7 +135,7 @@
   "WARNING_MESSAGE": "<i><strong>Warning:</strong> Do not share sensitive data in messages, as they may be stored and used to improve the model. Avoid sharing personal or confidential information.</i>",
   "FEEDBACK": "Feedbacks",
   "FEEDBACK_DIALOG": "Please leave your comments or suggestions to improve the application.",
-  "LOGO": "https://raw.githubusercontent.com/QuentinFuxa/PolyRAG/refs/heads/main/media/polyrag.svg",
+  "LOGO": "media/polyrag.svg",
   "BIG_LOGO": false,
   "RESET_PASSWORD_BUTTON": "Reset Password",
   "LEXICON_BADGE": ":blue-badge[:material/dictionary: Definition of {entity} added] ",

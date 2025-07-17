@@ -428,12 +428,12 @@ async def draw_messages(
                         # ... (tool call logic remains the same, ensure agent_client calls within are user-scoped if needed)
                         # For example, agent_client.retrieve_graph might need user_id if graphs are user-specific
                         # agent_client.aget_annotations / adebug_pdf_blocks might also need user_id
-                        call_results = {}; tool_names = {}; graph_viewer_call_ids = set()
+                        call_results = {}; tool_names = {}; Create_Graph_call_ids = set()
                         for tool_call in msg.tool_calls:
                             status_container = st.status(dt.TOOL_CALL_STATUS.format(tool_name=tool_call["name"]), state="running" if is_new else "complete")
                             call_results[tool_call["id"]] = status_container
                             tool_names[tool_call["id"]] = tool_call["name"]
-                            if tool_call["name"] in ["Graph_Viewer", "tool_graphing_agent"]: graph_viewer_call_ids.add(tool_call["id"])
+                            if tool_call["name"] == "Graphing_Agent": Create_Graph_call_ids.add(tool_call["id"])
                             with status_container: st.write(dt.TOOL_CALL_INPUT_LABEL); st.write(tool_call["args"])
                         
                         pending_tool_call_ids = set(call_results.keys())
@@ -449,7 +449,7 @@ async def draw_messages(
                                 messages_agen = chain_messages([tool_result], messages_agen); break
                             if is_new: st.session_state.messages.append(tool_result)
                             if tool_result.tool_call_id in pending_tool_call_ids: pending_tool_call_ids.remove(tool_result.tool_call_id)
-                            await process_tool_result(tool_result, tool_names, call_results, graph_viewer_call_ids, agent_client, current_user_id) # Pass current_user_id
+                            await process_tool_result(tool_result, tool_names, call_results, Create_Graph_call_ids, agent_client, current_user_id) # Pass current_user_id
             case "custom": # ... (custom message logic remains the same) ...
                 try: task_data: TaskData = TaskData.model_validate(msg.custom_data)
                 except ValidationError: st.error(dt.UNEXPECTED_CUSTOMDATA_ERROR); st.write(msg.custom_data); st.stop()
@@ -467,13 +467,13 @@ async def chain_messages(initial_messages: List[ChatMessage], next_messages: Asy
     for msg in initial_messages: yield msg
     async for msg in next_messages: yield msg
 
-async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, str], call_results: Dict[str, object], graph_viewer_call_ids: Set[str], agent_client: AgentClient = None, user_id: Optional[UUID_TYPE] = None):
+async def process_tool_result(tool_result: ChatMessage, tool_names: Dict[str, str], call_results: Dict[str, object], Create_Graph_call_ids: Set[str], agent_client: AgentClient = None, user_id: Optional[UUID_TYPE] = None):
     current_tool_name = tool_names.get(tool_result.tool_call_id)
     status = call_results.get(tool_result.tool_call_id)
     plot_data_for_this_tool = None
     if not status: st.error(f"Could not find status container for tool_call_id: {tool_result.tool_call_id}"); return
     
-    if tool_result.tool_call_id in graph_viewer_call_ids and agent_client:
+    if tool_result.tool_call_id in Create_Graph_call_ids and agent_client:
         with status:
             try:
                 graph_id = tool_result.content

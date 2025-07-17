@@ -3,17 +3,16 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from agents.tools_plotly import display_graph # Tool is named Graph_Viewer
+from agents.tools_plotly import tool_create_graph
 from core import get_model, settings
 
-# Define the state for the GraphingAgent
 class GraphingAgentState(MessagesState, total=False):
     """
     input_data: The structured data (list of dictionaries) for graphing. Can be None if a query is to be used.
     query_string: An optional SQL query string to fetch data for the graph.
     graph_instructions: Natural language instructions for the graph.
     language: The language for graph elements like title, axis labels, legend. Defaults to "english".
-    graph_id: The ID of the generated graph, returned by Graph_Viewer.
+    graph_id: The ID of the generated graph, returned by Create_Graph.
     error: Any error message encountered during graph generation.
     """
     input_data: Optional[List[Dict[str, Any]]]
@@ -27,7 +26,7 @@ class GraphingAgentState(MessagesState, total=False):
 
 GRAPHING_AGENT_SYSTEM_PROMPT = """
 You are a specialized data visualization assistant.
-Your sole purpose is to create Plotly graphs using the 'Graph_Viewer' tool based on provided data and instructions.
+Your sole purpose is to create Plotly graphs using the 'Create_Graph' tool based on provided data and instructions.
 
 Your key capabilities:
 - Creating various chart types (bar, line, scatter, pie)
@@ -44,7 +43,7 @@ You will receive:
 
 ## Smart Data Preprocessing
 
-The Graph_Viewer tool now has advanced preprocessing capabilities. Instead of failing when columns don't exist, you can instruct it to create them:
+The Create_Graph tool now has advanced preprocessing capabilities. Instead of failing when columns don't exist, you can instruct it to create them:
 
 1. For data with separate `year` and `month` columns:
    - Set `preprocess={'create_date': 'from_year_month', 'use_date_for_x': True}` 
@@ -78,14 +77,14 @@ The Graph_Viewer tool now has advanced preprocessing capabilities. Instead of fa
 
 ## Error Prevention
 
-Before calling the Graph_Viewer tool, you MUST:
+Before calling the Create_Graph tool, you MUST:
 1. Check if needed columns exist and use preprocessing if they don't
 2. For time-based data with year and month columns, automatically use preprocessing
 3. Provide helpful column names in error messages
 
 ## Success Confirmation
 
-After a successful Graph_Viewer call (when you receive a graph_id), simply reply: "Graph created with ID: {graph_id}"
+After a successful Create_Graph call (when you receive a graph_id), simply reply: "Graph created with ID: {graph_id}"
 
 ## Examples:
 
@@ -97,7 +96,7 @@ Input:
 - input_data: [{'category': 'Electronics', 'total_sales': 15000}, {'category': 'Books', 'total_sales': 8000}]
 
 Output:
-Graph_Viewer(
+Create_Graph(
   data=input_data,
   chart_type='bar',
   x_col='category',
@@ -119,7 +118,7 @@ Input:
   ]
 
 Output:
-Graph_Viewer(
+Create_Graph(
   data=input_data,
   chart_type='line',
   preprocess={'create_date': 'from_year_month', 'use_date_for_x': True},
@@ -144,7 +143,7 @@ Input:
 - query_string: "SELECT country_code, COUNT(user_id) AS user_count FROM users GROUP BY country_code"
 
 Output:
-Graph_Viewer(
+Create_Graph(
   query=query_string,
   chart_type='pie',
   x_col='country_code',
@@ -166,7 +165,7 @@ Input:
   ]
 
 Output:
-Graph_Viewer(
+Create_Graph(
   data=input_data,
   chart_type='bar',
   preprocess={
@@ -193,7 +192,7 @@ Input:
 
 Output:
 # Note: Even though the query returns 'year' and 'month', we use preprocessing to create a 'date' column for plotting.
-Graph_Viewer(
+Create_Graph(
   query=query_string, # Use the provided SQL query
   chart_type='line',
   preprocess={'create_date': 'from_year_month', 'use_date_for_x': True}, # Create 'date' from 'year'/'month'
@@ -213,7 +212,7 @@ Example 6: Bar plot of comparison on several months:
 Input :{"graph_instructions":"Créer un graphique comparant le nombre de demandes prioritaires et non prioritaires entre janvier et mars 2025. Les données sont : Janvier - 24 prioritaires, 416 non prioritaires ; Février - 27 prioritaires, 639 non prioritaires ; Mars - 0 prioritaires, 18 non prioritaires.","language":"french","input_data":[{"mois":"Janvier","prioritaires":24,"non_prioritaires":416},{"mois":"Février","prioritaires":27,"non_prioritaires":639},{"mois":"Mars","prioritaires":0,"non_prioritaires":18}]}
 
 Output:
-Graph_Viewer(
+Create_Graph(
   data=[{"mois": "Janvier", "type": "prioritaires", "nombre": 24},
     {"mois": "Janvier", "type": "non_prioritaires", "nombre": 416},
     {"mois": "Février", "type": "prioritaires", "nombre": 27},
@@ -234,7 +233,7 @@ Graph_Viewer(
 ```
 """
 
-tools = [display_graph]
+tools = [tool_create_graph]
 
 async def call_graphing_model(state: GraphingAgentState) -> GraphingAgentState:
     model = get_model(settings.DEFAULT_MODEL).bind_tools(tools, tool_choice="auto")
@@ -253,7 +252,7 @@ async def call_graphing_model(state: GraphingAgentState) -> GraphingAgentState:
             HumanMessage(
                 content=f"The previous attempt to create the graph failed with the following error:\n"
                         f"'{error_message_for_retry}'\n\n"
-                        f"Please analyze the error and try calling the 'Graph_Viewer' tool again with corrected parameters. "
+                        f"Please analyze the error and try calling the 'Create_Graph' tool again with corrected parameters. "
                         f"Focus on fixing issues related to data selection (columns, types) or chart parameters. "
                         f"Do NOT retry if the error indicates a problem with the SQL query itself (e.g., 'SQL Execution Error'). "
                         f"Original instructions were: {state['graph_instructions']}"
@@ -263,7 +262,7 @@ async def call_graphing_model(state: GraphingAgentState) -> GraphingAgentState:
         if state.get("graph_id"):
              messages.append(
                 HumanMessage(
-                    content=f"The Graph_Viewer tool has just successfully returned a graph_id: '{state['graph_id']}'. "
+                    content=f"The Create_Graph tool has just successfully returned a graph_id: '{state['graph_id']}'. "
                             "Your ONLY task now is to output a brief confirmation message stating 'Graph created with ID: {state['graph_id']}' and then STOP. "
                             "Do not call any tools. Do not add any other commentary."
                 )
@@ -281,17 +280,17 @@ async def call_graphing_model(state: GraphingAgentState) -> GraphingAgentState:
                     f"Data Source: Direct `input_data` is available (a list of {len(input_data)} dictionaries)."
                     f" The first row is: {input_data[0] if input_data else 'empty'}."
                     f" Columns available: {list(input_data[0].keys()) if input_data and input_data[0] else 'N/A'}."
-                    " You should use the `data` parameter of the 'Graph_Viewer' tool."
+                    " You should use the `data` parameter of the 'Create_Graph' tool."
                 )
             elif query_str:
                 instruction_message_parts.append(
                     f"Data Source: A SQL `query_string` has been provided: \"{query_str}\"."
-                    " You should use this with the `query` parameter of the 'Graph_Viewer' tool."
+                    " You should use this with the `query` parameter of the 'Create_Graph' tool."
                 )
             else:
                 instruction_message_parts.append(
                     "Data Source: Neither `input_data` nor `query_string` was provided. "
-                    "If instructions imply data fetching (e.g., from a database), formulate a SQL query and use the `query` parameter of the 'Graph_Viewer' tool."
+                    "If instructions imply data fetching (e.g., from a database), formulate a SQL query and use the `query` parameter of the 'Create_Graph' tool."
                 )
             instruction_message = "\n".join(instruction_message_parts)
             messages.append(HumanMessage(content=instruction_message))

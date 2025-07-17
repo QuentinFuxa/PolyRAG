@@ -285,5 +285,7 @@ def create_graph(
     print(f"Graph stored with ID: {id}")
     return id
 
-display_graph: BaseTool = tool(create_graph)
-display_graph.name = "Graph_Viewer"
+tool_create_graph: BaseTool = tool(create_graph)
+tool_create_graph.name = "Create_Graph"
+tool_create_graph.description = """
+"""
