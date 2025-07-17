@@ -122,7 +122,7 @@
   "LOGIN_BUTTON": "Login",
   "LOGOUT_BUTTON": "Logout",
   "CREATE_ACCOUNT_BUTTON": "Create Account",
-  "INVALID_EMAIL_FORMAT": "Only @example.com email addresses are allowed.",
+  "INVALID_EMAIL_FORMAT": "Only @xxx.com email addresses are allowed.",
   "LOGIN_FAILED": "Login failed. Please check your email and password.",
   "ACCOUNT_CREATION_FAILED": "Account creation failed. Please try again later.",
   "ACCOUNT_CREATED_SUCCESS": "Account created for {email}. A password has been sent to your email. Please click the button above again and log in with this password.",
