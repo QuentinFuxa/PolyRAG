@@ -2,8 +2,6 @@ import os
 from datetime import datetime
 from typing import Literal
 
-from langchain_community.tools import DuckDuckGoSearchResults, OpenWeatherMapQueryRun
-from langchain_community.utilities import OpenWeatherMapAPIWrapper
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.tools import BaseTool

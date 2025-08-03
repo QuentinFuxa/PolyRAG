@@ -10,7 +10,7 @@ except:
 try:
     from agents.pg_rag_assistant import pg_rag_assistant
 except ImportError:
-    from pg_rag_assistant import pg_rag_assistant
+    from .pg_rag_assistant import pg_rag_assistant
 
 DEFAULT_AGENT = "pg_rag_assistant"
 
