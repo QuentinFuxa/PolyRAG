@@ -146,7 +146,7 @@ async def main() -> None:
                 title = agent_client.get_conversation_title(query_thread_id, user_id=current_user_id)
                 st.session_state.conversation_title = title
             except: st.session_state.conversation_title = dt.DEFAULT_CONVERSATION_TITLE
-        except AgentClientError as e: st.error(dt.CONVERSATION_LOAD_ERROR.format(e=e))
+        except AgentClientError as e: st.error(dt.CONVERSATION_LOAD_ERROR)
 
     if "thread_id" not in st.session_state:
         thread_id = st.query_params.get("thread_id")

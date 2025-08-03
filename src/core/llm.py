@@ -1,13 +1,35 @@
 from functools import cache
 from typing import TypeAlias
 
-from langchain_anthropic import ChatAnthropic
-from langchain_aws import ChatBedrock
-from langchain_community.chat_models import FakeListChatModel
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
-from langchain_ollama import ChatOllama
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+try:
+    from langchain_anthropic import ChatAnthropic
+except ImportError:
+    ChatAnthropic = None
+try:
+    from langchain_aws.chat_models import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+try:
+    from langchain_community.chat_models import FakeListChatModel
+except ImportError:
+    FakeListChatModel = None
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    ChatGoogleGenerativeAI = None
+try:
+    from langchain_groq import ChatGroq
+except ImportError:
+    ChatGroq = None
+try:
+    from langchain_ollama import ChatOllama
+except ImportError:
+    ChatOllama = None
+try:
+    from langchain_openai import AzureChatOpenAI, ChatOpenAI
+except ImportError:
+    AzureChatOpenAI = None
+    ChatOpenAI = None
 try:
     from langchain_mistralai import ChatMistralAI
 except ImportError:
@@ -58,14 +80,15 @@ _MODEL_TABLE = {
     AlbertModelName.Albert_Large: "albert-large",
 }
 
+if FakeListChatModel:
+    class FakeToolModel(FakeListChatModel):
+        def __init__(self, responses: list[str]):
+            super().__init__(responses=responses)
 
-class FakeToolModel(FakeListChatModel):
-    def __init__(self, responses: list[str]):
-        super().__init__(responses=responses)
-
-    def bind_tools(self, tools):
-        return self
-
+        def bind_tools(self, tools):
+            return self
+else:
+    FakeToolModel = None
 
 ModelT: TypeAlias = (
     AzureChatOpenAI

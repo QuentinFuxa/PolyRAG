@@ -32,42 +32,19 @@ if NO_AUTH:
 chatbot = st.Page("frontend/chat.py", title='Assistant', icon=":material/chat:", default=True)
 logout_page = st.Page('frontend/user.py', title=dt.LOGOUT, icon=":material/logout:")
 comments = st.Page("frontend/feedback.py", title=dt.FEEDBACK, icon=":material/feedback:")
-try:
-    help = st.Page(
-        "frontend/help.py", title="Aide", icon=":material/lightbulb:")
-    changelog = st.Page(
-        "frontend/changelog.py", title="Nouveautés v0.1.8 - 17/07/2025", icon=":material/source_notes:")
-except:
-    help = None
-    changelog = None
 
-if os.getenv('LANGUAGE', 'english') == "french":
-    if "current_user_id" in st.session_state:
-        pg = st.navigation(
-        {
-            "": [chatbot],
-            "Utilisateur": [comments, logout_page],
-            "PoC": [help, changelog],
-        },
-        )
-    else:
-        pg = st.navigation(pages=[
-            st.Page(login_ui, title="Log in", icon=":material/login:")
-        ])
-
+if "current_user_id" in st.session_state:
+    pg = st.navigation(
+    {
+        "": [chatbot],
+        "User": [logout_page, comments],
+    },
+    )
 else:
-    if "current_user_id" in st.session_state:
-        pg = st.navigation(
-        {
-            "": [chatbot],
-            "User": [logout_page, comments],
-        },
-        )
-    else:
-       
+    
 
-        pg = st.navigation(pages=[
-            st.Page(login_ui, title="Log in", icon=":material/login:")
-        ])
+    pg = st.navigation(pages=[
+        st.Page(login_ui, title="Log in", icon=":material/login:")
+    ])
         
 pg.run()
