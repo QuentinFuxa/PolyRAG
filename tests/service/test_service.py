@@ -1,7 +1,6 @@
 import json
 from unittest.mock import AsyncMock, patch
 
-import langsmith
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.pregel.types import StateSnapshot

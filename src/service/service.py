@@ -17,7 +17,6 @@ from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, Human
 from langchain_core.runnables import RunnableConfig
 from langgraph.pregel import Pregel
 from langgraph.types import Command, Interrupt
-from langsmith import Client as LangsmithClient
 
 from agents import DEFAULT_AGENT, get_agent, get_all_agent_info
 from agents._graph_store import GraphStore
@@ -190,6 +189,7 @@ async def _handle_input(user_input: UserInput, agent: Pregel) -> tuple[dict[str,
     else:
         messages = [HumanMessage(content=user_message)]
         messages.append(system_message)
+        messages = [msg for msg in messages if msg is not None]  # Filter out None messages
         input = {"messages": messages}
 
     kwargs = {
@@ -219,22 +219,20 @@ async def invoke(user_input: UserInput, agent_id: str = DEFAULT_AGENT) -> ChatMe
     try:
         response_events: list[tuple[str, Any]] = await agent.ainvoke(**kwargs, stream_mode=["updates", "values"])  # type: ignore # fmt: skip
         response_type, response = response_events[-1]
+        message = None
         if response_type == "values":
             # Normal response, the agent completed successfully
-            output = langchain_to_chat_message(response["messages"][-1])
+            message = response["messages"][-1]
         elif response_type == "updates" and "__interrupt__" in response:
-            # The last thing to occur was an interrupt
-            # Return the value of the first interrupt as an AIMessage
-            output = langchain_to_chat_message(
-                AIMessage(content=response["__interrupt__"][0].value)
-            )
+            message = AIMessage(content=response["__interrupt__"][0].value)
         else:
             raise ValueError(f"Unexpected response type: {response_type}")
-
+        if message:
+            output = langchain_to_chat_message(message)
         output.run_id = str(run_id)
         return output
     except Exception as e:
-        logger.error(f"An exception occurred: {e}")
+        logger.exception(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -313,17 +311,18 @@ async def message_generator(
                 processed_messages.append(_create_ai_message(current_message))
 
             for message in processed_messages:
-                try:
-                    chat_message = langchain_to_chat_message(message)
-                    chat_message.run_id = str(run_id)
-                except Exception as e:
-                    logger.error(f"Error parsing message: {e}")
-                    yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'error', 'content': 'Unexpected error'})}\n\n"
-                    continue
-                # LangGraph re-sends the input message, which feels weird, so drop it
-                if chat_message.type == "human" and chat_message.content == user_input.message:
-                    continue
-                yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'message', 'content': chat_message.model_dump()})}\n\n"
+                if message is not None:
+                    try:
+                        chat_message = langchain_to_chat_message(message)
+                        chat_message.run_id = str(run_id)
+                    except Exception as e:
+                        logger.error(f"Error parsing message: {e}")
+                        yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'error', 'content': 'Unexpected error'})}\n\n"
+                        continue
+                    # LangGraph re-sends the input message, which feels weird, so drop it
+                    if chat_message.type == "human" and chat_message.content == user_input.message:
+                        continue
+                    yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'message', 'content': chat_message.model_dump()})}\n\n"
 
             if stream_mode == "messages":
                 if not user_input.stream_tokens:
@@ -342,7 +341,7 @@ async def message_generator(
                     # So we only print non-empty content.
                     yield f"data: {json.dumps({'additional_data': additional_data, 'type': 'token', 'content': convert_message_content_to_string(content)})}\n\n"
     except Exception as e:
-        logger.error(f"Error in message generator: {e}")
+        logger.exception(f"Error in message generator: {e}")
         yield f"data: {json.dumps({'additional_data': [], 'type': 'error', 'content': str(e)})}\n\n"
     finally:
         yield "data: [DONE]\n\n"
@@ -492,7 +491,7 @@ def history(input_data: ChatHistoryInput) -> ChatHistory:
 
         return ChatHistory(messages=chat_messages)
     except Exception as e:
-        logger.error(f"An exception occurred: {e}")
+        logger.exception(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
 
 
@@ -514,7 +513,7 @@ def get_total_count_messages():
             )
         )
         messages = state_snapshot.values.get("messages", [])
-        chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
+        chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages if m is not None]
         user_count = 0
         ai_count = 0
         for m in chat_messages:
