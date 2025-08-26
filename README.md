@@ -2,46 +2,33 @@
   <img src="media/polyrag.svg" alt="PolyRAG Logo" width="200"/>
 </p>
 
-**Agentic RAG for Small LLMs — Modular, Orchestrated, and Context-Smart**
+**PolyRAG is a modular agentic RAG framework optimized for SLM (small language models) with small context windows**
 
----
+<img src="media/schema-data.png" alt="PolyRAG Architecture" width="800"/>
 
-PolyRAG is a modular agentic RAG framework for small and local LLMs, optimized for privacy, limited context, and on-premise use.
+*Agents and tools are designed to pipe outputs directly, auto-correct imperfect inputs, and minimize main agent context load. Every feature is built for small, slow, or local LLMs.*
 
 ---
 
 > **Modular: Bring Your Own Data, Lexicon, and LLM**
 >
-> This repo uses MedRxiv as a demo, but you can connect PolyRAG to any database, lexicon, or document set—just adapt the system prompt and DB connection. Any LLM backend is supported. Indexing scripts are in [`scripts/`](scripts/). See "Customization" below.
+> This repo uses MedRxiv publications as a demo, but you can connect PolyRAG to any database, lexicon, or document set—just adapt the system prompt and DB connection. Any LLM backend is supported. Indexing scripts are in [`scripts/`](scripts/). See "Customization" below.
 
 ---
 
 ## Agentic Architecture
 
-- **Agents** are modular, specialized entities that coordinate complex tasks, delegate subtasks to tools, and manage context flow.
-- **Agent Orchestration:** Agents can call other agents or tools, pipe outputs directly, and adaptively route information to minimize context usage.
-- **Agent-Tool Synergy:** Tools are robust to imperfect inputs and return concise, high-quality outputs. Agents decide when to use which tool, and how to chain them for optimal results.
-- **Direct-to-User Output:** Tools and agents can send data directly to the user, bypassing the main agent to preserve context and maximize efficiency.
-
-This agentic design is what enables PolyRAG to get the most out of small or local LLMs, supporting advanced workflows that would otherwise overwhelm limited context windows.
 
 <img src="media/demo_3.png" alt="PolyRAG Smart Actions" width="800"/>
 
-*Choose from a menu of advanced actions: synthesize literature, run SQL, generate graphs, and more. Each action is handled by specialized agents and tools, minimizing context usage.*
+*Suggestion of actions at the creation of a new conversation*
 
 ---
 
-### Conversational Research Assistant (Agent-Orchestrated)
+### Conversational Research Assistant
 <img src="media/demo_1.png" alt="PolyRAG Chat Interface" width="800"/>
 
 *Ask complex research questions and get precise, sourced answers. Accesses lexicon, finds paragraphs in documents*
-
----
-
-### Conversational Entry Points
-<img src="media/demo_3.png" alt="PolyRAG Smart Actions" width="800"/>
-
-*Choose from a menu of advanced actions: synthesize literature, run SQL, generate graphs, and more. Each action is handled by specialized agents and tools, minimizing context usage.*
 
 ---
 
@@ -62,14 +49,7 @@ This agentic design is what enables PolyRAG to get the most out of small or loca
 ### End-to-End Agent Orchestration
 <img src="media/example.png" alt="PolyRAG Agent Orchestration" width="800"/>
 
-*See how PolyRAG chains SQL, RAG, and PDF tools to answer technical questions—each step coordinated by agents for context efficiency.*
-
----
-
-### Architecture: Built for Agentic Workflows
-<img src="media/schema-data.png" alt="PolyRAG Architecture" width="800"/>
-
-*Agents and tools are designed to pipe outputs directly, auto-correct imperfect inputs, and minimize main agent context load. Every feature is built for small, slow, or local LLMs.*
+*See how PolyRAG chains SQL, RAG, and PDF tools to answer technical questions—each step*
 
 ---
 
